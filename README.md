@@ -1,5 +1,5 @@
 # CLP(BNR)
-A Prolog implementation of CLP(BNR) as a package for SWI-Prolog.
+A Prolog implementation of CLP(BNR) as an SWI-Prolog module.
 
 CLP(BNR) is a Prolog based constraint programming language based on relation interval arithmetic on integer and real domains.
 
