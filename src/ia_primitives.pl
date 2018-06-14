@@ -22,6 +22,20 @@ exactVal_(1.0Inf).
 exactVal_(-1.0Inf).
 
 
+/* GNUP 
+:- initialization(initConstants_).
+
+initConstants_ :-
+	NI is log(0),     g_assign(negInfinity,NI),
+	PI is -NI,        g_assign(posInfinity,PI),
+	NAN is sqrt(-1),  g_assign(notAnumber,NAN).
+	
+posInfinity(PI) :- g_read(posInfinity,PI).
+negInfinity(NI) :- g_read(negInfinity,NI).
+notAnumber(NAN) :- g_read(notAnumber,NAN).
+
+*/
+
 %
 % Arithmetic "eval" with specified rounding direction.
 % Assumes underlying IEEE 754 with rounding to nearest FP value (1/2 ulp).
@@ -77,10 +91,13 @@ recover_(X*Y, float_overflow, Z)         :- Z is copysign(inf,sign(X)*sign(Y)). 
 recover_(X/Y, float_overflow, Z)         :- Z is copysign(inf,sign(X)*sign(Y)).  %%S is sign(X)*sign(Y), infinity_(S,Z).
 recover_(X/Y, zero_divisor, Z)           :- Z is copysign(inf,X).  %%infinity_(X,Z).
 
-recover_(exp(X), float_overflow, Z)      :- Z is inf.
+recover_(X**Y, float_overflow, 1.0Inf).
+recover_(-X**Y, float_overflow, -1.0Inf).
 
-recover_(log(X), float_overflow, Z)      :- Z is inf.
-recover_(log(X), undefined, Z)           :- X =:= 0, Z is -inf.
+recover_(exp(X), float_overflow, 1.0Inf).
+
+recover_(log(X), float_overflow, 1.0Inf).
+recover_(log(X), undefined, -1.0Inf)           :- X =:= 0.
 
 %
 % integer overflow checking : (platform requires prolog flag 'bounded'.)
@@ -136,7 +153,7 @@ clpStatistic(localStack(U/T)) :- statistics(localused,U), statistics(local,T).
 
 % zero/increment/read global counter
 g_zero(G)   :- nb_setval(G,0).
-g_inc(G)    :- nb_getval(G,N), succ(N,N1), nb_setval(G,N1).
+g_inc(G)    :- nb_getval(G,N), N1 is N+1, nb_setval(G,N1).
 g_read(G,C) :- nb_getval(G,C).
 
 %
@@ -167,11 +184,11 @@ empty_interval([L,H]) :- universal_interval([H,L]).
 %
 % Note: R may contain vars, which should be treated as unchanged, i.e., output = input.
 %
-evalNode(Op, Is, R) :-
+evalNode(Op, P, Is, R) :-
 	g_inc(evalNode),  % count of primitive calls
-	narrowing_op(Op, Is, R),
+	narrowing_op(Op, P, Is, R),
 	!.
-evalNode(Op, Is, _):-
+evalNode(Op, P, Is, _):-
 	g_inc(evalNodeFail),  % count of primitive call failures
 %	evalfail_(Op,Is),
 	fail.
@@ -232,7 +249,7 @@ chkInt_(hi, H, IH) :-
 	NewL is L+1, L=<H.  % X is a point,  and low bound of Z 
 >([Zl,Zh], [Xl,Xh], [Zl,Zh]) :- Zl > Xh.
 */
-
+	
 % Z := X + Y  (add)
 +([Xl,Xh], [Yl,Yh], [Zl,Zh]) :-
 	Zl isL Xl+Yl, Zh isH Xh+Yh.            % Z := [Xl+Yl, Xh+Yh].
@@ -298,21 +315,21 @@ log([Xl,Xh], [Zl,Zh]) :-
 	*(Y,LogX,P),
 	exp(P,Z).
 
-% Z:= X**N where integer(N)>0
+% Z:= X**N for integer(N)
 intpow(X,[N,N],Z) :-
-	N>0,
-	Odd is N rem 2,
+	Odd is abs(N) rem 2,
 	intCase(Cx,X),
-	ipCase(Cx, Odd, N, X, Z), !.
+	intCase(Cn,[N,N]),
+	ipCase(Cx, Cn, Odd, N, X, Z), !.
 	
-% Z := root(X,N) , i.e., Nth root of X where integer(N)>0
-nthroot(Z,X,[N,N],NX) :-
-	N>0,
-	Odd is N rem 2,
-	intCase(Cz,Z),
+% Z := root(X,N) , i.e., Nth root of X where integer(N)<>0 
+% Uses current value of Z for separating even N casescases
+nthroot(X,[N,N],Z,NewZ) :-
+	Odd is abs(N) rem 2,
 	intCase(Cx,X),
-	nthrootCase(Cz,Cx,Odd,Z,N,NX),!.
-%	nrCase(Cx, Odd, N, X, Z), !.
+	intCase(Cz,Z),
+	intCase(Cn,[N,N]),
+	nthrootCase(Cx,Cn,Cz,Odd,N,X,Z,NewZ), !.
 
 % Y:= Y ^ Z/X  % used in mul relation
 intersect_odiv([Xl,Xh],Y,[Zl,Zh],NewY) :-
@@ -341,6 +358,58 @@ nLo(Y,_,_,Y).
 nHi(Y,N,P,N) :- Y>N, Y<P.
 nHi(Y,N,P,N) :- Y>N, Y =:= 0.  % zeroval(Y).
 nHi(Y,_,_,Y).
+
+	
+% Z:= sin(X), -pi/2=<X=<pi/2
+sin([Xl,Xh],Z) :-
+	Z1l isL sin(Xl), Z1h isH sin(Xh),
+	^([Z1l,Z1h],[-1,1],Z).  % limit outward rounding
+
+% Z := arcsin(X), -1 =< X =<1, -pi/2=<Z=<pi/2
+arcsin([Xl,Xh], [Zl,Zh]) :-
+	Zl isL asin(Xl), Zh isH asin(Xh).  % asin is monotonic and increasing in range
+
+% Z:= cos(X), 0=<X=<pi
+cos([Xl,Xh],Z) :-
+	Z1l isL cos(Xh), Z1h isH cos(Xl),
+	^([Z1l,Z1h],[-1,1],Z).  % limit outward rounding
+
+% Z := arccos(X), -1 =< X =<1, 0=<Z=<pi
+arccos([Xl,Xh], [Zl,Zh]) :-
+	Zl isL acos(Xh), Zh isH acos(Xl).  % acos is monotonic and decreasing in range
+
+
+% Z:= tan(X) -pi/2=<X=<pi/2
+tan([Xl,Xh], [Zl,Zh]) :-
+	Zl isL tan(Xl), Zh isH tan(Xh).  % tan is monotonic and increasing in range
+
+% Z := arctan(X)
+arctan([Xl,Xh], [Zl,Zh]) :-
+	Zl isL atan(Xl), Zh isH atan(Xh).  % atan is monotonic and increasing in range
+
+%
+% wrap repeating interval onto a prime cylinder of width W, return projected interval and "mulipliers" to re-project
+%
+wrap_([Xl,Xh], W, [MXl,MXh], [Xpl,Xph]) :-  % project onto cylinder from -W/2 to W/2, fails if interval wider than W.
+	FMl isL Xl/W, FMh isL Xh/W,  % use same rounding at both ends so points always answer Yes
+	MXl is round(FMl), MXh is round(FMh),
+	MXh-MXl =< 1, Xh-Xl =< W,  % MX check first to avoid overflow
+	Xpl isL Xl - (MXl*W), Xph isH Xh-(MXh*W).
+	
+%
+% unwrap projected interval back to original range
+%
+unwrap_([Xpl,Xph], W, [MXl,MXh], [Xl,Xh]) :-
+	Xl isL Xpl+W*MXl, Xh isH Xph+W*MXh.
+
+%
+%  set intersection (Can be []) and union.
+intersection_(X,Y,Z) :- ^(X,Y,Z), !.
+intersection_(X,Y,[]).
+
+union_(X,[],X) :-!.
+union_([],Y,Y) :-!.
+union_([Xl,Xh],[Yl,Yh],[Zl,Zh]) :- Zl is min(Xl,Yl), Zh is max(Xh,Yh).
 
 %
 % interval is positive, negative, or split (contains 0)
@@ -395,181 +464,191 @@ odivCase(s,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xh,Yh,Zl,-1), odiv(hi,Xl,Y
 odivCase(s,s, X,       Y,       Z      ):-    universal_interval(Z).
 	
 % check for divide by zero, sign of inf resulting depends on sign of zero.
-odiv(_, X,  Y, Z, Zsgn) :- Y =:= 0, !, Xsgn is sign(float(X)),infinityVal(Zsgn,Xsgn,Z). % Z is X*inf*Zsgn.
+odiv(_, X,  Y, Z, Zsgn) :- Y =:= 0, !, Xsgn is sign(float(X)),odivInfinityVal(Zsgn,Xsgn,Z).
 odiv(lo, X, Y, Z, _)  :- Z isL X/Y.
 odiv(hi, X, Y, Z, _)  :- Z isH X/Y.
 
-infinityVal( 1,-1.0,-1.0Inf). %% :- negInfinity(NI).
-infinityVal( 1, 0.0, 1.0Inf). %% :- posInfinity(PI).
-infinityVal( 1, 1.0, 1.0Inf). %% :- posInfinity(PI).
-infinityVal(-1, 1.0,-1.0Inf). %% :- negInfinity(NI).
-infinityVal(-1, 0.0,-1.0Inf). %% :- negInfinity(NI).
-infinityVal(-1,-1.0, 1.0Inf). %% :- posInfinity(PI).
+odivInfinityVal( 1,-1.0,-1.0Inf). %% :- negInfinity(NI).
+odivInfinityVal( 1, 0.0, 1.0Inf). %% 0/0 ? :- posInfinity(PI).
+odivInfinityVal( 1, 1.0, 1.0Inf). %% :- posInfinity(PI).
+odivInfinityVal(-1, 1.0,-1.0Inf). %% :- negInfinity(NI).
+odivInfinityVal(-1, 0.0,-1.0Inf). %% 0/0 ? :- negInfinity(NI).
+odivInfinityVal(-1,-1.0, 1.0Inf). %% :- posInfinity(PI).
 
 	
 %
-% integer power cases
+% integer power cases:  ipCase(Cx,Cn,Odd,N,X,Z) N<>0
 %
-ipCase(p,_,N, [Xl,Xh], [Zl,Zh]) :- timesLo(N,Xl,Xl,Zl), timesHi(N,Xh,Xh,Zh).
-ipCase(n,0,N, X,       [Zl,Zh]) :- -(X,[Xl,Xh]), timesLo(N,Xl,Xl,Zl), timesHi(N,Xh,Xh,Zh).
-ipCase(n,1,N, X,       Z)       :- -(X,[Xl,Xh]), timesLo(N,Xl,Xl,Zl), timesHi(N,Xh,Xh,Zh), -([Zl,Zh],Z).
-ipCase(s,0,N, [Xl,Xh], [0,Zh])  :- Xmax is max(-Xl,Xh), timesHi(N,Xmax,Xmax,Zh).
-ipCase(s,1,N, [Xl,Xh], [Zl,Zh]) :- Xlp is -Xl, timesHi(N,Xlp,Xlp,Zlp), Zl is -Zlp, timesHi(N,Xh,Xh,Zh).
+ipCase(p,p,_,N, [Xl,Xh], [Zl,Zh]) :- ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh).                        % X pos, N pos,any
+ipCase(p,n,_,N, [Xl,Xh], [Zl,Zh]) :- ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh).                        % X pos, N neg,any
+ipCase(n,p,0,N, X,       [Zl,Zh]) :- -(X,[Xl,Xh]), ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh).                % X neg, N pos,even
+ipCase(n,n,0,N, X,       [Zl,Zh]) :- -(X,[Xl,Xh]), ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh).                % X neg, N neg,even
+ipCase(n,p,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh), -([Zl,Zh],Z).  % X neg, N pos,odd
+ipCase(n,n,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
+ipCase(s,p,0,N, [Xl,Xh], [0,Zh])  :- Xmax is max(-Xl,Xh), ipowHi(Xmax,N,Zh).                     % X split, N pos,even
+ipCase(s,p,1,N, [Xl,Xh], [Zl,Zh]) :- Xlp is -Xl, ipowHi(Xlp,N,Zlp), Zl is -Zlp, ipowHi(Xh,N,Zh).              % X split, N pos,odd
+ipCase(s,n,0,N, [Xl,Xh], [0,1.0Inf]).                                                         % X split, N neg,even
+ipCase(s,n,1,N, [Xl,Xh], [-1.0Inf,1.0Inf]).                                                   % X split, N neg,odd
 
-% X is positive interval, multiply loop assumes N is small, but preserves integers?
-timesLo(1,_,Z,Z) :- !.
-timesLo(N,X,Acc,Z) :-
-	NAcc isL X*Acc,
-	succ(N1,N),
-	timesLo(N1,X,NAcc,Z).
-		
-timesHi(1,_,Z,Z) :- !.
-timesHi(N,X,Acc,Z) :-
-	NAcc isH X*Acc,
-	succ(N1,N),
-	timesHi(N1,X,NAcc,Z).
-		
+ipowLo(X,N,X) :- X=:=0.  % avoid rounding at 0
+ipowLo(X,N,Z) :- Z isL X**N.
+
+ipowHi(X,N,X) :- X=:=0.  % avoid rounding at 0
+ipowHi(X,N,Z) :- Z isH X**N.
+
 %
-% Nth root cases
+% Nth root cases:  nthrootCase(Cx,Cn,Cz,Odd,N,X,Z), N<>0
 %
-% even powers
-nthrootCase(p,p,0, [Zl,Zh], N, [Xl,Xh]):- nthRootLo(N,Zl,Xl), nthRootHi(N,Zh,Xh).                % same as p,_,_
-nthrootCase(p,n,0, [Zl,Zh], N, [Xl,Xh]):- nthRootHi(N,Zh,Xln), Xl is -Xln, nthRootLo(N,Zl,Xhn), Xh is -Xhn.
-nthrootCase(p,s,0, [Zl,Zh], N, [Xl,Xh]):- Zmax is max(-Zl,Zh), nthRootHi(N,Zmax,Xh), Xl is -Xh.  % same as s,s,0
-% nthrootCase(n,p,0, [Zl,Zh], N, [Xl,Xh]):- fail.
-% nthrootCase(n,n,0, [Zl,Zh], N, [Xl,Xh]):- fail.
-% nthrootCase(n,s,0, [Zl,Zh], N, [Xl,Xh]):- fail.
-nthrootCase(s,p,0, [Zl,Zh], N, [ 0,Xh]):- Zmax is max(-Zl,Zh), nthRootHi(N,Zmax,Xh).             % same as s,p,1
-nthrootCase(s,n,0, [Zl,Zh], N, [Xl, 0]):- Zmax is max(-Zl,Zh), nthRootHi(N,Zmax,Xh), Xl is -Xh.  % same as s,n,1
-nthrootCase(s,s,0, [Zl,Zh], N, [Xl,Xh]):- Zmax is max(-Zl,Zh), nthRootHi(N,Zmax,Xh), Xl is -Xh.  % same as p,s,0
-% odd powers
-nthrootCase(p,p,1, [Zl,Zh], N, [Xl,Xh]):- nthRootLo(N,Zl,Xl), nthRootHi(N,Zh,Xh).                % same as p,_,_
-%nthrootCase(p,n,1, [Zl,Zh], N, [Xl,Xh]):- fail.
-nthrootCase(p,s,1, [Zl,Zh], N, [Xl,Xh]):- nthRootLo(N,Zl,Xl), nthRootHi(N,Zh,Xh).                % same as p,_,_
-%nthrootCase(n,p,1, [Zl,Zh], N, [Xl,Xh]):- fail.
-nthrootCase(n,n,1, [Zl,Zh], N, [Xl,Xh]):- Zhn is -Zh, nthRootLo(N,Zhn,Xhn), Xh is -Xhn, Zln is -Zl, nthRootHi(N,Zln,Xln), Xl is -Xln.
-nthrootCase(n,s,1, [Zl,Zh], N, [Xl,Xh]):- Zln is -Zl, nthRootHi(N,Zln,Xln), Xl is -Xln, Zhn is -Zh, nthRootLo(N,Zhn,Xhn), Xh is -Xhn.
-nthrootCase(s,p,1, [Zl,Zh], N, [ 0,Xh]):- Zmax is max(-Zl,Zh), nthRootHi(N,Zmax,Xh).             % same as s,p,0
-nthrootCase(s,n,1, [Zl,Zh], N, [Xl, 0]):- Zmax is max(-Zl,Zh), nthRootLo(N,Zmax,Xh), Xl is -Xh.  % same as s,n,0
-nthrootCase(s,s,1, [Zl,Zh], N, [Xl,Xh]):- Zln is -Zl, nthRootHi(N,Zln,Xln), Xl is -Xln, nthRootHi(N,Zh,Xh).
+nthrootCase(p,p,p,0, N, [Xl,Xh], _, [Zl,Zh]) :- nthRootLo(N,Xl,Zl), nthRootHi(N,Xh,Zh).      % X pos, N pos,even, Z pos
+nthrootCase(p,p,n,0, N, [Xl,Xh], _, Z)       :- nthRootLo(N,Xl,Zl), nthRootHi(N,Xh,Zh), -([Zl,Zh],Z).  % X pos, N pos,even, Z neg
+nthrootCase(p,p,s,0, N, [Xl,Xh], [Zl,Zh], NewZ) :-                                           % X pos, N pos,even, Z split
+	                                            nthRootLo(N,Xl,Z1l),nthRootHi(N,Xh,Z1h),
+	                                            -([Z1l,Z1h],[Z1nl,Z1nh]),
+	                                            intersection_([Z1l,Z1h],[0,Zh],PosZ), intersection_([Z1nl,Z1nh],[Zl,0],NegZ),
+	                                            union_(NegZ,PosZ,NewZ).
+
+nthrootCase(p,p,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- nthRootLo(N,Xl,Zl), nthRootHi(N,Xh,Zh).      % X pos, N pos,odd
+
+nthrootCase(p,n,p,0, N, [Xl,Xh], _, [Zl,Zh]) :- nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh).      % X pos, N neg,even, Z pos
+nthrootCase(p,n,n,0, N, [Xl,Xh], _, Z)       :- nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh), -([Zl,Zh],Z).  % X pos, N neg,even, Z neg
+nthrootCase(p,n,s,0, N, [Xl,Xh], [Zl,Zh], NewZ) :-
+	                                            nthRootLo(N,Xh,Z1l), nthRootHi(N,Xl,Z1h),    % X pos, N neg,even, Z split
+	                                            -([Z1l,Z1h],[Z1nl,Z1nh]),
+	                                            intersection_([Z1l,Z1h],[0,Zh],PosZ), intersection_([Z1nl,Z1nh],[Zl,0],NegZ),
+	                                            union_(NegZ,PosZ,NewZ). % X pos, N pos,even, Z split
+
+nthrootCase(p,n,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh).      % X pos, N neg,odd
+
+% nthrootCase(n,_,_,0, N, X,     _, Z) :- fail.                                              % X neg, N even FAIL
+nthrootCase(n,p,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xl,Zl), nthRootHi(N,Xh,Zh), -([Zl,Zh],Z).  % X neg, N pos,odd
+nthrootCase(n,n,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
+% nthrootCase(s,_,_,0, N, X,     _, Z) :- fail.                                              % X split, N even FAIL
+nthrootCase(s,p,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- Xl1 is -Xl, nthRootHi(N,Xl1,Zl1), Zl is -Zl1, nthRootHi(N,Xh,Zh).    % X split, N pos,odd
+nthrootCase(s,n,_,1, N, [Xl,Xh], _, [-1.0Inf,1.0Inf]).                                       % X split, N neg,odd
+
+nthRootLo(N,X,Z) :- X =:= 0, !, ((N < 0 -> Z= -1.0Inf);Z=0).
+nthRootLo(N,X,Z) :- Z isL exp(log(X)/N).  % asumes minimal rounding error
+
+nthRootHi(N,X,Z) :- X =:= 0, !, ((N < 0 -> Z=  1.0Inf);Z=0).
+nthRootHi(N,X,Z) :- Z isH exp(log(X)/N).  % asumes minimal rounding error
 
 
-nthRootLo(N,X,X) :-  X =:= 0, !.
-nthRootLo(N,X,X) :-  X =:= 1, !.
-nthRootLo(N,X,Z) :-  % outward round at every step
-	LogX isL log(X),
-	DivN isL LogX/N,
-	Z isL exp(DivN).
-
-nthRootHi(N,X,X) :-  X =:= 0, !.
-nthRootHi(N,X,X) :-  X =:= 1, !.
-nthRootHi(N,X,Z) :-  % outward round at every step
-	LogX isH log(X),
-	DivN isH LogX/N,
-	Z isH exp(DivN).
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % Relational Operations (narrowing operations)
 %
 :- discontiguous(narrowing_op/3).
 
-% Z==integer(X) - op to convert any floats to intgers (rounds inward)
-narrowing_op(integral, [X,Xtra], [NewX,Xtra]) :-
-	integer(X) -> NewX=X;integer(X,NewX).
+% integral(X) - op to convert any floats to integers (rounds inward)
+narrowing_op(integral, _, [X,Xtra], [NewX,Xtra]) :-
+	integer(X,NewX).  % X unchanged
 
 % Z==(X==Y)  % (Z boolean)
-narrowing_op(eq, [[1,1], X, Y], [[1,1], New, New]) :- !,  % Z is true, X and Y must intersect
+narrowing_op(eq, _, [[1,1], X, Y], [[1,1], New, New]) :- !,  % Z is true, X and Y must intersect
 	^(X,Y,New) .
 
-narrowing_op(eq, [Z, X, Y], [NewZ, X, Y]) :-              % if X and Y don't intersect, Z is false
+narrowing_op(eq, p, [Z, X, Y], [NewZ, X, Y]) :-              % persistent, X and Y don't intersect, Z is false
 	\+(^(X,Y,_)), !,
 	^(Z, [0,0], NewZ).
 	
-narrowing_op(eq, [Z, X, Y], [NewZ, X, Y]) :-              % if X and Y are necessarily equal, Z is true
+narrowing_op(eq, _, [Z, X, Y], [NewZ, X, Y]) :-              % if X and Y are necessarily equal, Z is true
 	necessEqual(X,Y), !,
 	^(Z, [1,1], NewZ).
 
-narrowing_op(eq, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).   % else no change, but narrow Z to boolean
+narrowing_op(eq, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).   % else no change, but narrow Z to boolean
 
 % Z==(X<>Y)  % (Z boolean)
-narrowing_op(ne, [[1,1], X, Y], [[1,1], NewX, NewY]) :-     % Z is true, try to narrow to not intersect
+narrowing_op(ne, _, [[1,1], X, Y], [[1,1], NewX, NewY]) :-     % Z is true, try to narrow to not intersect
 	<>(X,Y,NewX),
 	<>(Y,NewX,NewY), !.
 
-narrowing_op(ne, [Z, X, Y], [NewZ, X, Y]) :-                % if X and Y don't intersect, Z is true
+narrowing_op(ne, p, [Z, X, Y], [NewZ, X, Y]) :-                % persistent,  X and Y don't intersect, Z is true
 	\+(^(X,Y,_)), !,
 	^(Z, [1,1], NewZ).
 
-narrowing_op(ne, [Z, X, Y], [NewZ, X, Y]) :-                % if X and Y are necessarily equal, Z is false
+narrowing_op(ne, _, [Z, X, Y], [NewZ, X, Y]) :-                % if X and Y are necessarily equal, Z is false
 	necessEqual(X,Y), !,
 	^(Z, [0,0], NewZ).
 
-narrowing_op(ne, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).   % else no change, but narrow Z to boolean
+narrowing_op(ne, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).   % else no change, but narrow Z to boolean
 
 
 % Z==(X=<Y)  % (Z boolean)
-narrowing_op(le, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):-
-	^([Xl,Xh], [-1.0Inf,Yh], [NXl,NXh]),     % NewX := [Xl,Xh] ^ [NI,Yh]
-	^([Yl,Yh], [NXl,1.0Inf],NewY), !.        % NewY := [Yl,Yh] ^[Xl,PI]
-
-narrowing_op(le, [[0,0], X, Y], [[0,0], NewX, NewY]):-  % not le not closed, i.e., integer op
-	narrowing_op(lt, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
-
-narrowing_op(le, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
+narrowing_op(le, p, [Z, [Xl,Xh], [Yl,Yh]], New):-              % persistent, Z is true, X,Y unchanged
 	Xh =< Yl, !,
-	^(Z, [1,1], NewZ).
+	^(Z, [1,1], NewZ),
+	New = [NewZ,  [Xl,Xh], [Yl,Yh]].
 
-narrowing_op(le, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
+narrowing_op(le, _, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):-
+	^([Xl,Xh], [-1.0Inf,Yh], [NXl,NXh]),     % NewX := [Xl,Xh] ^[NI,Yh]
+	^([Yl,Yh], [NXl,1.0Inf], NewY),
+	!.        % NewY := [Yl,Yh] ^[Xl,PI]
+
+narrowing_op(le, P, [[0,0], X, Y], [[0,0], NewX, NewY]):-  % not le not closed, i.e., integer op
+	narrowing_op(lt, P, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
+
+narrowing_op(le, _, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
 	Yh < Xl, !,
 	^(Z, [0,0], NewZ).
 
-narrowing_op(le, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).
+narrowing_op(le, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).  % narrow Z to Bool if necessary
+
+
+% Z==(X<=Y)  % inclusion, constrains X to be subinterval of Y (Z boolean)
+% Only two cases: either X and Y intersect or they don't.
+narrowing_op(sub, _, [Z, X, Y], [NewZ, NewX, Y]):-
+	^(X,Y,NewX), !,   % NewX is intersection of X and Y
+	^(Z,[1,1],NewZ).
+
+narrowing_op(sub, p, [[0,0], X, Y], [[0,0], NewX, Y]):-    % persistent, X and Y don't intersect'
+	^(Z,[0,0],NewZ).
 
 
 % Z==(X<Y)  % (Z boolean, X,Y integer)
-narrowing_op(lt, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):-
+narrowing_op(lt, p, [Z, [Xl,Xh], [Yl,Yh]], New):-              % persistent, Z is true, X,Y unchanged
+	Xh < Yl, !,
+	^(Z, [1,1], NewZ),
+	New = [NewZ,  [Xl,Xh], [Yl,Yh]].
+
+narrowing_op(lt, _, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):-
 	integer(Yh), Y1h is Yh-1,
 	^([Xl,Xh], [-1.0Inf,Y1h], [NXl,NXh]),      % NewX := [Xl,Xh] ^ [NI,Yh]
 	integer(Xl), X1l is Xl+1,
 	^([Yl,Yh], [X1l, 1.0Inf], NewY), !.        % NewY := [Yl,Yh] ^[Xl,PI]
 
-narrowing_op(lt, [[0,0], X, Y], [[0,0], NewX, NewY]):-
-	narrowing_op(le, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
+narrowing_op(lt, P, [[0,0], X, Y], [[0,0], NewX, NewY]):-
+	narrowing_op(le, P, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
 
-narrowing_op(lt, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
-	Xh < Yl, !,
-	^(Z, [1,1], NewZ).
-
-narrowing_op(lt, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
+narrowing_op(lt, _, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
 	Yh =< Xl, !,
 	^(Z, [0,0], NewZ).
 
-narrowing_op(lt, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).
+narrowing_op(lt, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).
 
 
 % Z==X+Y
-narrowing_op(add, [Z, X, Y], [NewZ, NewX, NewY]):-
+narrowing_op(add, _, [Z, X, Y], [NewZ, NewX, NewY]):-
 	+(X,Y,R1), ^(Z,R1,NewZ),   % NewZ := Z ^ (X+Y),
 	-(NewZ,Y,R2), ^(X,R2,NewX),         %%% -(Z,Y,R2), ^(X,R2,NewX),   % NewX := X ^ (Z-Y),
 	-(NewZ,NewX,R3), ^(Y,R3,NewY).      %%% -(Z,X,R3), ^(Y,R3,NewY).   % NewY := Y ^ (Z-X).
 
 
 % Z==X*Y
-narrowing_op(mul, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(mul, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	*(X,Y,Z1), ^(Z,Z1,NewZ),
 	intersect_odiv(X,Y,NewZ,NewY),
 	intersect_odiv(NewY,X,NewZ,NewX).
 
 
 % Z==min(X,Y)
-narrowing_op(min, [[Zl,Zh],X,Y], New) :-
+narrowing_op(min, _, [[Zl,Zh],X,Y], New) :-
 	min(X,Y,R), ^([Zl,Zh],R,Z1),          % Z1 := Z ^ min(X,Y),
 	posInfinity(PI),
 	minimax(Z1, [Zl,PI], [Z,X,Y], New).
 
 
 % Z==max(X,Y)
-narrowing_op(max, [[Zl,Zh],X,Y], New) :-
+narrowing_op(max, _, [[Zl,Zh],X,Y], New) :-
 	max(X,Y,R), ^([Zl,Zh],R,Z1),          % Z1 := Z ^ max(X,Y),
 	negInfinity(NI),
 	minimax(Z1, [NI,Zh], [Z,X,Y], New).
@@ -588,30 +667,35 @@ minimax(Z1, Zpartial, [Z,X,Y], [Z1, NewX, NewY]) :- % Case 3, overlap
 
 
 % Z==abs(X)
-narrowing_op(abs, [Z,X], [[NZl,NZh], NewX]) :-
-	abs(X,Z1), ^(Z,Z1,[NZl,NZh]),
-	NXl is -NZh, ^(X, [NXl,NZh], NewX).
-
+narrowing_op(abs, _, [Z,X], [NewZ, NewX]) :-
+	abs(X,Z1), ^(Z,Z1,NewZ),
+	-(NewZ,NegZ),
+	intersection_(NegZ,X,NegX),
+	intersection_(NewZ,X,PosX),
+	union_(NegX,PosX,NewX).
 
 % Z== -X
-narrowing_op(minus, [Z,X], [NewZ, NewX]) :-
+narrowing_op(minus, _, [Z,X], [NewZ, NewX]) :-
 	-(X,NegX), ^(Z,NegX,NewZ),            % NewZ := Z ^ -X
 	-(NewZ,NegZ), ^(X,NegZ,NewX).         % NewX := X ^ -Z
 
 
 % Z== exp(X)
-narrowing_op(exp, [Z,X], [NewZ, NewX]) :-
+narrowing_op(exp, _, [Z,X], [NewZ, NewX]) :-
 	exp(X,X1), ^(Z,X1,NewZ),              % NewZ := Z ^ exp(X)
 	log(NewZ,Z1), ^(X,Z1,NewX).              %%% log(Z,Z1), ^(X,Z1,NewX).              % NewX := X ^ log(X)
 
 
-% Z== X**Y assuming x > 0
-narrowing_op(pow, [Z,X,[N,N]], New) :-
-	integer(N), N>0, N=<8, !, % optimize to pip case
-	narrowing_op(pip, [Z,X,[N,N]], New).
-
-narrowing_op(pow, [Z,[Xl,Xh],Y], [NewZ, NewX, NewY]) :-
-	^([0,Xh], [Xl,Xh], Xn),  % X must be positive (>0)
+% Z== X**Y
+narrowing_op(pow, _, [Z,X,[Yl,Yh]], New) :-  % exponent is zero
+	Yl=:=0, Yh=:=0, !,
+	New = [[1,1], X, [Yl,Yh]].
+narrowing_op(pow, _, [Z,X,[N,N]], [NewZ, NewX, [N,N]]) :-    % exponent is an integer <>0
+	integer(N), !,
+	intpow(X,[N,N],Z1), ^(Z,Z1,NewZ),
+	nthroot(NewZ,[N,N],X,X1), ^(X,X1,NewX).                         % narrowPowY(Xn,Y,Z,NewY).
+narrowing_op(pow, _, [Z,[Xl,Xh],Y], [NewZ, NewX, NewY]) :-
+	^([0,Xh], [Xl,Xh], Xn),  % X must be positive (>=0)
 	**(Xn,Y,Z1), ^(Z,Z1,NewZ),
 	/([1.0,1.0],Y,YI), **(NewZ,YI,X1), ^(Xn,X1,NewX),     % /([1.0,1.0],Y,YI), **(Z,YI,X1), ^(Xn,X1,NewX),
 	narrowPowY(NewX,Y,NewZ,NewY).                         % narrowPowY(Xn,Y,Z,NewY).
@@ -622,15 +706,138 @@ narrowPowY([Xl,XH],Y,Z,NewY) :-
 narrowPowY(X,Y,Z,Y).
 
 
-% Z== X**N special case where integer(N)
-narrowing_op(pip, [Z,X,N], [NewZ, NewX, N]) :-
-	intpow(X,N,Z1), ^(Z,Z1,NewZ),
-	nthroot(NewZ,X,N,X1), ^(X,X1,NewX).
-%	nthroot(NewZ,N,X1), ^(X,X1,NewX).                     % nthroot(Z,N,X1), ^(X,X1,NewX).
+% Z== sin(X)
+narrowing_op(sin, _, [Z,X], [NewZ, NewX]) :-
+	wrap_(X,2*pi,MX,Xp), !,       % fails if X too wide
+	sin_(MX,Xp,Z,NMX,X1,NewZ),
+	unwrap_(X1,2*pi,NMX,X2),      % project back to original cylinder
+	^(X,X2,NewX).
+
+narrowing_op(sin, _, [Z,X], [NewZ,X]) :- % no narrowing possible, just constrain Z
+	^(Z,[-1,1],NewZ).
+
+sin_([MX,MX], X, Z, [MX,MX], NewX, NewZ) :-
+	!,             % same cylinder, split into 3 interval convex sectors
+	Pi is pi, PiBy2 is pi/2, NPiBy2 is -PiBy2, NPi is -pi,  % boundaries
+	sin_sector_(lo,  NPi, NPiBy2,   X, Z, NXlo,  NZlo),
+	sin_sector_(mid, NPiBy2, PiBy2, X, Z, NXmid, NZmid),
+	sin_sector_(hi,  PiBy2, Pi,     X, Z, NXhi,  NZhi),
+	union3_(NXlo,NXmid,NXhi, NewX),  % fails if result empty
+	union3_(NZlo,NZmid,NZhi, NewZ).
+
+sin_([MXl,MXh], [Xl,Xh], Z, [NMXl,NMXh], NewX, NewZ) :-
+	% adjacent cylinders,
+	Pi is pi, MPi is -pi,
+	try_sin_([Xl,Pi], Z, NX1, NZ1,MXl,MXh,NMXl),
+	try_sin_([MPi,Xh],Z, NX2, NZ2,MXh,MXl,NMXh),
+	union_(NZ1,NZ2,NewZ),                % fails if both empty
+	union_(NX1,NX2,NewX).
+
+try_sin_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- sin_([MXS,MXS], X, Z, _, NewX, NewZ),!.
+try_sin_(X,Z,[],[],MXS,MXF,MXF).  % if sin_ fails, return empty X interval for union
+
+sin_sector_(lo,Lo,Hi, X,Z,[NXl,NXh],NewZ) :-  % Lo is -pi, Hi is -pi/2, 
+	^(X,[Lo,Hi],[X1l,X1h]), !,
+	X2l isL Lo-X1h, X2h isH Lo-X1l,    % flip to mid range (rounding?)
+	sin_prim_([X2l,X2h],Z,[Xpl,Xph],NewZ),
+	NXl isH Lo-Xph, NXh isL Lo-Xpl.    % flip back and round outwards
+
+sin_sector_(hi,Lo,Hi, X,Z,[NXl,NXh],NewZ) :-  % Lo is pi/2, Hi is pi, 
+	^(X,[Lo,Hi],[X1l,X1h]), !,
+	X2l isL Hi-X1h, X2h isH Hi-X1l,    % flip to mid range (rounding?)
+	sin_prim_([X2l,X2h],Z,[Xpl,Xph],NewZ),
+	NXl isH Hi-Xph, NXh isL Hi-Xpl.    % flip back and round outwards
+	
+sin_sector_(mid,Lo,Hi, X,Z,NewX,NewZ) :-      % Lo is -pi/2, Hi is pi/2, 
+	^(X,[Lo,Hi],X1), !,
+	sin_prim_(X1,Z,NewX,NewZ).
+	
+sin_sector_(_Any,_Lo,_Hi,_X,_Z,[],[]).
+	
+sin_prim_(X,Z,NewX,NewZ) :-
+	sin(X,Z1), ^(Z,Z1,NewZ),
+	arcsin(NewZ,X1), ^(X,X1,NewX).
+
+union3_([],[],[], U) :- !, fail.
+union3_([],X2,X3, U) :- !, union_(X2,X3,U).
+union3_(X1,[],X3, U) :- !, union_(X1,X3,U).
+union3_(X1,X2,X3, U) :- union_(X1,X2,U1),union_(U1,X3,U).
+
+
+% Z== cos(X)
+narrowing_op(cos, _, [Z,X], [NewZ, NewX]) :-
+	wrap_(X,2*pi,MX,Xp), !,       % fails if X too wide
+	cos_(MX,Xp,Z,NMX,X1,NewZ),
+	unwrap_(X1,2*pi,NMX,X2),      % project back to original cylinder
+	^(X,X2,NewX).
+
+narrowing_op(cos, _, [Z,X], [NewZ,X]) :- % no narrowing possible, just constrain Z
+	^(Z,[-1,1],NewZ).
+
+cos_([MX,MX], X, Z, [MX,MX], NewX, NewZ) :-
+	!,             % same cylinder, split into 3 interval convex sectors
+	Pi is pi, NPi is -pi,  % boundaries
+	cos_sector_(neg, NPi, 0, X, Z, NXneg, NZneg),
+	cos_sector_(pos, 0, Pi,  X, Z, NXpos, NZpos),
+	union_(NZneg,NZpos,NewZ),             % fails if both empty
+	union_(NXneg,NXpos,NewX).
+
+cos_([MXl,MXh], [Xl,Xh], Z, [NMXl,NMXh], NewX, NewZ) :-
+	% adjacent cylinders,
+	Pi is pi, MPi is -pi,
+	try_cos_([Xl,Pi], Z, NX1, NZ1,MXl,MXh,NMXl),
+	try_cos_([MPi,Xh],Z, NX2, NZ2,MXh,MXl,NMXh),
+	union_(NZ1,NZ2,NewZ),                % fails if both empty
+	union_(NX1,NX2,NewX).
+
+try_cos_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- cos_([MXS,MXS], X, Z, _, NewX, NewZ),!.
+try_cos_(X,Z,[],[],MXS,MXF,MXF).  % if sin_ fails, return empty X interval for union
+
+cos_sector_(neg,Lo,Hi, X,Z,NewX,NewZ) :-      % Lo is 0, Hi is pi, 
+	^(X,[Lo,Hi],X1), !,
+	-(X1,X2),    % flip X to positive range
+	cos_prim_(X2,Z,X3,NewZ),
+	-(X3,NewX).  % and flip back
+
+cos_sector_(pos,Lo,Hi, X,Z,NewX,NewZ) :-      % Lo is 0, Hi is pi, 
+	^(X,[Lo,Hi],X1), !,
+	cos_prim_(X1,Z,NewX,NewZ).
+
+cos_sector_(_Any,_Lo,_Hi,_X,_Z,[],[]).
+	
+cos_prim_(X,Z,NewX,NewZ) :-
+	cos(X,Z1), ^(Z,Z1,NewZ),
+	arccos(NewZ,X1), ^(X,X1,NewX).
+
+% Z== tan(X)
+narrowing_op(tan, _, [Z,X], [NewZ, NewX]) :-
+	wrap_(X,pi,MX,Xp), !,     % fails if X too wide
+	tan_(MX,Xp,Z,NMX,X1,NewZ),
+	unwrap_(X1,pi,NMX,X2),    % project back to original cylinder
+	^(X,X2,NewX).
+
+narrowing_op(tan, _, ZX, ZX).      % no narrowing possible, e.g., not same or adjacent cylinder.
+
+tan_([MX,MX], X, Z, [MX,MX], NewX, NewZ) :-
+	!,             % same cylinder
+	tan(X,Z1),     % monotonic, increasing
+	^(Z,Z1,NewZ),  %^(Z,[Z1l,Z1h],NewZ),
+	arctan(NewZ, NewX).
+	
+tan_([MXl,MXh], [Xl,Xh], Z, [NMXl,NMXh], NewX, NewZ) :-
+%	MXl is MXh-1,  % adjacent cylinders
+	PiBy2 is pi/2, MPiBy2 is -PiBy2,
+	try_tan_([Xl,PiBy2],  Z, NX1, NZ1,MXl,MXh,NMXl),
+	try_tan_([MPiBy2,Xh], Z, NX2, NZ2,MXh,MXl,NMXh),
+	union_(NZ1,NZ2,NewZ),             % fails if both empty
+	union_(NX1,NX2,NewX).
+	
+try_tan_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- tan_([MXS,MXS], X, Z, _, NewX, NewZ),!.
+try_tan_(X,Z,[],[],MXS,MXF,MXF).  % if tan_ fails, return empty X interval for union
 
 
 % Z== ~X (Z and X boolean)
-narrowing_op(not, [Z,X], [NewZ, NewX]) :-
+narrowing_op(not, _, [Z,X], [NewZ, NewX]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB),
 	notB_rel_(ZB,XB, NewZ,NewX).
 	
@@ -640,7 +847,7 @@ notB_rel_([0,1],[0,1], [0,1],[0,1]). % no change
 
 
 % Z==X and Y  boolean 'and'
-narrowing_op(and, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(and, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	andB_rel_(ZB,XB,YB, NewZ, NewX, NewY),!.
 	
@@ -653,7 +860,7 @@ andB_rel_(Z,X,Y,         Z,X,Y)            :- okB_rel_(Z,X,Y). % no change
 
 
 % Z==X or Y  boolean 'or'
-narrowing_op(or, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(or, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	orB_rel_(ZB,XB,YB, NewZ, NewX, NewY),!.
 	
@@ -666,7 +873,7 @@ orB_rel_(Z,X,Y,         Z,X,Y)            :- okB_rel_(Z,X,Y). % no change
 
 
 % Z==X xor Y  boolean 'xor'
-narrowing_op(xor, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(xor, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	xorB_rel_(ZB,XB,YB, NewZ, NewX, NewY).
 	
@@ -680,7 +887,7 @@ xorB_rel_(Z,X,Y,         Z,X,Y)            :- okB_rel_(Z,X,Y). % no change
 
 
 % Z==X and Y  boolean 'nand'
-narrowing_op(nand, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(nand, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	nandB_rel_(ZB,XB,YB, NewZ, NewX, NewY),!.
 	
@@ -693,7 +900,7 @@ nandB_rel_(Z,X,Y,         Z,X,Y)            :- okB_rel_(Z,X,Y). % no change
 
 
 % Z==X nor Y  boolean 'nor'
-narrowing_op(nor, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(nor, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	norB_rel_(ZB,XB,YB, NewZ, NewX, NewY),!.
 	
@@ -706,7 +913,7 @@ norB_rel_(Z,X,Y,         Z,X,Y)            :- okB_rel_(Z,X,Y). % no change
 
 
 % Z==X -> Y  boolean 'implies'
-narrowing_op(imB, [Z,X,Y], [NewZ, NewX, NewY]) :-
+narrowing_op(imB, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	imB_rel_(ZB,XB,YB, NewZ, NewX, NewY),!.
 	

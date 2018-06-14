@@ -23,44 +23,93 @@ print_intervals([Int|Ints]) :-
 	print_interval(Int), write(','),
 	print_intervals(Ints).
 	
+
 %
-% portray for (cyclic) interval objects
-%    hook for system print/1
+% portray for frozen interval objects (instantiated values print as numbers)
+%    hook for system print/1, except not used on vars frozen or otherwise
 %
-portray(Int) :-
-	interval(Int), !,    % fails if not an interval
-	portrayInt(Int).
+% direct use of portray/1
+user:portray(X) :-  
+	interval(X), !,
+	frozen(X,Goal),
+	print(Goal).
+% catch output using standard freeze format
+user:portray(freeze(X, clpBNR:intdef_(X,T,Id,NL))) :-  % Note: X is not the frozen var
+	print(clpBNR:intdef_(X,T,Id,NL)).
+% catch output of clpBNR freeze Goal
+user:portray(clpBNR:intdef_(X,T,Id,NL)) :- 
+	b_getval(Id,[L,H]),  %%%  stealthy access since clpBNR:getValue(Id,V) not accessible from user:P
+%	intValue(Id,L,H,Out),
+	write(clpBNR:intdef_(X,T,Id,NL)).
 	
-%portray(freeze(Int,clpBNR:intdef_(Int,Type,Id,NL))) :- !,
-%	portray(freeze(Int,intdef_(Int,Type,Id,NL))).
+%attribute_goals(X) -->
+%	{get_attr(X, freeze, clpBNR:intdef_(X,_T,Id,_NL))},
+%	{trace},
+%	[mapTerm(X,Out)].
+%'$attvar':portray_attr(freeze,Goal,X) :-
+%	interval(X), !,
+%	system:print(Goal).
 
-%portray(Int) :-   %%% vars never get portrayed
-%	get_attrs(Int,As),
-%	nl,write(As).
+%
+%  SWI hook to print interval ranges for query variables
+%
+:- initialization(                                  % increase max_depth (default 10)
+	set_prolog_flag(answer_write_options,
+		[quoted(true), portray(true), max_depth(64), spacing(next_argument)])
+	).
 
-portray({freeze(Int, Goal)}) :-
-	write(@(Goal)).
+user:expand_answer(Bindings,ExBindings) :- 
+	mapBindings_(Bindings,ExBindings).
 
-portray(freeze(Int, Goal)) :- 
-	write(@(Goal)),
-	Goal = clpBNR:intdef_(_,Type,Id,_),
-	%atomic(Id),
-	%atom_concat(Type,Id,Label),   % make Label
-	g_read(Id,V),                 % Int not the frozen variable?? 
-	printValue_(V, [L,H]),        % Val format type dependant
-	Val=..[Type,L,H],
-	print(Int::Val).
-
-/*portray(freeze(Int,G)) :- isfrozen(Int,G).
+mapBindings_([], []).
+mapBindings_([Name=In|Bs], [Name=Out|ExBs]) :-
+	mapTerm_(In,Out), !,
+	mapBindings_(Bs,ExBs).
 	
-isfrozen(Int,G) :-
-	write(freeze),
-	((var(Int) -> write(' var '));
-	 (interval(Int) -> write(' interval '));
-	 write(' unknown ')),
-	write(Int),
-	print(G).
-*/	
+mapTerm_(Int,Out) :-
+	interval_object(Int,_T,Id,_NL),       % interval value, replace by Id(Range..)
+	getValue(Int,[L,H]),
+	intValue(Id,L,H,Out).  %Out=..[Id,L,H].
+mapTerm_(List,Out) :-
+	list(List),
+	mapEach_(List,Out).
+mapTerm_(Comp,Out) :-
+	compound(Comp),
+	Comp=..[F|Ins],
+	mapEach_(Ins,Outs),
+	Out=..[F|Outs].
+mapTerm_(T,T).
+	
+mapEach_([],[]).
+mapEach_([In|Ins],[Out|Outs]) :-
+	mapTerm_(In,Out), !,
+	mapEach_(Ins,Outs).
+	
+/*
+intValue(Id,L,H,Out) :-
+	float(L), float(H),
+	number_codes(L,LC), number_codes(H,HC),
+	matching_(LC,HC,Match,0,MLen),
+	MLen>5,
+	atom_concat(Match,'...',Out).
+*/
+intValue(Id,L,H,Out) :- Out=..[Id,L,H].  % universal format
+	
+/*
+matching_([],[],[],N,N).
+matching_([C|LCs],[C|HCs],[C|Cs],N,Nout) :- !,  % matching
+	succ(N,N1),
+	matching_(LCs,HCs,Cs,N1,Nout).
+matching_(LCs,HCs,[],N,N) :-    % non-matching
+	digits_(LCs),digits_(HCs).  % remaining must be digit codes, i.e., no exponent
+
+digits_([]).
+digits_([D|Ds]) :- 48=<D,D=<57, digits_(Ds).
+*/
+	
+	
+	
+/*
 portray(@(Int,_)) :-         % SWI cyclic str
 	interval(Int), !,    % fails if not an interval
 	portrayInt(Int).
@@ -92,33 +141,55 @@ portrayInt(Int) :-
 	getValue(Int,V),
 	printValue_(V, Val),    % Val format type dependant
 	print(Label::Val).
-/*portrayInt(Int) :- 
+portrayInt(Int) :- 
 	Int = int(Type,_, _),
 	atom_concat(Type,'@?',Label),   % make undefined Label
-	print(Label::'_').*/
+	print(Label::'_').
 	
 printValue_([N,N],N) :- !.
 printValue_(V,    V).
+*/
+	
+%
+%  trace debug code only -  called from stable_/1
+%
+traceIntOp_(Op, Ints, Ins, Outs) :-
+	write('node:  '),write(Op),write('('),
+	traceInts(Ints),
+	traceChanges(Ints, Ins, Outs),
+	write('\n'),!.
+	
+traceInts([Int]) :- print(Int),write(')').
+traceInts([Int|Ints]) :- print(Int),write(','),traceInts(Ints).
+
+traceChanges([_Int], [In], [In]).  % no change
+traceChanges([Int], [_],  [Out]) :-
+	write('\n    '), print(Int), write(' <- '), write(Out).
+traceChanges([Int|Ints], [In|Ins], [Out|Outs]) :-
+	traceChanges([Int], [In], [Out]),
+	traceChanges(Ints, Ins, Outs).
+
 %
 %  enumerate integer and boolean intervals
 %
 		 
 enumerate(X) :-
-	interval(X), !,               % if single interval, put it into a list
+	interval(X), !,   % if single interval, put it into a list
 	enumerate_([X]).  % list of one
+enumerate(X) :-
+	integer(X), !.    % already a point value
 enumerate(X) :-
 	enumerate_(X).
 	
 	
 enumerate_([]).
 enumerate_([X|Xs]) :-
-	number(X), !,  % already bound to a point value
+	number(X), !,    % already bound to a point value
 	enumerate_(Xs).
 enumerate_([X|Xs]) :-
 	interval(X),
 	getValue(X,[L,H]),
-%	between(L,H,N), {X==N},  % gen and constrain
-	between(L,H,X),  % gen and constrain
+	between(L,H,X),  % gen values, constraints run on unification
 	enumerate_(Xs).
 
 %
@@ -130,6 +201,8 @@ solve(X) :- solve(X,5).           % default solve to 5 digits of precision
 solve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
 	solve([X],P).
+solve(X,P) :-
+	number(X), !.                 % already a point value
 solve(X,P) :-
 	Err is 10**(-(P+1)),          % convert digits of precision to normalized error value 
 	xpsolveall_(X,Err).
@@ -159,40 +232,72 @@ xpsolve_each_([X|Xs],Us,Err) :-
 %
 % try to split interval - fails if unsplittable (too narrow)
 %
-splitinterval_(real,X,Err,({X =< SPt};{SPt =< X})) :-
+splitinterval_(real,X,Err,Choices) :-
 	getValue(X,V),
-	splitinterval_real_(V,Pt,Err), !,
-	SPt::real(Pt,Pt).  % create point interval
+	splitinterval_real_(V,Pt,Err),!,
+	split_real_(X,V,Pt,Err,Choices),!.
 	
-splitinterval_(integer,X,_,Choices) :-
+splitinterval_(integer,X,_,Choices) :-          % try to split and on failure use enumerate/1 .
 	getValue(X,V),
-	splitinterval_integer_(V,X,Choices), !.
+	splitinterval_integer_(V,Pt),
+	split_integer_(X,V,Pt,Choices), !.
+splitinterval_(integer,X,_,enumerate([X])).     % failed to split, so enumerate
 
 splitinterval_(boolean,X,Err,Choices) :-
 	splitinterval_(integer,X,Err,Choices).
 
+
+%  split a real interval
+split_real_(X,_,Pt,_,({X =< Pt};{Pt =< X})) :-  % Pt not in solution space, split here
+	X\=Pt, !.
+split_real_(X,[L,H],Pt,Err,{X>=NPt}) :-         % Pt in current solution space, try lower range
+	split_real_lo(X,[L,Pt],NPt,Err), !.
+split_real_(X,[L,H],Pt,Err,{X=<NPt}) :-         % Pt in current solution space, try upper range
+	split_real_hi(X,[Pt,H],NPt,Err).
+
+split_real_lo(X,[L,Pt],NPt,Err) :-              % search lower range for a split point 
+	splitinterval_real_([L,Pt],SPt,Err), !,
+	(X\=SPt -> NPt=SPt ; split_real_lo(X,[L,SPt],NPt,Err)).
+
+split_real_hi(X,[Pt,H],NPt,Err) :-              % search upper range for a split point 
+	splitinterval_real_([Pt,H],SPt,Err), !,
+	(X\=SPt -> NPt=SPt ; split_real_hi(X,[SPt,H],NPt,Err)).
+
+%  split an integer interval
+split_integer_(X,_,Pt,({X=<Pt};{Pt1=<X})) :-
+	X\=Pt, !,
+	Pt1 is Pt+1.
+split_integer_(X,[L,H],Pt,{X>=NPt}) :-         % Pt in current solution space, try lower range
+	split_integer_lo(X,[L,Pt],SPt),
+	NPt is SPt+1, !.
+split_integer_(X,[L,H],Pt,{X=<NPt}) :-         % Pt in current solution space, try upper range
+	split_integer_hi(X,[Pt,H],SPt),
+	NPt is SPt-1.
+
+split_integer_lo(X,[L,Pt],NPt) :-
+	splitinterval_integer_([L,Pt],SPt), !,
+	(X\=SPt -> NPt=SPt ; split_integer_lo(X,[L,SPt],NPt)).
+
+split_integer_hi(X,[Pt,H],NPt) :-
+	splitinterval_integer_([Pt,H],SPt), !,
+	(X\=SPt -> NPt=SPt) ; split_integer_hi(X,[SPt,H],NPt).
+
 %
 % splitinterval_integer_ and splitinterval_real_ require ! at point of call.
 %
-splitinterval_integer_([L,L],_,_) :-
-	!,fail.                          % point interval, can't be split'
-%splitinterval_integer_([L,H],X,{X==L},{X==H}) :-
-%	1 is H-L.                        % width is 1, either/or
-splitinterval_integer_([L,H],X,enumerate([X])) :-
-	H-L =< 16.                       % if width =< 16, just use enumerate
-splitinterval_integer_([L,H],X,({X=<0};{1=<X})) :-
-	L<0, H>0.                        % difference exceeds 16 and contains 0
-splitinterval_integer_([L,H],X,({X=<PtL};{PtH=<X})) :-
+	
+splitinterval_integer_([L,H],0) :-
+	L<0, H>0.                         % contains 0 but 0 not a bound so splittable
+splitinterval_integer_([L,H],Pt) :-
 	negInfinity(L),
-	PtL is H*10-5,                    % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
-	PtH is PtL+1.
-splitinterval_integer_([L,H],X,({X=<PtL};{PtH=<X})) :-
+	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
+splitinterval_integer_([L,H],Pt) :-
 	posInfinity(H),
-	PtL is L*10+5,                    % add 5 in case L is 0. (5, 15, 105, 1005, ...)
-	PtH is PtL+1.
-splitinterval_integer_([L,H],X,({X=<PtL};{PtH=<X})) :-     % difference is more than 16
-	PtL is (L div 2) + (H div 2),    % avoid overflow
-	PtH is PtL+1.
+	Pt is L*10+5.                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
+splitinterval_integer_([L,H],Pt) :- 
+	catch(H-L >= 16, _Err, fail),     % don't split ranges smaller than 16
+	Pt is (L div 2) + (H div 2).      % avoid overflow
+
 
 splitinterval_real_([L,H],0.0,_) :-  % if interval contains 0, but isn't 0, split on 0.
 	L < 0, H > 0,
