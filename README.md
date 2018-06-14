@@ -13,6 +13,7 @@ The package declaration is:
 		(::)/2,                % declare interval
 		{}/1,                  % add constraint
 		interval/1,            % filter for constrained var
+		list/1,                % for compatability
 		range/2,               % for compatability
 		lower_bound/1,         % narrow interval to point equal to lower bound
 		upper_bound/1,         % narrow interval to point equal to upper bound
@@ -25,6 +26,8 @@ The package declaration is:
 		op(500, yfx, nor),     % boolean 'nor'
 		op(500, yfx, xor),     % boolean 'xor'
 		op(700, xfx, <>),      % integer
+		op(700, xfx, <=),      % set inclusion
+		op(700, xfx, =>),      % set inclusion
 					   
 		% utilities
 		print_interval/1,
