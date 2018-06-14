@@ -5,9 +5,7 @@ CLP(BNR) is a Prolog based constraint programming language based on relational i
 
 This is an alpha release with limited documentation - Use at own risk.
 
-Source can be found in the `src` directory.
-
-To load, consult `clpBNR.pl`. The package declaration is:
+The package declaration is:
 
 	:- module(clpBNR,          % SWI module declaration
 		[
@@ -59,4 +57,4 @@ A couple of query examples - constrained interval variables are output as terms 
 	false.
 
 
-To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src` directory) which will automatically include `ia_primitives.pl` and `ia_utilities.pl`.
+To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl` and `ia_utilities.pl`.
