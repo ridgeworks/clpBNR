@@ -93,7 +93,7 @@ intValue(Id,L,H,Out) :-
 	MLen>5,
 	atom_concat(Match,'...',Out).
 */
-intValue(Id,L,H,Out) :- Out=..[Id,L,H].  % universal format
+intValue(Id,L,H,Out) :- Out=..[Id,L,H].  % universal format %% atom_codes(Id,[948]), 
 	
 /*
 matching_([],[],[],N,N).
@@ -154,17 +154,19 @@ printValue_(V,    V).
 %  trace debug code only -  called from stable_/1
 %
 traceIntOp_(Op, Ints, Ins, Outs) :-
+	current_prolog_flag(debug, false), !.  % only while debugging
+traceIntOp_(Op, Ints, Ins, Outs) :-
 	write('node:  '),write(Op),write('('),
 	traceInts(Ints),
 	traceChanges(Ints, Ins, Outs),
-	write('\n'),!.
+	write('\n'), !.
 	
-traceInts([Int]) :- print(Int),write(')').
-traceInts([Int|Ints]) :- print(Int),write(','),traceInts(Ints).
+traceInts([Int]) :- mapTerm_(Int,Out),print(Out),write(')').
+traceInts([Int|Ints]) :- mapTerm_(Int,Out), print(Out), write(','), traceInts(Ints).
 
 traceChanges([_Int], [In], [In]).  % no change
 traceChanges([Int], [_],  [Out]) :-
-	write('\n    '), print(Int), write(' <- '), write(Out).
+	write('\n    '), mapTerm_(Int,F), functor(F,Id,_), print(Id), write(' <- '), write(Out).
 traceChanges([Int|Ints], [In|Ins], [Out|Outs]) :-
 	traceChanges([Int], [In], [Out]),
 	traceChanges(Ints, Ins, Outs).
@@ -196,7 +198,7 @@ enumerate_([X|Xs]) :-
 %  solve(Int) - joint search on list of intervals
 %
 
-solve(X) :- solve(X,5).           % default solve to 5 digits of precision
+solve(X) :- solve(X,6).           % default solve to 6 digits of precision
 
 solve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
@@ -219,8 +221,8 @@ xpsolve_each_([X|Xs],[X|Us],Err) :-
 	!,
 	Choices,                              % create choice(point)
 	xpsolve_each_(Xs,Us,Err).             % split others in list
-xpsolve_each_([[]|Xs],Us,Err) :-          % end of nested listed, discard
-	!,
+xpsolve_each_([X|Xs],Us,Err) :-           % avoid freeze ovehead if [] unified in head
+	X==[], !,                             % end of nested listed, discard
 	xpsolve_each_(Xs,Us,Err).             % split remaining
 xpsolve_each_([X|Xs],[U|Us],Err) :-
 	list(X), !,                           % nested list
@@ -232,15 +234,15 @@ xpsolve_each_([X|Xs],Us,Err) :-
 %
 % try to split interval - fails if unsplittable (too narrow)
 %
-splitinterval_(real,X,Err,Choices) :-
+splitinterval_(real,X,Err,({X =< SPt};{SPt =< X})) :-
 	getValue(X,V),
-	splitinterval_real_(V,Pt,Err),!,
-	split_real_(X,V,Pt,Err,Choices),!.
+	splitinterval_real_(V,Pt,Err), !,           % initial guess
+	split_real_(X,V,Pt,Err,SPt).
 	
-splitinterval_(integer,X,_,Choices) :-          % try to split and on failure use enumerate/1 .
+splitinterval_(integer,X,_,({X < SPt};{SPt < X})) :-          % try to split and on failure use enumerate/1 .
 	getValue(X,V),
 	splitinterval_integer_(V,Pt),
-	split_integer_(X,V,Pt,Choices), !.
+	split_integer_(X,V,Pt,SPt), !.
 splitinterval_(integer,X,_,enumerate([X])).     % failed to split, so enumerate
 
 splitinterval_(boolean,X,Err,Choices) :-
@@ -248,31 +250,28 @@ splitinterval_(boolean,X,Err,Choices) :-
 
 
 %  split a real interval
-split_real_(X,_,Pt,_,({X =< Pt};{Pt =< X})) :-  % Pt not in solution space, split here
+split_real_(X,_,Pt,_,pt(Pt)) :-            % Pt not in solution space, split here
 	X\=Pt, !.
-split_real_(X,[L,H],Pt,Err,{X>=NPt}) :-         % Pt in current solution space, try lower range
+split_real_(X,[L,H],Pt,Err,pt(NPt)) :-     % Pt in current solution space, try lower range
 	split_real_lo(X,[L,Pt],NPt,Err), !.
-split_real_(X,[L,H],Pt,Err,{X=<NPt}) :-         % Pt in current solution space, try upper range
+split_real_(X,[L,H],Pt,Err,pt(NPt)) :-     % Pt in current solution space, try upper range
 	split_real_hi(X,[Pt,H],NPt,Err).
 
-split_real_lo(X,[L,Pt],NPt,Err) :-              % search lower range for a split point 
+split_real_lo(X,[L,Pt],NPt,Err) :-         % search lower range for a split point 
 	splitinterval_real_([L,Pt],SPt,Err), !,
 	(X\=SPt -> NPt=SPt ; split_real_lo(X,[L,SPt],NPt,Err)).
 
-split_real_hi(X,[Pt,H],NPt,Err) :-              % search upper range for a split point 
+split_real_hi(X,[Pt,H],NPt,Err) :-         % search upper range for a split point 
 	splitinterval_real_([Pt,H],SPt,Err), !,
 	(X\=SPt -> NPt=SPt ; split_real_hi(X,[SPt,H],NPt,Err)).
 
 %  split an integer interval
-split_integer_(X,_,Pt,({X=<Pt};{Pt1=<X})) :-
-	X\=Pt, !,
-	Pt1 is Pt+1.
-split_integer_(X,[L,H],Pt,{X>=NPt}) :-         % Pt in current solution space, try lower range
-	split_integer_lo(X,[L,Pt],SPt),
-	NPt is SPt+1, !.
-split_integer_(X,[L,H],Pt,{X=<NPt}) :-         % Pt in current solution space, try upper range
-	split_integer_hi(X,[Pt,H],SPt),
-	NPt is SPt-1.
+split_integer_(X,_,Pt,Pt) :-               % Pt not in solution space, split here
+	X\=Pt, !.
+split_integer_(X,[L,H],Pt,SPt) :-          % Pt in current solution space, try lower range
+	split_integer_lo(X,[L,Pt],SPt), !.
+split_integer_(X,[L,H],Pt,SPt) :-          % Pt in current solution space, try upper range
+	split_integer_hi(X,[Pt,H],SPt).
 
 split_integer_lo(X,[L,Pt],NPt) :-
 	splitinterval_integer_([L,Pt],SPt), !,
@@ -299,7 +298,7 @@ splitinterval_integer_([L,H],Pt) :-
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
 
-splitinterval_real_([L,H],0.0,_) :-  % if interval contains 0, but isn't 0, split on 0.
+splitinterval_real_([L,H],0.0,E) :-  % if interval contains 0, but isn't 0, split on 0.
 	L < 0, H > 0,
 	L < H.  % fail if width is zero (can't split)'
 splitinterval_real_([L,H],Pt,_) :-   % neg. infinity to zero or neg. H
@@ -314,7 +313,6 @@ splitinterval_real_([L,H],Pt,E) :-   % finite L,H, positive or negative but not 
 	D > PS*2,                        % width > some minimum to split
 	splitMean_(L,H,Pt),              % mean of infinity (overflow) or 0 (underflow) will cause failure
 	abs(D/Pt) > E.                   % error criteria
-	
 
 % geometric mean of L and H (same sign) if not non-zero, arithmetic mean if either 0
 splitMean_(L,H,M) :- L>0, !, M is sqrt(L)*sqrt(H).     % avoid overflow

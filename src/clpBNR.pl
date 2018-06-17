@@ -25,7 +25,7 @@
 
 	% utilities
 	print_interval/1,      % print interval as list of two numbers (for compatability)
-	solve/1,               % solve (list of) intervals using split
+	solve/1, solve/2,      % solve (list of) intervals using split
 	enumerate/1,           % "enumerate" integers
 	clpStatistics/0,       % reset
 	clpStatistic/1,        % get selected
@@ -123,7 +123,7 @@ fuzz_(_,B,B).                                    % vars will get default values
 :- initialization(g_zero(makeInterval_)).  % initialize interval ID generator
 
 makeInterval_(Int, _Type, [L,H]) :-
-	interval_object(Int, _, Id, _), !, % already an interval object
+	interval_object(Int, _, _, _), !,  % already an interval object
 	setInterval_(Int, L, H).           % just set bounds (may fail if no intersection with current value)
 	
 makeInterval_(Int, Type, Val) :-
@@ -135,7 +135,7 @@ makeInterval_(Int, Type, Val) :-
 	number_codes(NNm,S),atom_codes(Id,[948|S]),  % build δ(948)N Id
 	freeze(Int, BindGoal),       % freeze interval to bind goal
 	putValue_(Val, Int, _),      % and initialize the value, no broadcast required (yet)
-	((Type=integer -> addOp_(node(integral,P,Int,0),Int));true).  %% if integer add custom node - not externally available
+	(Type=integer -> addOp_(node(integral,P,Int,0),Int) ; true).  %% if integer add custom node - not externally available
 
 makeInterval_(Int, _Type, [L,H]) :- L=<Int, Int=<H.  % just a range test on a number
 	
@@ -217,6 +217,8 @@ build_(Num, Int, _, _) :-                         % floating point constant, may
 	Int::real(Num,Num).                           % will be fuzzed, so not a point
 build_(Num, Num, _, _) :-                         % integer numeric value is precise
 	integer(Num), !.
+build_(pt(Num), Num, _, _) :-                     % point value
+	number(Num), !.
 build_(Exp, Int, VarType, Agenda) :-
 	ground(Exp),                                  % ground exp which evaluates to a number
 	catch(V is Exp, _, fail),                     % also catches symbolic "numbers", e.g., inf, pi, ..
