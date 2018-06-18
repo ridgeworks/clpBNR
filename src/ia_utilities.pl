@@ -239,11 +239,10 @@ splitinterval_(real,X,Err,({X =< SPt};{SPt =< X})) :-
 	splitinterval_real_(V,Pt,Err), !,           % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 	
-splitinterval_(integer,X,_,({X < SPt};{SPt < X})) :-          % try to split and on failure use enumerate/1 .
+splitinterval_(integer,X,_,({X =< Pt};{Pt < X})) :-   % try to split and on failure use enumerate/1 .
 	getValue(X,V),
-	splitinterval_integer_(V,Pt),
-	split_integer_(X,V,Pt,SPt), !.
-splitinterval_(integer,X,_,enumerate([X])).     % failed to split, so enumerate
+	splitinterval_integer_(V,Pt), !.
+splitinterval_(integer,X,_,enumerate([X])).           % failed to split, so enumerate
 
 splitinterval_(boolean,X,Err,Choices) :-
 	splitinterval_(integer,X,Err,Choices).
@@ -265,28 +264,13 @@ split_real_hi(X,[Pt,H],NPt,Err) :-         % search upper range for a split poin
 	splitinterval_real_([Pt,H],SPt,Err), !,
 	(X\=SPt -> NPt=SPt ; split_real_hi(X,[SPt,H],NPt,Err)).
 
-%  split an integer interval
-split_integer_(X,_,Pt,Pt) :-               % Pt not in solution space, split here
-	X\=Pt, !.
-split_integer_(X,[L,H],Pt,SPt) :-          % Pt in current solution space, try lower range
-	split_integer_lo(X,[L,Pt],SPt), !.
-split_integer_(X,[L,H],Pt,SPt) :-          % Pt in current solution space, try upper range
-	split_integer_hi(X,[Pt,H],SPt).
-
-split_integer_lo(X,[L,Pt],NPt) :-
-	splitinterval_integer_([L,Pt],SPt), !,
-	(X\=SPt -> NPt=SPt ; split_integer_lo(X,[L,SPt],NPt)).
-
-split_integer_hi(X,[Pt,H],NPt) :-
-	splitinterval_integer_([Pt,H],SPt), !,
-	(X\=SPt -> NPt=SPt) ; split_integer_hi(X,[SPt,H],NPt).
 
 %
 % splitinterval_integer_ and splitinterval_real_ require ! at point of call.
 %
 	
 splitinterval_integer_([L,H],0) :-
-	L<0, H>0.                         % contains 0 but 0 not a bound so splittable
+	L < 0, H > 0.                     % contains 0 but not 0 
 splitinterval_integer_([L,H],Pt) :-
 	negInfinity(L),
 	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
@@ -298,9 +282,8 @@ splitinterval_integer_([L,H],Pt) :-
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
 
-splitinterval_real_([L,H],0.0,E) :-  % if interval contains 0, but isn't 0, split on 0.
-	L < 0, H > 0,
-	L < H.  % fail if width is zero (can't split)'
+splitinterval_real_([L,H],0.0,E) :-  % if interval contains 0, split on 0.
+	L < 0, H > 0.  % fail if width is zero (can't split)'
 splitinterval_real_([L,H],Pt,_) :-   % neg. infinity to zero or neg. H
 	negInfinity(L),
 	Pt is H*10-1.                    % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
