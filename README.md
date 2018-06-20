@@ -1,5 +1,5 @@
 # CLP(BNR)
-This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix that has been lost (at least to the original implementors) so this is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environemnt (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
+This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix that has been lost (at least to the original implementors) so this is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environment (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
  
 In the process of recreating this version of CLP(BNR) subsequent work in relational interval arithmetic has been used, in particular [Efficient Implementation of Interval Arithmetic Narrowing Using IEEE Arithmetic][ia1] and [Interval Arithmetic: from Principles to Implementation][ia2]. In addition, there is at least one comparable system [CLIP][clip] that is targeted at GNU Prolog, [CLIP download][cldl]. While earlier implementations typically use a low level  of the relational arithmetic primitives, advances in computing technology enable this Prolog version of CLP(BNR) to achieve acceptable performance while maintaining a certain degree of platform independence (addressed by SWI-Prolog) and facilitating experimentation (no "building" required). [SWI-Prolog][swip] was used due it's long history (.ca 1987) as free, open-source software and for supporting `freeze` which is a key mechanism in implementing constrained logic variables.
 
@@ -42,7 +42,7 @@ Interval declarations define the initial bounds of the interval which are narrow
 
 In the first example, both `M` and `N` are narrowed by applying the constraint `{M == 3*M}`. Applying the additional constraint `{M>3}` further narrows the intervals to single values so the original variables are unified with the point (integer) values.
  
-In the last example, there are no explicit declarations of `X` and `Y`; in this case the default `real` bounds are used. The constraint cause the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound to -inifinity, upper bound to positive infinity) to ensure that any answer is included in the result, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.)
+In the last example, there are no explicit declarations of `X` and `Y`; in this case the default `real` bounds are used. The constraint causes the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound to -inifinity, upper bound to positive infinity) to ensure that any answer is included in the result, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.)
 
 Sound constraints over real intervals, since the interval range is closed, include `==`, `=<`, and `>=`, while `<>`, `<` and `>` are provided for `integer`'s. A fairly complete set of standard arithmetic operators (`+`, `-`, `*`, `/`, `**`), boolean operators (`and`, `or`, `xor`, `nand`, `nor`) and common functions (`exp`, `log`, `sqrt`, `abs`, `min`, `max` and standard trig and inverse trig functions) provided as interval relations. Note that these are relations so `{X==exp(Y)}` is the same as `{log(X)==Y}`. A few more examples:
 
@@ -58,15 +58,16 @@ Sound constraints over real intervals, since the interval range is closed, inclu
 	Y = δ3(0.25518872031001844, 0.25518872031002077),
 	X = δ8(-2.061634262247237, -2.061634262247228).
 
-It is often the case that the fixed point iteration that executes as a consequence of apply constraints is unable to generate meaningful solutions without applying additional constraints. This may be due to multiple distinct solutions within the interval range, or because the interbnal iteration is insufficiently "clever". A simple example:
+It is often the case that the fixed point iteration that executes as a consequence of applying constraints is unable to generate meaningful solutions without applying additional constraints. This may be due to multiple distinct solutions within the interval range, or because the interval iteration is insufficiently "clever". A simple example:
 
 	?- {2==X*X}.
 	X = δ1(-1.4142135623730954, 1.4142135623730954).
 but 
+
 	?- {2==X*X, X>=0}.
 	X = δ1(1.4142135623730947, 1.4142135623730951).
 
-In more complicated examples, it's not obvious (or sometimes tedious) what the additional constraints might be. In these cases a higher level search technique can be used, e.g., enumerating integer values or apply branch and bound algorithms over real intervals. A general, somewhat unsophisticted, predicate called `solve` is provided for this purpose, but additional application specific techniques can also be implemented on to of the CLP(BNR) engine. Some examples:
+In more complicated examples, it may not obvious what the additional constraints might be. In these cases a higher level search technique can be used, e.g., enumerating integer values or applying "branch and bound" algorithms over real intervals. A general predicate called `solve` is provided for this purpose. Additional application specific techniques can also be implemented. Some examples:
 
 	?- {2==X*X},solve(X).
 	X = δ1(-1.4142135623730951, -1.4142135623730947) 
@@ -107,12 +108,12 @@ Here is the current set of operators and functions supported in this version:
 
 Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 
-[ia1]  : http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
-[ia2]  : http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
-[clip] : https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
-[cldl] : http://interval.sourceforge.net/interval/index.html
-[swip] : http://www.swi-prolog.org
-[bnrpp] : https://ridgeworks.github.io/BNRProlog-Papers
+[ia1]:   http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
+[ia2]:   http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
+[clip]:  https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
+[cldl]:  http://interval.sourceforge.net/interval/index.html
+[swip]:  http://www.swi-prolog.org
+[bnrpp]: https://ridgeworks.github.io/BNRProlog-Papers
 	
 
 ## Getting Started
