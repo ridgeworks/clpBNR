@@ -488,8 +488,8 @@ ipCase(n,p,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xl,N,Zl), ipowHi(Xh,N,
 ipCase(n,n,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
 ipCase(s,p,0,N, [Xl,Xh], [0,Zh])  :- Xmax is max(-Xl,Xh), ipowHi(Xmax,N,Zh).                        % X split, N pos,even
 ipCase(s,p,1,N, [Xl,Xh], [Zl,Zh]) :- Xlp is -Xl, ipowHi(Xlp,N,Zlp), Zl is -Zlp, ipowHi(Xh,N,Zh).    % X split, N pos,odd
-ipCase(s,n,0,N, [Xl,Xh], [0,1.0Inf]).                                                         % X split, N neg,even
-ipCase(s,n,1,N, [Xl,Xh], [-1.0Inf,1.0Inf]).                                                   % X split, N neg,odd
+ipCase(s,n,0,N, X,       [0,1.0Inf]).                                                         % X split, N neg,even
+ipCase(s,n,1,N, X,       [-1.0Inf,1.0Inf]).                                                   % X split, N neg,odd
 
 ipowLo(X,N,X) :- X=:=0.  % avoid rounding at 0
 ipowLo(X,N,Z) :- Z isL X**N.
@@ -525,20 +525,20 @@ nthrootCase(n,p,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xl,Zl)
 nthrootCase(n,n,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
 % nthrootCase(s,_,_,0, N, X,     _, Z) :- fail.                                              % X split, N even FAIL
 nthrootCase(s,p,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- Xl1 is -Xl, nthRootHi(N,Xl1,Zl1), Zl is -Zl1, nthRootHi(N,Xh,Zh).    % X split, N pos,odd
-nthrootCase(s,n,_,1, N, [Xl,Xh], _, [-1.0Inf,1.0Inf]).                                       % X split, N neg,odd
+nthrootCase(s,n,_,1, N, X,       _, [-1.0Inf,1.0Inf]).                                       % X split, N neg,odd
 
 nthRootLo(N,X,Z) :- X =:= 0, !, ((N < 0 -> Z= -1.0Inf);Z=0).
-nthRootLo(N,X,Z) :- Z isL exp(log(X)/N).  % asumes minimal rounding error
+nthRootLo(N,X,Z) :- Z1 isL log(X)/N, Z isL exp(Z1).  % round at each step (?? avoid second rounding)
 
 nthRootHi(N,X,Z) :- X =:= 0, !, ((N < 0 -> Z=  1.0Inf);Z=0).
-nthRootHi(N,X,Z) :- Z isH exp(log(X)/N).  % asumes minimal rounding error
+nthRootHi(N,X,Z) :- Z1 isH log(X)/N, Z isH exp(Z1).  % round at each step (?? avoid second rounding)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % Relational Operations (narrowing operations)
 %
-:- discontiguous(narrowing_op/3).
+:- discontiguous clpBNR:narrowing_op/4.
 
 % integral(X) - op to convert any floats to integers (rounds inward)
 narrowing_op(integral, _, [X,Xtra], [NewX,Xtra]) :-
@@ -776,7 +776,7 @@ narrowing_op(cos, _, [Z,X], [NewZ,X]) :- % no narrowing possible, just constrain
 	^(Z,[-1,1],NewZ).
 
 cos_([MX,MX], X, Z, [MX,MX], NewX, NewZ) :-
-	!,             % same cylinder, split into 3 interval convex sectors
+	!,             % same cylinder, split into 2 interval convex sectors
 	Pi is pi, NPi is -pi,  % boundaries
 	cos_sector_(neg, NPi, 0, X, Z, NXneg, NZneg),
 	cos_sector_(pos, 0, Pi,  X, Z, NXpos, NZpos),
@@ -792,7 +792,7 @@ cos_([MXl,MXh], [Xl,Xh], Z, [NMXl,NMXh], NewX, NewZ) :-
 	union_(NX1,NX2,NewX).
 
 try_cos_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- cos_([MXS,MXS], X, Z, _, NewX, NewZ),!.
-try_cos_(X,Z,[],[],MXS,MXF,MXF).  % if sin_ fails, return empty X interval for union
+try_cos_(X,Z,[],[],MXS,MXF,MXF).  % if cos_ fails, return empty X interval for union
 
 cos_sector_(neg,Lo,Hi, X,Z,NewX,NewZ) :-      % Lo is 0, Hi is pi, 
 	^(X,[Lo,Hi],X1), !,
