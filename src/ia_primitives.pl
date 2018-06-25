@@ -1,41 +1,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %  SWI-Prolog implementation
 %
-
-%  list/1 filter
-list(L) :- is_list(L).
-
-%
-% numeric values for positive and negative infinity and 
-% positive and negative FP numbers closest to zero.
-%
-posInfinity(1.0Inf).
-negInfinity(-1.0Inf).
-notAnumber(NAN) :- NAN is nan.
-
-% All reals and integers
-universal_interval([-1.0Inf,1.0Inf]).
-
-% Values which don't require outward rounding
-exactVal_(I) :- integer(I),!.
-exactVal_(1.0Inf).
-exactVal_(-1.0Inf).
-
-
-/* GNUP 
-:- initialization(initConstants_).
-
-initConstants_ :-
-	NI is log(0),     g_assign(negInfinity,NI),
-	PI is -NI,        g_assign(posInfinity,PI),
-	NAN is sqrt(-1),  g_assign(notAnumber,NAN).
-	
-posInfinity(PI) :- g_read(posInfinity,PI).
-negInfinity(NI) :- g_read(negInfinity,NI).
-notAnumber(NAN) :- g_read(notAnumber,NAN).
-
-*/
-
 %
 % Arithmetic "eval" with specified rounding direction.
 % Assumes underlying IEEE 754 with rounding to nearest FP value (1/2 ulp).
@@ -55,17 +20,25 @@ notAnumber(NAN) :- g_read(notAnumber,NAN).
 % Multiple ops in Exp could violate assumptions about bit accuracy.
 % Assumes IEEE 754 compliance in evaluating Exp.
 
-Z isL Exp :- catch((Zr is Exp, makeResult(lo,Exp,Zr,Z)),Error,recover(Exp,Error,Z)).
-Z isH Exp :- catch((Zr is Exp, makeResult(hi,Exp,Zr,Z)),Error,recover(Exp,Error,Z)).
+Z isL Exp :- catch((R is Exp, roundDown(R,Z,Exp)), Error, recover(Exp,Error,Z)), !.
 
-makeResult(_,Exp,Zr,Z) :-    % integer result, check for overflow but no rounding required
-	integer(Zr), !,
-	chkIResult(Exp,Zr,Z).
+Z isH Exp :- catch((R is Exp, roundUp(R,Z,Exp)),   Error, recover(Exp,Error,Z)), !.
 
-makeResult(lo,_,Zr,Z) :-     % floating point result, round outward
-	nextdn(Zr,Z), !.
-makeResult(hi,_,Zr,Z) :-
-	nextup(Zr,Z), !.
+roundDown(R,Z,Exp) :-
+	integer(R),
+	(current_prolog_flag(bounded,true) -> chkIResult(Exp,R,Z) ; Z=R).
+roundDown(0.0,SmallestNeg,_) :-
+	SmallestNeg is -(2**(-1022)).
+roundDown(R,Z,_) :-
+	catch(Z is R - abs(R)*epsilon, Error, Z=R).
+
+roundUp(R,Z,_Exp) :-
+	integer(R),
+	(current_prolog_flag(bounded,true) -> chkIResult(Exp,R,Z) ; Z=R).
+roundUp(0.0,SmallestPos,_) :-
+	SmallestPos is (2**(-1022)).
+roundUp(R,Z,_) :-
+	catch(Z is R + abs(R)*epsilon, Error, Z=R).
 
 recover(Exp,error(evaluation_error(Error),C),Z) :-
 	recover_(Exp,Error,Z),!.             % generate various infinities
@@ -102,40 +75,23 @@ recover_(log(X), undefined, -1.0Inf)           :- X =:= 0.
 %
 % integer overflow checking : (platform requires prolog flag 'bounded'.)
 %
-chkIResult(_,Z,Z)  :- current_prolog_flag(bounded,false), !.  % no check required if unbounded
 
-chkIResult(X*Y,0,0)  :- !.
-chkIResult(X*Y,Z,Z)  :- X is Z//Y, !.             % overflow if inverse op fails, convert to infinity
-chkIResult(X*Y,Z,PI) :- 1 is sign(X)*sign(Y), !, posInfinity(PI).
-chkIResult(X*Y,Z,NI) :- !, negInfinity(NI).
+chkIResult(X*Y,0,0)       :- !.
+chkIResult(X*Y,Z,Z)       :- X is Z//Y, !.             % overflow if inverse op fails, convert to infinity
+chkIResult(X*Y,Z,1.0Inf)  :- 1 is sign(X)*sign(Y), !.
+chkIResult(X*Y,Z,-1.0Inf) :- !.
 
-chkIResult(X+Y,Z,Z)  :- sign(X)*sign(Y) =< 0, !.  % overflow not possible
-chkIResult(X+Y,Z,Z)  :- sign(X)*sign(Z) >= 0, !.  % no overflow if result consistent with operands
-chkIResult(X+Y,Z,PI) :- sign(X) >= 0, !, posInfinity(PI).
-chkIResult(X+Y,Z,NI) :- !, negInfinity(NI).
+chkIResult(X+Y,Z,Z)       :- sign(X)*sign(Y) =< 0, !.  % overflow not possible
+chkIResult(X+Y,Z,Z)       :- sign(X)*sign(Z) >= 0, !.  % no overflow if result consistent with operands
+chkIResult(X+Y,Z,1.0Inf)  :- sign(X) >= 0, !.
+chkIResult(X+Y,Z,-1.0Inf) :- !.
 
-chkIResult(X-Y,Z,Z)  :- sign(X)*sign(Y) >= 0, !.  % overflow not possible
-chkIResult(X-Y,Z,Z)  :- sign(X)*sign(Z) >= 0, !.  % no overflow if result consistent with operands
-chkIResult(X-Y,Z,PI) :- sign(X) >= 0, !, posInfinity(PI).
-chkIResult(X-Y,Z,NI) :- !, negInfinity(NI).
+chkIResult(X-Y,Z,Z)       :- sign(X)*sign(Y) >= 0, !.  % overflow not possible
+chkIResult(X-Y,Z,Z)       :- sign(X)*sign(Z) >= 0, !.  % no overflow if result consistent with operands
+chkIResult(X-Y,Z,1.0Inf)  :- sign(X) >= 0, !.
+chkIResult(X-Y,Z,-1.0Inf) :- !.
 
 chkIResult(  _,Z,Z). % otherwise OK.
-
-%
-% next dn/up FP value.
-% Note: for correctness, uses of nextup/nextdn must be followed by !.
-%
-nextdn(0.0,X) :- negSmallest(X).
-nextdn(X,Y) :-
-	catch(Y is X - abs(X)*epsilon,Error,Y=X).  %%%SWI any error (probably overflow) defers to no rounding 
-
-nextup(0.0,X) :- posSmallest(X).
-nextup(X,Y) :-
-	catch(Y is X + abs(X)*epsilon,Error,Y=X).  %%%SWI any error (probably overflow) defers to no rounding 
-
-posSmallest(PS) :- PS is 2**(-1022).     %      g_read(posSmallest,PS).
-negSmallest(NS) :- NS is -(2**(-1022)).  %      g_read(negSmallest,NS).
-
 
 %
 % statistics
@@ -163,10 +119,11 @@ g_read(G,C) :- nb_getval(G,C).
 %
 % Interval constants
 %
+universal_interval([-1.0Inf,1.0Inf]).
 
 % Finite intervals - 64 bit IEEE reals, 
-finite_interval(real,    [-1.7976931348623157e+308,1.7976931348623157e+308]).
-finite_interval(integer, [L,H]) :-
+finite_interval(real,    [-1.7976931348623157e+308,1.7976931348623157e+308]).  % ? from Wikipedia IEEE doubles
+finite_interval(integer, [L,H]) :-  %% SWIP:
 	current_prolog_flag(bounded,false),!,  % integers are unbounded, but use tagged limits for finite default
 	current_prolog_flag(min_tagged_integer,L),
 	current_prolog_flag(max_tagged_integer,H).
@@ -177,12 +134,12 @@ finite_interval(integer, [L,H]) :-
 %finite_interval(boolean, [0,1]).
 
 % Empty (L>H)
-empty_interval([L,H]) :- universal_interval([H,L]).
+%empty_interval([L,H]) :- universal_interval([H,L]).
 
 %
-% public: evalNode(+primitive_name, +list_of_inputs, ?list_of_outputs)
+% API function for executing primitives
 %
-% Note: R may contain vars, which should be treated as unchanged, i.e., output = input.
+% evalNode(+primitive_name, ?persistence_flag, +list_of_inputs, ?list_of_outputs)
 %
 evalNode(Op, P, Is, R) :-
 	g_inc(evalNode),  % count of primitive calls
@@ -212,14 +169,8 @@ clpStatistic(backTracks(C)) :- g_read(evalNodeFail,C).
 
 % Z := integer(X)
 integer([Xl,Xh],[Zl,Zh]) :-
-	chkInt_(lo,Xl,Zl), chkInt_(hi,Xh,Zh).  % integer bounds. Note that floats are rounded inward.
-
-chkInt_(_, B, B) :-
-	exactVal_(B), !.
-chkInt_(lo, L, IL) :-
-	IL is ceiling(L).
-chkInt_(hi, H, IH) :-
-	IH is floor(H).
+	(float(Xl) -> Zl is ceiling(Xl) ; Zl=Xl),
+	(float(Xh) -> Zh is floor(Xh)   ; Zh=Xh).
 
 % Z := X ^ Y  (intersection)
 ^([Xl,Xh], [Yl,Yh], [Zl,Zh]) :-
@@ -227,10 +178,6 @@ chkInt_(hi, H, IH) :-
 	Zh is min(Xh, Yh),
 	Zl =< Zh.
 	
-% Z := X \^ Y (disjoint) X ^ Y is empty set, otherwise fails
-\^([Xl,Xh], [Yl,Yh], Z) :- Xh < Yl, empty_interval(Z), !.
-\^([Xl,Xh], [Yl,Yh], Z) :- Yh < Xl, empty_interval(Z).
-
 % Z <> X, where where Z and X are integer intervals, fails if not an integer
 <>([L,H], [X,X], [NewL,H]) :- integer(L), L =:= X,
 	NewL is L+1, L=<H.  % X is a point,  and low bound of Z
@@ -238,18 +185,6 @@ chkInt_(hi, H, IH) :-
 	NewH is H-1, L=<H.  % X is a point,  and high bound of Z
 <>(Z, X, Z).
 
-/*
-% Z := Z < X (integer relation)
-<([L,H], [X,X], [L,NewH]) :- integer(H), H =:= X,
-	NewH is H-1, L=<H.  % X is a point,  and high bound of Z 
-<([Zl,Zh], [Xl,Xh], [Zl,Zh]) :- Zh < Xl.
-
-% Z := Z > X (integer relation)
->([L,H], [X,X], [L,H]) :- integer(L), L =:= X,
-	NewL is L+1, L=<H.  % X is a point,  and low bound of Z 
->([Zl,Zh], [Xl,Xh], [Zl,Zh]) :- Zl > Xh.
-*/
-	
 % Z := X + Y  (add)
 +([Xl,Xh], [Yl,Yh], [Zl,Zh]) :-
 	Zl isL Xl+Yl, Zh isH Xh+Yh.            % Z := [Xl+Yl, Xh+Yh].
@@ -308,12 +243,6 @@ exp([Xl,Xh], [Zl,Zh]) :-                   % Zl can never be negative due to rou
 log([Xl,Xh], [Zl,Zh]) :-
 	Xh > 0,
 	Zl isL log(max(0,Xl)), Zh isH log(Xh). % Z := [log(Xl), log(Xh)].
-
-% Z:= X**Y general case
-**(X,Y,Z) :-
-	log(X,LogX),
-	*(Y,LogX,P),
-	exp(P,Z).
 
 % Z:= X**N for integer(N)
 intpow(X,[N,N],Z) :-
@@ -469,12 +398,12 @@ odiv(_,  X, Y, X, Zsgn) :- X =:= 0, !.
 odiv(lo, X, Y, Z, _)  :- Z isL X/Y.
 odiv(hi, X, Y, Z, _)  :- Z isH X/Y.
 
-odivInfinityVal( 1,-1.0,-1.0Inf). %% :- negInfinity(NI).
-odivInfinityVal( 1, 0.0, 1.0Inf). %% 0/0 ? :- posInfinity(PI).
-odivInfinityVal( 1, 1.0, 1.0Inf). %% :- posInfinity(PI).
-odivInfinityVal(-1, 1.0,-1.0Inf). %% :- negInfinity(NI).
-odivInfinityVal(-1, 0.0,-1.0Inf). %% 0/0 ? :- negInfinity(NI).
-odivInfinityVal(-1,-1.0, 1.0Inf). %% :- posInfinity(PI).
+odivInfinityVal( 1,-1.0,-1.0Inf).
+odivInfinityVal( 1, 0.0, 1.0Inf).
+odivInfinityVal( 1, 1.0, 1.0Inf).
+odivInfinityVal(-1, 1.0,-1.0Inf).
+odivInfinityVal(-1, 0.0,-1.0Inf).
+odivInfinityVal(-1,-1.0, 1.0Inf).
 
 	
 %
@@ -520,10 +449,10 @@ nthrootCase(p,n,s,0, N, [Xl,Xh], [Zl,Zh], NewZ) :-
 
 nthrootCase(p,n,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh).      % X pos, N neg,odd
 
-% nthrootCase(n,_,_,0, N, X,     _, Z) :- fail.                                              % X neg, N even FAIL
+% nthrootCase(n,_,_,0, N, X,      _, Z) :- fail.                                              % X neg, N even FAIL
 nthrootCase(n,p,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xl,Zl), nthRootHi(N,Xh,Zh), -([Zl,Zh],Z).  % X neg, N pos,odd
 nthrootCase(n,n,_,1, N, X,       _, Z)       :- -(X,[Xl,Xh]), nthRootLo(N,Xh,Zl), nthRootHi(N,Xl,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
-% nthrootCase(s,_,_,0, N, X,     _, Z) :- fail.                                              % X split, N even FAIL
+% nthrootCase(s,_,_,0, N, X,      _, Z) :- fail.                                              % X split, N even FAIL
 nthrootCase(s,p,_,1, N, [Xl,Xh], _, [Zl,Zh]) :- Xl1 is -Xl, nthRootHi(N,Xl1,Zl1), Zl is -Zl1, nthRootHi(N,Xh,Zh).    % X split, N pos,odd
 nthrootCase(s,n,_,1, N, X,       _, [-1.0Inf,1.0Inf]).                                       % X split, N neg,odd
 
@@ -644,15 +573,13 @@ narrowing_op(mul, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 % Z==min(X,Y)
 narrowing_op(min, _, [[Zl,Zh],X,Y], New) :-
 	min(X,Y,R), ^([Zl,Zh],R,Z1),          % Z1 := Z ^ min(X,Y),
-	posInfinity(PI),
-	minimax(Z1, [Zl,PI], [Z,X,Y], New).
+	minimax(Z1, [Zl,1.0Inf], [Z,X,Y], New).
 
 
 % Z==max(X,Y)
 narrowing_op(max, _, [[Zl,Zh],X,Y], New) :-
 	max(X,Y,R), ^([Zl,Zh],R,Z1),          % Z1 := Z ^ max(X,Y),
-	negInfinity(NI),
-	minimax(Z1, [NI,Zh], [Z,X,Y], New).
+	minimax(Z1, [-1.0Inf,Zh], [Z,X,Y], New).
 	
 minimax(Z1, _, [Z,X,Y], [New, X, New]) :- % Case 1, X not in Z1
 	\+(^(Z1,X,_)),!,                      % _ := Z1 \^ X,
@@ -694,17 +621,12 @@ narrowing_op(pow, _, [Z,X,[Yl,Yh]], New) :-  % exponent is zero
 narrowing_op(pow, _, [Z,X,[N,N]], [NewZ, NewX, [N,N]]) :-    % exponent is an integer <>0
 	integer(N), !,
 	intpow(X,[N,N],Z1), ^(Z,Z1,NewZ),
-	nthroot(NewZ,[N,N],X,X1), ^(X,X1,NewX).                         % narrowPowY(Xn,Y,Z,NewY).
-narrowing_op(pow, _, [Z,[Xl,Xh],Y], [NewZ, NewX, NewY]) :-
+	nthroot(NewZ,[N,N],X,X1), ^(X,X1,NewX).
+narrowing_op(pow, _, [Z,[Xl,Xh],Y], [NewZ, NewX, NewY]) :-              % lots of rounding for this operation
 	^([0,Xh], [Xl,Xh], Xn),  % X must be positive (>=0)
-	**(Xn,Y,Z1), ^(Z,Z1,NewZ),
-	/([1.0,1.0],Y,YI), **(NewZ,YI,X1), ^(Xn,X1,NewX),     % /([1.0,1.0],Y,YI), **(Z,YI,X1), ^(Xn,X1,NewX),
-	narrowPowY(NewX,Y,NewZ,NewY).                         % narrowPowY(Xn,Y,Z,NewY).
-
-narrowPowY([Xl,XH],Y,Z,NewY) :-
-	Xl>0,!,  % X > 0, otherwise narrowing may generate undefined
-	log(Z,LogZ), log([Xl,XH],LogX), /(LogZ,LogX,Y1), ^(Y,Y1,NewY).
-narrowPowY(X,Y,Z,Y).
+	log(Xn,LogXn), *(LogXn,Y,LogZ1), exp(LogZ1,Z1), ^(Z,Z1,NewZ),       % Z:=X**Y
+	log(NewZ,LogZ), /(LogZ,Y,LogX1), exp(LogX1,X1), ^(Xn,X1,NewX),      % X:=Z**(1/Y)
+	log(NewX,LogX), /(LogZ,LogX,Y1), (^(Y,Y1,NewY) -> true ; NewY=Y).   % Y:=log(Z)/log(X)
 
 
 % Z== sin(X)

@@ -3,7 +3,7 @@
 %
 		
 print_interval(ListOfInt) :-
-	is_list(ListOfInt), !,
+	is_list(ListOfInt), !,  %% SWIP:
 	write('['),
 	print_intervals(ListOfInt),
 	write(']').
@@ -29,33 +29,18 @@ print_intervals([Int|Ints]) :-
 %    hook for system print/1, except not used on vars frozen or otherwise
 %
 % direct use of portray/1
-user:portray(X) :-  
-	interval(X), !,
-	frozen(X,Goal),
-	print(Goal).
-% catch output using standard freeze format
-user:portray(freeze(X, clpBNR:intdef_(X,T,Id,NL))) :-  % Note: X is not the frozen var
-	print(clpBNR:intdef_(X,T,Id,NL)).
-% catch output of clpBNR freeze Goal
-user:portray(clpBNR:intdef_(X,T,Id,NL)) :- 
-	b_getval(Id,[L,H]),  %%%  stealthy access since clpBNR:getValue(Id,V) not accessible from user:P
-%	intValue(Id,L,H,Out),
-	write(clpBNR:intdef_(X,T,Id,NL)).
-	
-%attribute_goals(X) -->
-%	{get_attr(X, freeze, clpBNR:intdef_(X,_T,Id,_NL))},
-%	{trace},
-%	[mapTerm(X,Out)].
-%'$attvar':portray_attr(freeze,Goal,X) :-
-%	interval(X), !,
-%	system:print(Goal).
+
+user:portray(Int) :-
+	interval_object(Int,T,V,NL), !,
+	print(clpBNR:intdef_(Int,T,V,NL)).
+
 
 %
 %  SWI hook to print interval ranges for query variables
 %
 :- initialization(                                  % increase max_depth (default 10)
 	set_prolog_flag(answer_write_options,
-		[quoted(true), portray(true), max_depth(64), spacing(next_argument)])
+		[quoted(false), portray(true), max_depth(64), spacing(next_argument)])
 	).
 
 user:expand_answer(Bindings,ExBindings) :- 
@@ -67,9 +52,9 @@ mapBindings_([Name=In|Bs], [Name=Out|ExBs]) :-
 	mapBindings_(Bs,ExBs).
 	
 mapTerm_(Int,Out) :-
-	interval_object(Int,_T,Id,_NL),       % interval value, replace by Id(Range..)
-	getValue(Int,[L,H]),
-	intValue(Id,L,H,Out).  %Out=..[Id,L,H].
+	interval_object(Int,T,[L,H],_NL),       % interval value, replace by Id(L,H)
+	Val=..[T,L,H],
+	term_string(Int::Val, Out).
 mapTerm_(List,Out) :-
 	list(List),
 	mapEach_(List,Out).
@@ -86,16 +71,16 @@ mapEach_([In|Ins],[Out|Outs]) :-
 	mapEach_(Ins,Outs).
 	
 /*
+intValue(Id,T,[L,H],Out)  :- 
+	V=..[T,L,H],
+	term_string(Id::V, Out).
+
 intValue(Id,L,H,Out) :-
 	float(L), float(H),
 	number_codes(L,LC), number_codes(H,HC),
 	matching_(LC,HC,Match,0,MLen),
 	MLen>5,
 	atom_concat(Match,'...',Out).
-*/
-intValue(Id,L,H,Out) :- Out=..[Id,L,H].  % universal format %% atom_codes(Id,[948]), 
-	
-/*
 matching_([],[],[],N,N).
 matching_([C|LCs],[C|HCs],[C|Cs],N,Nout) :- !,  % matching
 	succ(N,N1),
@@ -107,51 +92,9 @@ digits_([]).
 digits_([D|Ds]) :- 48=<D,D=<57, digits_(Ds).
 */
 	
-	
-	
-/*
-portray(@(Int,_)) :-         % SWI cyclic str
-	interval(Int), !,    % fails if not an interval
-	portrayInt(Int).
 
-portray(@(V,Vs)) :-          % SWI cyclic str
-	defined_(Vs,V,Int),
-	interval(Int), !,    % fails if not an interval
-	portrayInt(Int).
-	
-portray(@(ListOfInt,Vs)) :-  % SWI cyclic str
-	is_list(ListOfInt),!,
-	write('['),
-	portray_intervals(ListOfInt,Vs),
-	write(']').
-	
-defined_([V=Int|Vs], V, Int) :-!.
-defined_([_|Vs], V, Int) :- defined_(Vs,V,Int).
-
-portray_intervals([],_).
-portray_intervals([Int],Vs) :- !,
-	print(@(Int,Vs)).
-portray_intervals([Int|Ints],Vs) :-
-	print(@(Int,Vs)), write(','),
-	portray_intervals(Ints,Vs).
-	
-portrayInt(Int) :- 
-	interval_object(Int,Type,Id,_),
-	atom_concat(Type,Id,Label),   % make Label
-	getValue(Int,V),
-	printValue_(V, Val),    % Val format type dependant
-	print(Label::Val).
-portrayInt(Int) :- 
-	Int = int(Type,_, _),
-	atom_concat(Type,'@?',Label),   % make undefined Label
-	print(Label::'_').
-	
-printValue_([N,N],N) :- !.
-printValue_(V,    V).
-*/
-	
 %
-%  trace debug code only -  called from stable_/1
+%  trace debug code only -  used by stable_/1
 %
 traceIntOp_(Op, Ints, Ins, Outs) :-
 	current_prolog_flag(debug, false), !.  % only while debugging
@@ -271,11 +214,9 @@ split_real_hi(X,[Pt,H],NPt,Err) :-         % search upper range for a split poin
 	
 splitinterval_integer_([L,H],0) :-
 	L < 0, H > 0.                     % contains 0 but not 0 
-splitinterval_integer_([L,H],Pt) :-
-	negInfinity(L),
+splitinterval_integer_([-1.0Inf,H],Pt) :-
 	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
-splitinterval_integer_([L,H],Pt) :-
-	posInfinity(H),
+splitinterval_integer_([L,-1.0Inf],Pt) :-
 	Pt is L*10+5.                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
 splitinterval_integer_([L,H],Pt) :- 
 	catch(H-L >= 16, _Err, fail),     % don't split ranges smaller than 16
@@ -283,28 +224,20 @@ splitinterval_integer_([L,H],Pt) :-
 
 
 splitinterval_real_([L,H],0.0,E) :-  % if interval contains 0, split on 0.
-	L < 0, H > 0.  % fail if width is zero (can't split)'
-splitinterval_real_([L,H],Pt,_) :-   % neg. infinity to zero or neg. H
-	negInfinity(L),
+	L < 0, H > 0, !,
+	catch((H-L) > E, _, true).       % fail if width is less than error criteria, overflow is OK
+splitinterval_real_([-1.0Inf,H],Pt,_) :-   % neg. infinity to zero or neg. H
 	Pt is H*10-1.                    % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
-splitinterval_real_([L,H],Pt,_) :-   % zero or pos. L to pos. infinity
-	posInfinity(H),
+splitinterval_real_([L,1.0Inf],Pt,_) :-   % zero or pos. L to pos. infinity
 	Pt is L*10+1.                    % add 1 in case L is 0. (1, 11, 101, 1001, ...)
 splitinterval_real_([L,H],Pt,E) :-   % finite L,H, positive or negative but not split
-	D is (H-L),                      % current inteval width (positive), also can't overflow'
-	posSmallest(PS),
-	D > PS*2,                        % width > some minimum to split
-	splitMean_(L,H,Pt),              % mean of infinity (overflow) or 0 (underflow) will cause failure
-	abs(D/Pt) > E.                   % error criteria
+	splitMean_(L,H,Pt),
+	MinW is abs(Pt)*E,               % Minimum width at Pt due to Err criteria
+	(Pt-L) > MinW, (H-Pt) > MinW.
+
 
 % geometric mean of L and H (same sign) if not non-zero, arithmetic mean if either 0
 splitMean_(L,H,M) :- L>0, !, M is sqrt(L)*sqrt(H).     % avoid overflow
 splitMean_(L,H,M) :- H<0, !, M is -sqrt(-L)*sqrt(-H).
-splitMean_(L,H,M) :- 0.0 is float(L), !, M is H/2.
-splitMean_(L,H,M) :- 0.0 is float(H), !, M is L/2.
-
-
-%
-% Get all defined statistics
-%
-clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
+splitMean_(L,H,M) :- L=:=0, !, M is H/2.
+splitMean_(L,H,M) :- H=:=0, !, M is L/2.

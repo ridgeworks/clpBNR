@@ -31,7 +31,7 @@
 	clpStatistic/1,        % get selected
 	clpStatistics/1        % get all defined in a list
 	]).
-	
+
 /* missing(?) functionality:
 
 1. arithmetic functions on intervals (delta, median, midpoint). Requires hooking is/2.
@@ -60,13 +60,41 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 	set_prolog_flag(singleton_warning,off)
 	).
 				
+%
+%  list/1 filter
+%
+list(L) :- is_list(L).     %%SWIP
+
+
 :- discontiguous(clpStatistics/0, clpStatistic/1).
 
 :- include(ia_primitives).
 
 %
-% Intervals are constrained (frozen) variables. Interval values (bounds) are stored in globals
-%  keyed by atoms of the form δN where N is a positive integer starting at 1.
+% Intervals are constrained (frozen) variables.
+%
+% Current interval bounds updates via setarg(Val) which is backtrackable
+%
+
+interval_object(Int, Type, Val, Nodelist) :-
+	frozen(Int, clpBNR:intdef_(Int, Type, Val, Nodelist)).
+
+% get current value
+getValue(Num, Val) :-
+	number(Num), !,
+	Val=[Num,Num].                    % numeric value
+getValue(Int, Val) :-                 % assumed to be an interval
+	%	frozen(Int, clpBNR:intdef_(Int, _Type, Val, _Nodelist)), !.
+	get_attr(Int, freeze, clpBNR:intdef_(Int, _Type, Val, _Nodelist)), !.     %%SWIP
+	
+% set current value
+putValue_(Val, Int, Nodelist) :-      % update bounds and return node list
+	Val=[L,H], L=<H,
+	%	frozen(Int, clpBNR:Def),
+	get_attr(Int, freeze, clpBNR:Def),     %%SWIP
+	Def = intdef_(Int, _Type, _Prev, Nodelist),
+	setarg(3,Def,Val).                % undone on backtracking
+
 %
 % Test for interval:
 %
@@ -75,8 +103,6 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 %
 interval(X) :- interval_object(X,_,_,_).
 
-interval_object(Int, Type, Id, Nodelist) :-
-	frozen(Int, clpBNR:intdef_(Int, Type, Id, Nodelist)).
 
 %
 % Interval declarations
@@ -120,31 +146,22 @@ fuzz_(hi,H,HH) :- float(H),!, HH isH H.
 %fuzz_(_,B,FB)  :- integer(B),!, FB is float(B).  % integers assumed precise, (floating big integers?)
 fuzz_(_,B,B).                                    % vars will get default values
 
-:- initialization(g_zero(makeInterval_)).  % initialize interval ID generator
-
 makeInterval_(Int, _Type, [L,H]) :-
 	interval_object(Int, _, _, _), !,  % already an interval object
 	setInterval_(Int, L, H).           % just set bounds (may fail if no intersection with current value)
 	
 makeInterval_(Int, Type, Val) :-
 	var(Int), !,                 % an (unconstrained) variable
-	BindGoal = intdef_(Int, Type, Id, _NL),
-	b_getval(makeInterval_,UNm), % new interval, get last used ID number
-	succ(UNm,NNm),               % new ID number
-	b_setval(makeInterval_,NNm), % make it used, needs to be undone on backtracking
-	number_codes(NNm,S),atom_codes(Id,[948|S]),  % build δ(948)N Id
-	freeze(Int, BindGoal),       % freeze interval to bind goal
-	putValue_(Val, Int, _),      % and initialize the value, no broadcast required (yet)
+	freeze(Int, intdef_(Int, Type, Val, _NL)),       % freeze interval
 	(Type=integer -> addOp_(node(integral,P,Int,0),Int) ; true).  %% if integer add custom node - not externally available
 
 makeInterval_(Int, _Type, [L,H]) :- L=<Int, Int=<H.  % just a range test on a number
 	
 % this goal gets triggered whenever an interval is unified with a hopefully numeric value
-intdef_(Int, Type, Id, NL) :-
+intdef_(Int, Type, [L,H], Nodelist) :-
 	number(Int),                % must be a number
-	b_getval(Id, [L,H]),        % in interval range
-	L=<Int, Int=<H,
-	stable_(NL).                % broadcast change, note variable now instantiated so no need to putValue_
+	L=<Int, Int=<H,             % check in case not generated from evalNode_
+	stable_(Nodelist).          % broadcast change, note variable now instantiated so no need to change Value
 	
 
 setInterval_(Int, L, H) :-      % new interval value, used by makeInterval_ and range/2,3
@@ -309,7 +326,7 @@ newNode_(Op, Z, X, Y, Agenda) :-
 	newmember(Agenda, NewNode).
 
 addOp_(Node, Int) :-
-	interval_object(Int, _Type, _Id, Nodelist), !, 
+	interval_object(Int, _Type, _Val, Nodelist), !, 
 	newmember(Nodelist, Node).
 addOp_(_Node, _Num).  %% already a number, i.e., no constraints
 
@@ -322,28 +339,32 @@ newmember([N|_],N).     % end of list
 %
 % Process Agenda to narrow intervals
 %
-stable_([]) :- !.                      % terminate when agenda comes to an end
+stable_([]) :- !.                                     % terminate when agenda comes to an end
 
-stable_([node(Op,P,Z,X,Y)|Agenda]) :-                   % ternary relation
+stable_([node(instantiate,_P,Int,Pt)|Agenda]) :- !,   % frozen constraints can't be run inside stable_ step
+	Int=Pt,                                           % constraints run now on thaw
+	stable_(Agenda).                                  % continue with Agenda
+	
+stable_([node(Op,P,Z,X,Y)|Agenda]) :-                 % ternary relation
 	var(P), !,                         % check persistent bit
 	getValue(Z, ZV),
 	getValue(X, XV),
 	getValue(Y, YV),
 	evalNode(Op, P, [ZV, XV, YV], [NewZ, NewX, NewY]),
 %	traceIntOp_(Op, [Z, X, Y], [ZV, XV, YV], [NewZ, NewX, NewY]),  % in ia_utilities
-	CurAgenda = [node(Op,P,Z,X,Y)|Agenda],              % note: Node still on current Agenda
+	CurAgenda = [node(Op,P,Z,X,Y)|Agenda],            % note: Node still on current Agenda
 	updateValue_(ZV, NewZ, Z, CurAgenda),
 	updateValue_(XV, NewX, X, CurAgenda),
 	updateValue_(YV, NewY, Y, CurAgenda),
 	nextNode_([Z,X,Y], P, Agenda).     % conditionally set persistent bit and continue with Agenda
 	
-stable_([node(Op,P,Z,X)|Agenda]) :-                     % binary relation
+stable_([node(Op,P,Z,X)|Agenda]) :-                   % binary relation
 	var(P), !,                         % check persistent bit
 	getValue(Z, ZV),
 	getValue(X, XV),
 	evalNode(Op, P, [ZV, XV], [NewZ, NewX]),
-%	traceIntOp_(Op, [Z, X], [ZV, XV], [NewZ, NewX]),    % in ia_utilities
-	CurAgenda = [node(Op,P,Z,X)|Agenda],                % note: Node still on current Agenda
+%	traceIntOp_(Op, [Z, X], [ZV, XV], [NewZ, NewX]),  % in ia_utilities
+	CurAgenda = [node(Op,P,Z,X)|Agenda],              % note: Node still on current Agenda
 	updateValue_(ZV, NewZ, Z, CurAgenda),
 	updateValue_(XV, NewX, X, CurAgenda),
 	nextNode_([Z,X], P, Agenda).       % conditionally set persistent bit and continue with Agenda
@@ -357,18 +378,19 @@ nextNode_(Args,_,Agenda) :- stable_(Agenda).                   % just continue w
 %
 % Any changes in interval values should come through here.
 updateValue_(Old, Old, _, _) :- !.                 % no change in value
-updateValue_(_Old, [Pt,Pt], Int, _) :- !,          % Point value ==> unify and run frozen Goal
-	Int=Pt.                                        % Int constraints run now!
+updateValue_(_Old, [Pt,Pt], Int, Agenda) :- !,     % Point value ==> update value and add 'instantiate' node to Agenda
+	putValue_([Pt,Pt], Int, _NL),                  % ignore constraints, will run via 'instantiate' node
+	ismember(Agenda,node(instantiate,P,Int,Pt)).
 updateValue_(_Old, New, Int, Agenda) :-            % set value to New
 	putValue_(New, Int, NL),                       % update value
 	subset_(NL, Agenda).                           % add constraints to agenda for execution
 
-subset_(Xs, _) :- var(Xs),!.   % end of indefinite input list
+subset_(Xs, _) :- var(Xs),!.                       % end of indefinite input list
 subset_([X|Xs], List) :-
-	arg(2,X,P), var(P),        % X = node(Op, P, _..), not persistent
-	ismember(List, X), !,      % checks for duplicates
+	arg(2,X,P), var(P),                            % X = node(Op, P, _..), not persistent
+	ismember(List, X), !,                          % checks for duplicates
 	subset_(Xs, List).
-subset_([X|Xs], List) :-       % X is persistent, don't add'
+subset_([X|Xs], List) :-                           % X is persistent, don't add'
 	subset_(Xs, List).
 
 ismember([X|Xs], N) :-
@@ -388,29 +410,16 @@ ismember(L, [X|Xs], N) :-
 	).
 ismember(_, [N|_],  N).                            % end of indefinite list, add node and new tail
 */
-%
-% Current interval bounds are stored in GNUP/SWI global storage, which is backtrackable
-%
-
-% get current value
-getValue(Num, [Num,Num]) :-
-	number(Num), !.                   % numeric value
-getValue(Int, V) :-                   % assume still an interval
-	interval_object(Int, _Type, Id, _NL),
-	b_getval(Id,V).      %%%SWI global read 
-	
-% set current value
-putValue_([L,H], Int, NL) :-
-	interval_object(Int, _Type, Id, NL), !,
-	L=<H,
-	b_setval(Id,[L,H]).  %%%SWI global link (backtrackable)
 
 
 :- include(ia_utilities).
 
+%
+% Get all defined statistics
+%
+clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 
 % end of reset chain succeeds. Need cut since predicate is "discontiguous".
 clpStatistics :- !.
 
 :- initialization(clpStatistics).
-
