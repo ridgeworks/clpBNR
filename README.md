@@ -67,7 +67,7 @@ but
 	?- {2==X*X, X>=0}.
 	X = _2426::real(1.4142135623730947,1.4142135623730954).
 
-In more complicated examples, it may not obvious what the additional constraints might be. In these cases a higher level search technique can be used, e.g., enumerating integer values or applying "branch and bound" algorithms over real intervals. A general predicate called `solve` is provided for this purpose. Additional application specific techniques can also be implemented. Some examples:
+In more complicated examples, it may not be obvious what the additional constraints might be. In these cases a higher level search technique can be used, e.g., enumerating integer values or applying "branch and bound" algorithms over real intervals. A general predicate called `solve` is provided for this purpose. Additional application specific techniques can also be implemented. Some examples:
 
 	?- {2==X*X},solve(X).
 	X = _7534::real(-1.4142135623730954,-1.4142135623730947) 
