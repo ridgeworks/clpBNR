@@ -232,7 +232,8 @@ splitinterval_real_([L,1.0Inf],Pt,_) :-   % zero or pos. L to pos. infinity
 	Pt is L*10+1.                    % add 1 in case L is 0. (1, 11, 101, 1001, ...)
 splitinterval_real_([L,H],Pt,E) :-   % finite L,H, positive or negative but not split
 	splitMean_(L,H,Pt),
-	MinW is abs(Pt)*E,               % Minimum width at Pt due to Err criteria
+	MinZ isH 0.0,                    % use rounding to limit 0.0 case
+	MinW is max(MinZ,abs(Pt)*E),     % Minimum width at Pt due to Err criteria
 	(Pt-L) > MinW, (H-Pt) > MinW.
 
 

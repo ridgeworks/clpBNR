@@ -89,7 +89,7 @@ In more complicated examples, it may not obvious what the additional constraints
 	X = _220::real(0.8931355978561679,0.8931356380731539) 
 	false.
 
-Note that all of these examples produce multiple solutions that are produce by backtracking in the listener (just like any other top level query).
+Note that all of these examples produce multiple solutions that are produced by backtracking in the listener (just like any other top level query).
 
 Here is the current set of operators and functions supported in this version:
 

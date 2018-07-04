@@ -20,25 +20,34 @@
 % Multiple ops in Exp could violate assumptions about bit accuracy.
 % Assumes IEEE 754 compliance in evaluating Exp.
 
-Z isL Exp :- catch((R is Exp, roundDown(R,Z,Exp)), Error, recover(Exp,Error,Z)), !.
+Z isL Exp :- catch(evalDown(Z,Exp), Error, recover(Exp,Error,Z)), !.
 
-Z isH Exp :- catch((R is Exp, roundUp(R,Z,Exp)),   Error, recover(Exp,Error,Z)), !.
+Z isH Exp :- catch(evalUp(Z,Exp),   Error, recover(Exp,Error,Z)), !.
 
+evalDown(Z,Exp) :-
+	R is Exp, roundDown(R,Z,Exp).
+	
 roundDown(R,Z,Exp) :-
 	integer(R),
 	(current_prolog_flag(bounded,true) -> chkIResult(Exp,R,Z) ; Z=R).
 roundDown(0.0,SmallestNeg,_) :-
 	SmallestNeg is -(2**(-1022)).
-roundDown(R,Z,_) :-
-	catch(Z is R - abs(R)*epsilon, Error, Z=R).
+roundDown(R,Z,_) :-  % check if R can be rounded without overflow
+	(R >= -1.7976931348623153e+308 -> Z is R - abs(R)*epsilon ; Z=R).
+	% catch(Z is R - abs(R)*epsilon, Error, Z=R).
+
+evalUp(Z,Exp) :-
+	R is Exp, roundUp(R,Z,Exp).
 
 roundUp(R,Z,_Exp) :-
 	integer(R),
 	(current_prolog_flag(bounded,true) -> chkIResult(Exp,R,Z) ; Z=R).
 roundUp(0.0,SmallestPos,_) :-
 	SmallestPos is (2**(-1022)).
-roundUp(R,Z,_) :-
-	catch(Z is R + abs(R)*epsilon, Error, Z=R).
+roundUp(R,Z,_) :-  % check if R can be rounded without overflow
+	(R =< 1.7976931348623153e+308 -> Z is R + abs(R)*epsilon ; Z=R).
+	% catch(Z is R + abs(R)*epsilon, Error, Z=R).
+	
 
 recover(Exp,error(evaluation_error(Error),C),Z) :-
 	recover_(Exp,Error,Z),!.             % generate various infinities
@@ -97,15 +106,23 @@ chkIResult(  _,Z,Z). % otherwise OK.
 % statistics
 %
 
-clpStatistics :- T is cputime, nb_setval(userTime,T), fail.  % backtrack to reset other statistics.
+clpStatistics :- 
+	T is cputime, nb_setval(userTime_,T), 
+	statistics(inferences,I), nb_setval(inferences_,I),
+	statistics(garbage_collection,[_,_,G,_]), nb_setval(gc_time_,G),
+	fail.  % backtrack to reset other statistics.
 
-clpStatistic(userTime(T)) :- T1 is cputime, nb_getval(userTime,T0), T is T1-T0.
+clpStatistic(userTime(T)) :- T1 is cputime, nb_getval(userTime_,T0), T is T1-T0.
+
+clpStatistic(gcTime(G)) :- statistics(garbage_collection,[_,_,G1,_]), nb_getval(gc_time_,G0), G is (G1-G0)/1000.
 
 clpStatistic(globalStack(U/T)) :- statistics(globalused,U), statistics(global,T).
 
 clpStatistic(trailStack(U/T)) :- statistics(trailused,U), statistics(trail,T).
 
 clpStatistic(localStack(U/T)) :- statistics(localused,U), statistics(local,T).
+
+clpStatistic(inferences(I)) :- statistics(inferences,I1), nb_getval(inferences_,I0), I is I1-I0.
 
 % zero/increment/read global counter
 g_zero(G)   :- nb_setval(G,0).
@@ -169,8 +186,9 @@ clpStatistic(backTracks(C)) :- g_read(evalNodeFail,C).
 
 % Z := integer(X)
 integer([Xl,Xh],[Zl,Zh]) :-
-	(float(Xl) -> Zl is ceiling(Xl) ; Zl=Xl),
-	(float(Xh) -> Zh is floor(Xh)   ; Zh=Xh).
+	finite_interval(integer, [L,H]),
+	(float(Xl) -> Zl is max(L,ceiling(Xl)) ; Zl=Xl),  % convert floats to finite integers (infinities?)
+	(float(Xh) -> Zh is min(H,floor(Xh))   ; Zh=Xh).
 
 % Z := X ^ Y  (intersection)
 ^([Xl,Xh], [Yl,Yh], [Zl,Zh]) :-
@@ -331,6 +349,11 @@ wrap_([Xl,Xh], W, [MXl,MXh], [Xpl,Xph]) :-  % project onto cylinder from -W/2 to
 unwrap_([Xpl,Xph], W, [MXl,MXh], [Xl,Xh]) :-
 	Xl isL Xpl+W*MXl, Xh isH Xph+W*MXh.
 
+% Z := ~X (boolean not)
+~([B,B], [N,N]) :- !,
+	N is (B+1) mod 2.
+~([0,1], [0,1]).
+
 %
 %  set intersection (Can be []) and union.
 intersection_(X,Y,Z) :- ^(X,Y,Z), !.
@@ -487,6 +510,7 @@ narrowing_op(eq, _, [Z, X, Y], [NewZ, X, Y]) :-              % if X and Y are ne
 
 narrowing_op(eq, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).   % else no change, but narrow Z to boolean
 
+
 % Z==(X<>Y)  % (Z boolean)
 narrowing_op(ne, _, [[1,1], X, Y], [[1,1], NewX, NewY]) :-     % Z is true, try to narrow to not intersect
 	<>(X,Y,NewX),
@@ -535,25 +559,22 @@ narrowing_op(sub, p, [[0,0], X, Y], [[0,0], NewX, Y]):-    % persistent, X and Y
 
 
 % Z==(X<Y)  % (Z boolean, X,Y integer)
-narrowing_op(lt, p, [Z, [Xl,Xh], [Yl,Yh]], New):-              % persistent, Z is true, X,Y unchanged
-	Xh < Yl, !,
-	^(Z, [1,1], NewZ),
-	New = [NewZ,  [Xl,Xh], [Yl,Yh]].
+narrowing_op(lt, p, [Z, X, Y], [NewZ, X, Y]):-              % persistent case, set Z, X,Y unchanged
+	lt_disjoint_(X,Y,Z1), !,
+	^(Z, Z1, NewZ).
 
-narrowing_op(lt, _, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):-
-	integer(Yh), Y1h is Yh-1,
-	^([Xl,Xh], [-1.0Inf,Y1h], [NXl,NXh]),      % NewX := [Xl,Xh] ^ [NI,Yh]
-	integer(Xl), X1l is Xl+1,
-	^([Yl,Yh], [X1l, 1.0Inf], NewY), !.        % NewY := [Yl,Yh] ^[Xl,PI]
+narrowing_op(lt, _, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):- 
+	integer(Yh), integer(Xl), !,                            % if true, can possibly narrow X and Y
+	Y1h is Yh-1, ^([Xl,Xh], [-1.0Inf,Y1h], [NXl,NXh]),      % NewX := [Xl,Xh] ^ [NI,Yh]
+	X1l is Xl+1, ^([Yl,Yh], [X1l, 1.0Inf], NewY), !.        % NewY := [Yl,Yh] ^ [Xl,PI]
 
-narrowing_op(lt, P, [[0,0], X, Y], [[0,0], NewX, NewY]):-
-	narrowing_op(le, P, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
+% else % X<Y == not(Y=<X)  (unsound on reals)
+narrowing_op(lt, P, [Z,X,Y], [NewZ,NewX,NewY]):-            % X<Y == not(Y=<X)
+	narrowing_op(le, P, [Z,Y,X], [Z1,NewY,NewX]),           % Z1 == Y=<X
+	~(Z1,NZ), ^(Z,NZ,NewZ).
 
-narrowing_op(lt, _, [Z,[Xl,Xh],[Yl,Yh]], [NewZ,[Xl,Xh],[Yl,Yh]]) :-
-	Yh =< Xl, !,
-	^(Z, [0,0], NewZ).
-
-narrowing_op(lt, _, [Z,X,Y], [NewZ,X,Y]) :- ^(Z,[0,1],NewZ).
+lt_disjoint_([Xl,Xh], [Yl,Yh], [1,1]) :- Xh < Yl.           % necessarily true
+lt_disjoint_([Xl,Xh], [Yl,Yh], [0,0]) :- Yh =< Xl.          % necessarily false
 
 
 % Z==X+Y
@@ -762,11 +783,8 @@ try_tan_(X,Z,[],[],MXS,MXF,MXF).  % if tan_ fails, return empty X interval for u
 % Z== ~X (Z and X boolean)
 narrowing_op(not, _, [Z,X], [NewZ, NewX]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB),
-	notB_rel_(ZB,XB, NewZ,NewX).
-	
-notB_rel_(Z,[B,B],     NewZ,[B,B])   :- !, N is (B+1) mod 2,^(Z,[N,N],NewZ).
-notB_rel_([B,B],X,     [B,B],NewX)   :- !, N is (B+1) mod 2,^(X,[N,N],NewX).
-notB_rel_([0,1],[0,1], [0,1],[0,1]). % no change
+	~(Z,X1), ^(X,X1,NewX),
+	~(NewX,Z1), ^(Z,Z1,NewZ).
 
 
 % Z==X and Y  boolean 'and'
