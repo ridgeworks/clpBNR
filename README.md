@@ -40,7 +40,7 @@ Interval declarations define the initial bounds of the interval which are narrow
 	X = _84::real(0.14285714285714268,0.14285714285714302),
 	Y = _140::real(0.42857142857142827,0.4285714285714289).
 
-In the first example, both `M` and `N` are narrowed by applying the constraint `{M == 3*M}`. Applying the additional constraint `{M>3}` further narrows the intervals to single values so the original variables are unified with the point (integer) values.
+In the first example, both `M` and `N` are narrowed by applying the constraint `{M == 3*N}`. Applying the additional constraint `{M>3}` further narrows the intervals to single values so the original variables are unified with the point (integer) values.
  
 In the last example, there are no explicit declarations of `X` and `Y`; in this case the default `real` bounds are used. The constraint causes the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound towards -inifinity, upper bound towards infinity) to ensure that any answer is included in the resulting interval, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.)
 

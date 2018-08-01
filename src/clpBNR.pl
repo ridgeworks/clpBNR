@@ -64,7 +64,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 %
 list(L) :- is_list(L).     %%SWIP
 
-:- include(ia_primitives).
+:- include(ia_primitives).  % interval arithmetic relations via evalNode/4.
 
 %
 % Intervals are constrained (frozen) variables.
@@ -81,13 +81,13 @@ getValue(Num, Val) :-
 	number(Num), !,
 	Val=[Num,Num].                    % numeric value
 getValue(Int, Val) :-                 % assumed to be an interval
-	% frozen(Int, clpBNR:intdef_(Int, _Type, Val, _Nodelist)), !.
+	%	frozen(Int, clpBNR:intdef_(Int, _Type, Val, _Nodelist)), !.
 	get_attr(Int, freeze, clpBNR:intdef_(Int, _Type, Val, _Nodelist)).     %%SWIP
 	
 % set current value
 putValue_(Val, Int, Nodelist) :-      % update bounds and return node list
 	Val=[L,H], L=<H,
-	% frozen(Int, clpBNR:Def),
+	%	frozen(Int, clpBNR:Def),
 	get_attr(Int, freeze, clpBNR:Def),                                     %%SWIP
 	Def = intdef_(Int, _Type, _Prev, Nodelist),
 	setarg(3,Def,Val).                % undone on backtracking
@@ -144,10 +144,10 @@ fillDefaults_(Type,[L,H]) :-
 	(H=FH;true),!.
 
 fuzz_(_,B,FB)  :- number(B), 0 =:= float_fractional_part(B), !, FB is float(B).  % integral values assumed precise
-fuzz_(lo,L,LL) :- float(L),!, LL isL L.          % fuzz floats with fractional components
+fuzz_(lo,L,LL) :- float(L),!, LL isL L.           % fuzz floats with fractional components
 fuzz_(hi,H,HH) :- float(H),!, HH isH H.
 %fuzz_(_,B,FB)  :- integer(B),!, FB is float(B).  % integers assumed precise, (floating big integers?)
-fuzz_(_,B,B).                                    % vars will get default values
+fuzz_(_,B,B).                                     % vars will get default values
 
 makeInterval_(Int, Type, [L,H]) :-
 	interval_object(Int, IType, _, _), !,  % already an interval object
@@ -157,7 +157,7 @@ makeInterval_(Int, Type, [L,H]) :-
 makeInterval_(Int, Type, Val) :-
 	var(Int), !,                 % an (unconstrained) variable
 	freeze(Int, intdef_(Int, Type, Val, _NL)),       % freeze interval
-	(Type=integer -> addOp_(node(integral,P,Int,0),Int) ; true).  %% if integer add custom node - not externally available
+	(Type=integer -> addOp_(node(integral,P,L,Int,0),Int) ; true).  %% if integer add custom node - not externally available
 
 makeInterval_(Int, _Type, [L,H]) :- L=<Int, Int=<H.  % just a range test on a number
 	
@@ -165,32 +165,33 @@ makeInterval_(Int, _Type, [L,H]) :- L=<Int, Int=<H.  % just a range test on a nu
 intdef_(Int, Type, [L,H], Nodelist) :-
 	number(Int),                % must be a number
 	L=<Int, Int=<H,             % check in case not generated from evalNode_
-	stable_(Nodelist).          % broadcast change, note variable now instantiated so no need to change Value
-	
+	linkNodeList_(Nodelist, T/T, Agenda),
+	stable_(Agenda).        % broadcast change, note variable now instantiated so no need to change Value
+
 applyType_(integer, real, Int) :- !,     % narrow real to integer
 	get_attr(Int, freeze, clpBNR:Def),   %% SWIP
 	setarg(2,Def,integer),               % set Type (only case allowed)
 	addOp_(node(integral,P,Int,0),Int).  % add integral constraint
 applyType_(Type,IType,Int).                       % anything else: no change
-	
+
 setInterval_(Int, L, H) :-      % new interval value, used by makeInterval_ and range/2,3
 	getValue(Int,Current),      % current and new values must intersect
 	^(Current,[L,H],New),       % low level functional primitive
-	updateValue_(Current, New, Int, Agenda),
-	stable_(Agenda).
+	updateValue_(Current, New, Int, T/T, NewAgenda),
+	stable_(NewAgenda).
 
 %
 %  lower_bound and upper_bound
 %
 lower_bound(Int) :- 
 	getValue(Int,[L,H]),
-	updateValue_([L,H], [L,L], Int, Agenda),
-	stable_(Agenda).
+	updateValue_([L,H], [L,L], Int, T/T, NewAgenda),
+	stable_(NewAgenda).
 
 upper_bound(Int) :-
 	getValue(Int,[L,H]),
-	updateValue_([L,H], [H,H], Int, Agenda),
-	stable_(Agenda).
+	updateValue_([L,H], [H,H], Int, T/T, NewAgenda),
+	stable_(NewAgenda).
 
 %
 %  range(Int, Bounds) for compatability - defaults to range(Int, real, Bounds)
@@ -220,15 +221,15 @@ range(Int, Type, Bounds) :-     % create new interval
 %
 {}.
 {Cons} :-
-	addConstraints_(Cons,Agenda),  % add constraints then
-	stable_(Agenda).               % execute Agenda
+	addConstraints_(Cons,T/T,Agenda),  % add constraints then
+	stable_(Agenda).                   % execute Agenda
 
-addConstraints_((C1,C2),Agenda) :-
+addConstraints_((C1,C2),Agenda,NewAgenda) :-
 	!,
-	build_(C1, 1, boolean, Agenda),  % a constraint is a expression that must evaluate to true
-	addConstraints_(C2,Agenda).
-addConstraints_(C,Agenda) :-
-	build_(C, 1, boolean, Agenda).   % a constraint is a expression that must evaluate to true
+	build_(C1, 1, boolean, Agenda, NextAgenda),   % a constraint is a expression that must evaluate to true
+	addConstraints_(C2,NextAgenda,NewAgenda).
+addConstraints_(C,Agenda,NewAgenda) :-
+	build_(C, 1, boolean, Agenda, NewAgenda).     % a constraint is a expression that must evaluate to true
 
 %
 % build a node from an expression
@@ -236,41 +237,41 @@ addConstraints_(C,Agenda) :-
 build_(Int, Int, VarType, _) :-                   % existing interval object
 	interval_object(Int, Type, _, _), !,
 	applyType_(VarType, Type, Int).               % coerces exsiting intervals to required type
-build_(Var, Var, VarType, _) :-                   % implicit interval creation.
+build_(Var, Var, VarType, Agenda, Agenda) :-                 % implicit interval creation.
 	var(Var), !,
 	Var::VarType.
-build_(Num, Int, _, _) :-                         % floating point constant, may not be precise
+build_(Num, Int, _, Agenda, Agenda) :-                       % floating point constant, may not be precise
 	float(Num), !,
 	Int::real(Num,Num).                           % will be fuzzed, so not a point
-build_(Num, Num, _, _) :-                         % integer numeric value is precise
+build_(Num, Num, _, Agenda, Agenda) :-                       % integer numeric value is precise
 	integer(Num), !.
-build_(pt(Num), Num, _, _) :-                     % point value
+build_(pt(Num), Num, _, Agenda, Agenda) :-                   % point value
 	number(Num), !.
-build_(Exp, Int, VarType, Agenda) :-
+build_(Exp, Int, VarType, Agenda, NewAgenda) :-
 	ground(Exp),                                  % ground exp which evaluates to a number
 	catch(V is Exp, _, fail),                     % also catches symbolic "numbers", e.g., inf, pi, ..
-	build_(V, Int, VarType, Agenda), !.           % may be fuzzed, so not a point
-build_(Exp*X, Z, _, Agenda):-                     % map X*X*X... to X**N
+	build_(V, Int, VarType, Agenda, NewAgenda), !.           % may be fuzzed, so not a point
+build_(Exp*X, Z, _, Agenda, NewAgenda):-                     % map X*X*X... to X**N
 	mulPower_(Exp,X,1,NExp),!,
-	build_(NExp, Z, _, Agenda).
-build_(sqrt(X), Z, _, Agenda) :-                  % map Z=sqrt(X) to X=Z**2 
+	build_(NExp, Z, _, Agenda, NewAgenda).
+build_(sqrt(X), Z, _, Agenda, NewAgenda) :-                  % map Z=sqrt(X) to X=Z**2 
 	!,
-	build_(Z**2, X, _, Agenda).
+	build_(Z**2, X, _, Agenda, NewAgenda).
 
-build_(Exp, Z, _, Agenda) :-   % Exp = X+Y, X*Y, min(X,Y), etc.
+build_(Exp, Z, _, Agenda, NewAgenda) :-   % Exp = X+Y, X*Y, min(X,Y), etc.
 	Exp =.. [F,X,Y],                                % create ternary node
 	fmap_(F, Op, [Z,X,Y], [Zarg,Xarg,Yarg], [Ztype,Xtype,Ytype]),!,
-	build_(Xarg, Xobj, Xtype, Agenda),
-	build_(Yarg, Yobj, Ytype, Agenda),
-	build_(Zarg, Zobj, Ztype, Agenda),
-	newNode_(Op, Zobj, Xobj, Yobj, Agenda).
+	build_(Xarg, Xobj, Xtype, Agenda, XAgenda),
+	build_(Yarg, Yobj, Ytype, XAgenda, XYAgenda),
+	build_(Zarg, Zobj, Ztype, XYAgenda, XYZAgenda),
+	newNode_(Op, Zobj, Xobj, Yobj, XYZAgenda, NewAgenda).
 
-build_(Exp, Z, _, Agenda) :-   % Exp = -X, exp(X), sin(x) etc.
+build_(Exp, Z, _, Agenda, NewAgenda) :-   % Exp = -X, exp(X), sin(x) etc.
 	Exp =.. [F,X],                                  % create binary node
 	fmap_(F, Op, [Z,X,_], [Zarg,Xarg,_], [Ztype,Xtype,xx]), !, % use Ytype to disambiguate, e.g., subtract and minus
-	build_(Xarg, Xobj, Xtype, Agenda),
-	build_(Zarg, Zobj, Ztype, Agenda),
-	newNode_(Op, Zobj, Xobj, Agenda).
+	build_(Xarg, Xobj, Xtype, Agenda, XAgenda),
+	build_(Zarg, Zobj, Ztype, XAgenda, XZAgenda),
+	newNode_(Op, Zobj, Xobj, XZAgenda, NewAgenda).
 
 fmap_(+,    add,   ZXY,     ZXY,     [real,real,real]).
 fmap_(-,    add,   [Z,X,Y], [X,Z,Y], [real,real,real]).     % note subtract before minus 
@@ -322,18 +323,18 @@ mulPower_(Exp,X,N,Exp*X**N) :-
 %
 % Node constructors
 %
-newNode_(Op, Z, X, Agenda) :-     % binary
-	NewNode = node(Op, P, Z, X),
+newNode_(Op, Z, X, Agenda, NewAgenda) :-     % binary
+	NewNode = node(Op, P, L, Z, X),  % mark as linked
 	addOp_(NewNode, Z),
 	addOp_(NewNode, X),
-	newmember(Agenda, NewNode).
+	linkNode_(Agenda, NewNode, NewAgenda).
 
-newNode_(Op, Z, X, Y, Agenda) :-
-	NewNode = node(Op, P, Z, X, Y),  % ternary
+newNode_(Op, Z, X, Y, Agenda, NewAgenda) :-  % ternary
+	NewNode = node(Op, P, L, Z, X, Y),  % mark as linked
 	addOp_(NewNode, Z),
 	addOp_(NewNode, X),
 	addOp_(NewNode, Y),
-	newmember(Agenda, NewNode).
+	linkNode_(Agenda, NewNode, NewAgenda).
 
 addOp_(Node, Int) :-
 	interval_object(Int, _Type, _Val, Nodelist), !, 
@@ -341,6 +342,7 @@ addOp_(Node, Int) :-
 addOp_(_Node, _Num).  %% already a number, i.e., no constraints
 
 % extend list with X
+
 newmember([X|Xs],N) :- 
 	nonvar(X), !,       % not end of (indefinite) list
 	newmember(Xs,N).
@@ -349,79 +351,67 @@ newmember([N|_],N).     % end of list
 %
 % Process Agenda to narrow intervals
 %
-stable_([]) :- !.                                     % terminate when agenda comes to an end
+stable_([]/[]) :- !.                  % terminate when agenda comes to an end
 
-stable_([node(instantiate,_P,Int,Pt)|Agenda]) :- !,   % frozen constraints can't be run inside stable_ step
-	Int=Pt,                                           % constraints run now on thaw
-	!,
-	stable_(Agenda).                                  % continue with Agenda
+stable_([Node|Agenda]/T) :-
+	doNode_(Node, Agenda/T, NewAgenda),
+	setarg(3,Node,0),                 % reset linked bit
+	stable_(NewAgenda).
+
+doNode_(node(instantiate,P,L,Int,Pt), Agenda, Agenda) :-  % frozen constraints must be run as stable_ step
+	var(P), !,
+	Int=Pt.                           % constraints run now on thaw
 	
-stable_([Node|Agenda]) :- 
-	Node=node(Op,P,Z,X,Y), var(P), !,                 % ternary relation, non-persistent
+doNode_(node(Op,P,L,Z,X,Y), Agenda, NewAgenda) :-  % ternary relation
+	var(P), !,                        % check persistent bit
 	getValue(Z, ZV),
 	getValue(X, XV),
 	getValue(Y, YV),
 	evalNode(Op, P, [ZV, XV, YV], [NewZ, NewX, NewY]),
 %	traceIntOp_(Op, [Z, X, Y], [ZV, XV, YV], [NewZ, NewX, NewY]),  % in ia_utilities
-	updateValue_(ZV, NewZ, Z, [Node|Agenda]),
-	updateValue_(XV, NewX, X, [Node|Agenda]),
-	updateValue_(YV, NewY, Y, [Node|Agenda]),
-	(ground((Z,X,Y)) -> P=p ; true),     % conditionally set persistent bit and continue with Agenda
-	stable_(Agenda).
+	updateValue_(ZV, NewZ, Z, Agenda, ZAgenda),
+	updateValue_(XV, NewX, X, ZAgenda, ZXAgenda),
+	updateValue_(YV, NewY, Y, ZXAgenda, NewAgenda),
+	(ground([Z,X,Y]) -> P=p ; true).  % conditionally set persistent bit
 	
-stable_([Node|Agenda]) :-
-	Node=node(Op,P,Z,X), var(P), !,                   % binary relation, non-persistent
+doNode_(node(Op,P,L,Z,X), Agenda, NewAgenda) :-    % binary relation
+	var(P), !,                        % check persistent bit
 	getValue(Z, ZV),
 	getValue(X, XV),
 	evalNode(Op, P, [ZV, XV], [NewZ, NewX]),
 %	traceIntOp_(Op, [Z, X], [ZV, XV], [NewZ, NewX]),  % in ia_utilities
-	updateValue_(ZV, NewZ, Z, [Node|Agenda]),
-	updateValue_(XV, NewX, X, [Node|Agenda]),
-	(ground((Z,X)) -> P=p ; true),       % conditionally set persistent bit and continue with Agenda
-	stable_(Agenda).
+	updateValue_(ZV, NewZ, Z, Agenda, ZAgenda),
+	updateValue_(XV, NewX, X, ZAgenda, NewAgenda),
+	(ground([Z,X]) -> P=p ; true).   % conditionally set persistent bit
 	
-stable_([Node|Agenda]) :-  % skip node
-	stable_(Agenda).
-
+doNode_(Node, Agenda, Agenda).          % persistent bit "set", skip node
 
 %
 % Any changes in interval values should come through here.
-updateValue_(Old, Old, _, _) :- !.                 % no change in value
-updateValue_(_Old, [Pt,Pt], Int, Agenda) :- !,     % Point value ==> update value and add 'instantiate' node to Agenda
-	putValue_([Pt,Pt], Int, _NL),                  % ignore constraints, will run via 'instantiate' node
-	ismember(Agenda,node(instantiate,P,Int,Pt)).
-updateValue_(_Old, New, Int, Agenda) :-            % set value to New
-	putValue_(New, Int, NL),                       % update value
-	subset_(NL, Agenda).                           % add constraints to agenda for execution
-
-subset_(Xs, _) :- var(Xs),!.                       % end of indefinite input list
-subset_([X|Xs], List) :-
-	arg(2,X,P), var(P),                            % X = node(Op, P, _..), not persistent
-	ismember(List, X), !,                          % checks for duplicates
-	subset_(Xs, List).
-subset_([X|Xs], List) :-                           % X is persistent, don't add'
-	subset_(Xs, List).
-
-ismember([X|Xs], N) :-
-	nonvar(X), !,                                  % test for end of indefinite list
-	(N==X                                          % test for duplicate, careful not to unify any operands
-		-> true                                    % it's a duplicate, nothing to do
-		;  ismember(Xs,N)                          % different, keep scanning
-	).
-ismember([N|_],  N).                               % end of indefinite list, add node and new tail
-
-/*ismember(256,  _, _) :- !.                        % max queue length reached
-ismember(L, [X|Xs], N) :-
-	nonvar(X), !,                                  % test for end of indefinite list
-	(N==X                                          % test for duplicate, careful not to unify any operands
-		-> true                                    % it's a duplicate, nothing to do
-		;  (L1 is L+1,ismember(L1,Xs,N))           % different, keep scanning
-	).
-ismember(_, [N|_],  N).                            % end of indefinite list, add node and new tail
-*/
+%
+updateValue_(Old, Old, _, Agenda, Agenda) :- !.                 % no change in value
+updateValue_(_Old, [Pt,Pt], Int, Agenda, NewAgenda) :- !,       % Point value ==> update value
+	putValue_([Pt,Pt], Int, Nodelist),             % ignore node list, will run via 'instantiate' node
+	linkNode_(Agenda,node(instantiate,P,L,Int,Pt), NewAgenda).  % add 'instantiate' node to Agenda
+updateValue_(_Old, New, Int, Agenda, NewAgenda) :-              % set value to New
+	putValue_(New, Int, Nodelist),                 % update value
+	linkNodeList_(Nodelist, Agenda, NewAgenda).    % add constraints to agenda for execution
 
 
-:- include(ia_utilities).
+linkNodeList_(Xs, List, List) :- var(Xs), !.       % end of indefinite node list
+linkNodeList_([X|Xs], List, NewList) :-
+	arg(3,X,0),                                    % not linked and ...
+	arg(2,X,P), var(P), !,                         % not persistent ->
+	linkNode_(List, X, NextList),                  % add to list
+	linkNodeList_(Xs, NextList, NewList).
+linkNodeList_([X|Xs], List, NewList) :-            % skip node
+	linkNodeList_(Xs, List, NewList).
+
+linkNode_(List/[X|NextTail], X, List/NextTail) :-
+	setarg(3,X,1).                                 %% SWIP set linked bit
+
+
+:- include(ia_utilities).  % print,solve, etc
 
 %
 % Get all defined statistics
@@ -431,4 +421,8 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 % end of reset chain succeeds. Need cut since predicate is "discontiguous".
 clpStatistics :- !.
 
-:- initialization((nl,write("*** clpBNR v0.5alpha ***"),nl,clpStatistics)).
+:- initialization((
+	nl,write("*** clpBNR v0.6alpha ***"),nl,
+	set_prolog_stack(global,min_free(1024)),
+	clpStatistics
+)).

@@ -176,7 +176,7 @@ clpStatistics :-
 
 clpStatistic(primitiveCalls(C)) :- g_read(evalNode,C).
 
-clpStatistic(backTracks(C)) :- g_read(evalNodeFail,C).
+clpStatistic(primitiveBacktracks(C)) :- g_read(evalNodeFail,C).
 
 
 %
@@ -564,17 +564,17 @@ narrowing_op(lt, p, [Z, X, Y], [NewZ, X, Y]):-              % persistent case, s
 	^(Z, Z1, NewZ).
 
 narrowing_op(lt, _, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], NewY]):- 
-	integer(Yh), integer(Xl), !,                            % if true, can possibly narrow X and Y
+	integer(Yh), integer(Xl), !,  % if Z true, can possibly narrow X and Y
 	Y1h is Yh-1, ^([Xl,Xh], [-1.0Inf,Y1h], [NXl,NXh]),      % NewX := [Xl,Xh] ^ [NI,Yh]
-	X1l is Xl+1, ^([Yl,Yh], [X1l, 1.0Inf], NewY), !.        % NewY := [Yl,Yh] ^ [Xl,PI]
+	X1l is Xl+1, ^([Yl,Yh], [X1l, 1.0Inf], NewY).           % NewY := [Yl,Yh] ^ [Xl,PI]
 
-% else % X<Y == not(Y=<X)  (unsound on reals)
+% else % X<Y == not(Y=<X) for reals (unsound)
 narrowing_op(lt, P, [Z,X,Y], [NewZ,NewX,NewY]):-            % X<Y == not(Y=<X)
 	narrowing_op(le, P, [Z,Y,X], [Z1,NewY,NewX]),           % Z1 == Y=<X
 	~(Z1,NZ), ^(Z,NZ,NewZ).
 
-lt_disjoint_([Xl,Xh], [Yl,Yh], [1,1]) :- Xh < Yl.           % necessarily true
-lt_disjoint_([Xl,Xh], [Yl,Yh], [0,0]) :- Yh =< Xl.          % necessarily false
+lt_disjoint_([Xl,Xh], [Yl,Yh], [1,1]) :- Xh < Yl.   % necessarily true
+lt_disjoint_([Xl,Xh], [Yl,Yh], [0,0]) :- Yh =< Xl.  % necessarily false, only 1 point =
 
 
 % Z==X+Y
