@@ -114,6 +114,7 @@ Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 [cldl]:  http://interval.sourceforge.net/interval/index.html
 [swip]:  http://www.swi-prolog.org
 [bnrpp]: https://ridgeworks.github.io/BNRProlog-Papers
+[clpBNRug]: doc/CLP_BNR_Guide/CLP_BNR_Guide.html
 
 ### Engineering Considerations
 
@@ -185,3 +186,5 @@ The SWI-Prolog package declaration is:
 		]).
 
 To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
+
+See also a partial [Guide to CLP(BNR)][[clpBNRug]
