@@ -187,4 +187,4 @@ The SWI-Prolog package declaration is:
 
 To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
 
-See also a partial [Guide to CLP(BNR)][[clpBNRug]
+See also a partial [Guide to CLP(BNR)][clpBNRug]
