@@ -1,16 +1,16 @@
 # CLP(BNR)
 This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix that has been lost (at least to the original implementors) so this is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environment (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
  
-In the process of recreating this version of CLP(BNR) subsequent work in relational interval arithmetic has been used, in particular [Efficient Implementation of Interval Arithmetic Narrowing Using IEEE Arithmetic][ia1] and [Interval Arithmetic: from Principles to Implementation][ia2]. In addition, there is at least one comparable system [CLIP][clip] that is targeted at GNU Prolog, ([download CLIP][cldl]). While earlier implementations typically use a low level  of the relational arithmetic primitives, advances in computing technology enable this Prolog version of CLP(BNR) to achieve acceptable performance while maintaining a certain degree of platform independence (addressed by SWI-Prolog) and facilitating experimentation (no "building" required). [SWI-Prolog][swip] was used due it's long history (.ca 1987) as free, open-source software and for supporting `freeze` which is a key mechanism in implementing constrained logic variables.
+In the process of recreating this version of CLP(BNR) subsequent work in relational interval arithmetic has been used, in particular [Efficient Implementation of Interval Arithmetic Narrowing Using IEEE Arithmetic][ia1] and [Interval Arithmetic: from Principles to Implementation][ia2]. In addition, there is at least one comparable system [CLIP][clip] that is targeted at GNU Prolog, ([download CLIP][cldl]). While earlier implementations typically use a low level  of the relational arithmetic primitives, advances in computing technology enable this Prolog version of CLP(BNR) to achieve acceptable performance while maintaining a certain degree of platform independence (addressed by SWI-Prolog) and facilitating experimentation (no "building" required). [SWI-Prolog][swip] was used due it's long history (.ca 1987) as free, open-source software and for supporting attributed variables (`freeze` in previous versions of this repository) which is a key mechanism in implementing constrained logic variables.
 
 ## A Brief Introduction
 
-An interval in CLP(BNR) is a logic variable representing a set of real numbers between (and including) a numeric lower bound and upper bound. Intervals are declared using the `::` infix operator, e.g.,
+An interval in CLP(BNR) is a logic variable representing a closed set of real numbers between (and including) a numeric lower bound and upper bound. Intervals are declared using the `::` infix operator, e.g.,
 
 	?- X::real, [A,B]::real(0,1).
 	X = _2820::real(-1.7976931348623157e+308,1.7976931348623157e+308),
-	A = _2926::real(0.0,1.0),
-	B = _3032::real(0.0,1.0).
+	A = _2926::real(0,1),
+	B = _3032::real(0,1).
 
 Intervals are output by the Prolog listener in declaration form with the original variable name replaced with internal variable representation (the "frozen" logic variable). The current bounds values are arguments in a term whose functor is the type, e.g., `real` in the above example. Note that if bounds are not specified, the defaults are large, but finite, platform dependent values. The infinities (`inf` and `-inf`) are supported but must be specified in the declaration. 
 
@@ -114,7 +114,34 @@ Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 [cldl]:  http://interval.sourceforge.net/interval/index.html
 [swip]:  http://www.swi-prolog.org
 [bnrpp]: https://ridgeworks.github.io/BNRProlog-Papers
-	
+
+### Engineering Considerations
+
+Intervals are narrowed through a constraint propgation mechanism. When a new constraint is added, existing constraints must be checked and any intervals in those constraints may be narrowed. This iterative process normally continues until no further changes in interval values occur; the constraint network is now again in a stable state, and further constraints can now be added. Depending on the specific network, this could happen very quickly or take a very long time, particularly given the high precision of 64 bit floating point numbers.
+
+A simple example example is the quadratic equation `{X**2-2*X+1 == 0}` which has a single root at `X=1`. This will converge very, very slowly on the solution, in fact so slowly that few people will have the patience to wait for it, particularly when it be be easily solved by factoring the left hand side in a few seconds. To mitigate against this apparent non-termination, there is an internal limit on the number of narrowing operations that will executed after the addition of a constraint. Once this limit is exceeded, only intervals which narrow by a significant degree will cause the effects to be propagated to the other constraints. This stays in effect until the pending queue is emptied and the network is deemed stable. As a result, the intervals may not be narrowed to the full extent defined by the constraint network, but they will still contain and solutions and they will be generated in a reasonable time.
+
+The default value for the iteration limit is 10,000, and can be controlled by the Prolog flag `clpBNR_iteration_limit`. To demonstrate the effect, here's the query from the above paragraph:
+
+	?- clpStatistics,{X**2-2*X+1 == 0},clpStatistics(SS).
+	X = _142::real(0.999203058873612,1.0008048454187104),
+	SS = [userTime(0.33999999999991815), gcTime(0.025), globalStack(66968/126960), trailStack(9072/129016), localStack(1752/126976), inferences(1219376), primitiveCalls(10009), primitiveBacktracks(0), max_iterations(10002/10000)].
+
+So the interval bounds have narrowed to about 3 decimal places of precision using the default value. The `clpStatistics` shows that the maximum number of iterations has exceeded the default, indicating the iteration limiter has been activated (with an additional two narrowing operations required to clear the queue. To show the effects of increasing the limit:
+
+	?- set_prolog_flag(clpBNR_iteration_limit,100000),clpStatistics,{X**2-2*X+1 == 0},clpStatistics(SS).
+	X = _142::real(0.9999200380415186,1.000080055590477),
+	SS = [userTime(3.4500000000000455), gcTime(0.243), globalStack(24504/126960), trailStack(2464/129016), localStack(1752/126976), inferences(12176876), primitiveCalls(100009), primitiveBacktracks(0), max_iterations(100002/100000)].
+
+Another digit of precision has been achieved, but it still exceeded the limit and took ten times as long. Decreasing the limit has the opposite effect:
+
+	?- set_prolog_flag(clpBNR_iteration_limit,1000),clpStatistics,{X**2-2*X+1 == 0},clpStatistics(SS).
+	X = _142::real(0.9922274663638435,1.008428291162228),
+	SS = [userTime(0.03999999999996362), gcTime(0.003), globalStack(120624/126960), trailStack(17304/129016), localStack(1752/126976), inferences(123626), primitiveCalls(1009), primitiveBacktracks(0), max_iterations(1002/1000)].
+
+Generally, the default provides adequate precision for most problems, and in many cases, limiting isn't even activated. When the problem requires additional precision and `clpStatistics` indicates limiting has occurred, the limit can be adjusted using the Prolog flag. Keep in mind that any positive answer is conditional since it indicates that there is no contradiction detected at the level of precision used in the arithmetic operations. This is true whether or not limiting is activated.
+
+There is a second Prolog flag defined, `clpBNR_default_precision`, which affects the precision of answers returned from search predicates, e.g., `solve`. These predicates typically split intervals into sub-ranges to search for solutions and this flag determines how small the interval can get before splitting fails. The value of the flag roughly specifies the number of digits of precision. The default value is 6, which is adequate for most purposes. In some cases the solver supports an additional argument to override the default value for the scope that call.
 
 ## Getting Started
 
@@ -126,30 +153,35 @@ The SWI-Prolog package declaration is:
 		(::)/2,                % declare interval
 		{}/1,                  % add constraint
 		interval/1,            % filter for constrained var
-		list/1,                % for compatability
-		range/2,               % for compatability
+		numeric/1,             % filter for numeric Prolog terms: (integer;float;rational)
+		list/1,                % for compatibility
+		domain/2, range/2,     % for compatibility
 		lower_bound/1,         % narrow interval to point equal to lower bound
 		upper_bound/1,         % narrow interval to point equal to upper bound
 					   
-		% constraint operators
+		% additional constraint operators
 		op(200, fy, ~),        % boolean 'not'
 		op(500, yfx, and),     % boolean 'and'
 		op(500, yfx, or),      % boolean 'or'
 		op(500, yfx, nand),    % boolean 'nand'
 		op(500, yfx, nor),     % boolean 'nor'
 		op(500, yfx, xor),     % boolean 'xor'
-		op(700, xfx, <>),      % integer
+		op(700, xfx, <>),      % integer not equal
 		op(700, xfx, <=),      % set inclusion
 		op(700, xfx, =>),      % set inclusion
 					   
 		% utilities
 		print_interval/1,      % print interval as a list of bounds, for compaability, 
 		solve/1, solve/2,      % search intervals using split
+		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
+		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
+		minimize/3,            % minimize interval using user defined Solver
+		maximize/3,            % maximize interval using user defined Solver
 		enumerate/1,           % specialized search on integers
+		simplify/2,            % general purpose predicate for simplifying expressions of variables
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected
 		clpStatistics/1        % get all defined in a list
 		]).
 
-
-To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl` and `ia_utilities.pl`.
+To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
