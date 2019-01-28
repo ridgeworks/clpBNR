@@ -108,12 +108,13 @@ Here is the current set of operators and functions supported in this version:
 
 Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 
-[ia1]:   http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
-[ia2]:   http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
-[clip]:  https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
-[cldl]:  http://interval.sourceforge.net/interval/index.html
-[swip]:  http://www.swi-prolog.org
-[bnrpp]: https://ridgeworks.github.io/BNRProlog-Papers
+[ia1]:       http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
+[ia2]:       http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
+[clip]:      https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
+[cldl]:      http://interval.sourceforge.net/interval/index.html
+[swip]:      http://www.swi-prolog.org
+[bnrpp]:     https://ridgeworks.github.io/BNRProlog-Papers
+[clpBNR_UG]: https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
 
 ### Engineering Considerations
 
@@ -185,3 +186,5 @@ The SWI-Prolog package declaration is:
 		]).
 
 To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
+
+A (very) preliminary: [Guide to CLP(BNR)][clpBNR_UG]
