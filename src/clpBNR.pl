@@ -487,7 +487,7 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 clpStatistics :- !.
 
 :- initialization((
-	nl,write("*** clpBNR v0.7alpha ***"),nl,
+	nl,write("*** clpBNR v0.7.1alpha ***"),nl,
 	set_prolog_stack(global,min_free(8196)),
 	create_prolog_flag(clpBNR_iteration_limit,10000,[type(integer)]),
 	create_prolog_flag(clpBNR_default_precision,6,[type(integer)]),

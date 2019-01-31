@@ -73,6 +73,7 @@ recover_(log(X)/N, float_overflow, 1.0Inf).
 recover_(log(X), undefined, -1.0Inf)   :- X =:= 0.
 
 recover_(X*Y, float_overflow, Z)       :- Z is copysign(inf,sign(X)*sign(Y)).
+recover_(X*Y, undefined, Z)            :- Z is copysign(inf,sign(X)+sign(Y)).    % must be 0*inf ?
 
 recover_(X/Y, float_overflow, Z)       :- Z is copysign(inf,sign(X)*sign(Y)).
 recover_(X/Y, zero_divisor, Z)         :- Z is copysign(inf,X).
@@ -216,12 +217,6 @@ clpStatistic(narrowingFails(C)) :- g_read(evalNodeFail,C).
 	Zl is -Xh, Zh is -Xl.
 
 % Z := X * Y  (multiply)
-*([Xl, Xh], Y, [Xl, Xh]) :-
-	Xl =:= 0, Xh =:= 0, !.  % arithmetic test for X == [0,0]
-	
-*(X, [Yl,Yh], [Yl,Yh]) :-
-	Yl =:= 0, Yh =:= 0, !.  % arithmetic test for Y == [0,0] 
-	
 *(X, Y, Z) :-
 	intCase(Cx,X),
 	intCase(Cy,Y),

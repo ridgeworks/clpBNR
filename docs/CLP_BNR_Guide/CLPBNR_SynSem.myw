@@ -139,7 +139,7 @@ eg
 	?- X::real(L,0), X=fred.
 	false.
 
-Two intervals can be unified if their ranges intersect; the resulting interval's range is the intersection of the ranges of the two intervals being unified:
+Two intervals can be unified if the intersection of their ranges is non-empty:
 eg
 	?- X::real(-10,10), Y::real(0,100), X=Y.
 	X = Y, Y = _19160::real(0,10).
@@ -315,12 +315,12 @@ A final point on the unification of two intervals: when this occurs, the resulti
 
 #### Intervals with Infinite Bounds
 
-For completeness, it is possible to explicitly declare intervals with non-finite bounds (as shown above). But infinite bounds can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created automatically to construct complicated constraints from the defined set primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example (already discussed) that omits any bounds definitions:
+For completeness, it is possible to explicitly declare intervals with non-finite bounds (as shown above). But infinite bounds can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created automatically to construct complicated constraints from the defined set of primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example (already discussed) that omits any bounds specifications:
 eg
 	?- {1==X+2*Y, Y-3*X==0}.
 	X = _88532::real(-1.0Inf,1.0Inf),
 	Y = _89178::real(-1.0Inf,1.0Inf).
-No narrowing is possible because the arithmetic on infinite bounds just generates more infinities. But, as we've already seen, declaring `X` and `Y` to be finite resolves this issue:
+No narrowing is possible because the arithmetic on infinite bounds just generates more infinities. This can lead to the appearance of non-termination or even undefined value exceptions due to arithmetic using infinite operands, e.g., {`0*oo`}. But, as we've already seen, declaring `X` and `Y` to be finite generally resolves this issue:
 eg
 	?- [X,Y]::real, {1==X+2*Y, Y-3*X==0}.
 	X = _173336::real(0.14285714285714268,0.14285714285714302),
@@ -328,15 +328,16 @@ eg
 
 Another way of generating infinities is through arithmetic operations whose result is defined to be infinity, or by overflowing the supported 64-bit floating point range:
 eg
-	?- X::real,{Y==X/0}.
-	X = 0,
-	Y = _161068::real(-1.0Inf,1.0Inf).
+?- X::real,{Y==X/Z},Z=0.
+	X = _4882::real(-1.0e+154,1.0e+154),
+	Y = _5522::real(-1.0Inf,1.0Inf),
+	Z = 0.
 
 	?- X::real,{Y==X**3}.
 	X = _178786::real(-1.0e+154,1.0e+154),
 	Y = _179302::real(-1.0Inf,1.0Inf).
 
-Often infinities will disappear due to intersection with finite intervals. But it's always a good practice to write decalrations and constraints that prevent them from occurring in the first place.
+Often infinities will disappear due to intersection with finite intervals. But it's always a good practice to write declarations and constraints that prevent them from occurring in the first place.
 
 <#TableOfContents>
 
