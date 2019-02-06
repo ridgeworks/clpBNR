@@ -8,7 +8,7 @@ In the process of recreating this version of CLP(BNR) subsequent work in relatio
 An interval in CLP(BNR) is a logic variable representing a closed set of real numbers between (and including) a numeric lower bound and upper bound. Intervals are declared using the `::` infix operator, e.g.,
 
 	?- X::real, [A,B]::real(0,1).
-	X = _2820::real(-1.7976931348623157e+308,1.7976931348623157e+308),
+	X = _2820::﻿real(-1.0e+154,1.0e+154),
 	A = _2926::real(0,1),
 	B = _3032::real(0,1).
 
@@ -146,7 +146,28 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 ## Getting Started
 
-The SWI-Prolog package declaration is:
+If SWI-Prolog has not been installed, see [downloads][http://www.swi-prolog.org/Download.html].
+
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.7.4.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+
+	?- pack_install(clpBNR,[url(https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.7.4.zip)]).
+	﻿Verify package status (anonymously)
+		at "http://www.swi-prolog.org/pack/query" Y/n? 
+	Package:                clpBNR
+	Title:                  CLP over Reals using Interval Arithmetic - includes Integer and Boolean domains as subsets.
+	Installed version:      0.7.4
+	Author:                 Rick Workman <ridgeworks@mac.com>
+	Home page:              https://github.com/ridgeworks/clpBNR_pl
+	Install "clpBNR-0.7.4.zip" (26,826 bytes) Y/n? 
+	
+	﻿?- use_module(library(clpBNR)).
+	
+	*** clpBNR v0.7.4alpha ***
+	true.
+   
+Or if the respository has been down dowloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
+
+The `clpBNR` module declaration is:
 
 	:- module(clpBNR,          % SWI module declaration
 		[
@@ -185,6 +206,5 @@ The SWI-Prolog package declaration is:
 		clpStatistics/1        % get all defined in a list
 		]).
 
-To load CLP(BNR) on SWI-Prolog, consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
 
-A (very) preliminary: [Guide to CLP(BNR)][clpBNR_UG]
+A (very) preliminary and incomplete [Guide to CLP(BNR)][clpBNR_UG].

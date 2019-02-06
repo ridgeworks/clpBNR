@@ -492,9 +492,8 @@ By sharing the same fundamental framework based on numeric intervals, CLP(BNR) e
 
 Given sufficient constraints, it's possible to narrow an interval to a small range determined by the precision of the underlying arithmetic system, and, in some cases, to a single point value (which is then just unified with the original logic variable). Additional utility predicates like `solve/1` and `enumerate/1` can be used to search for multiple solutions or force narrowing in cases where the internal constraint propogation is too weak or dependency issues are present.
 
-The following sections ...
-
 <#TableOfContents>
+
 // demoH
 	`L`{`<=X<=`}`U`
 &
