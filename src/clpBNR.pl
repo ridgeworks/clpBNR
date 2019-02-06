@@ -399,7 +399,7 @@ stable_(Agenda) :-
 
 stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
 	nb_getval(clpBNR_iterations_,Cur),      % maintain "low" water mark (can be negative)
-	(OpsLeft<Cur -> nb_setval(clpBNR_iterations_,OpsLeft);true).
+	(OpsLeft<Cur -> nb_linkval(clpBNR_iterations_,OpsLeft);true).  % nb_linkval OK for numbers
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	doNode_(Node, OpsLeft, Agenda/T, NewAgenda), !,
 	nb_setarg(3,Node,0),                    % reset linked bit
@@ -448,6 +448,9 @@ update_values_([P|PrimArgs], [N|New], [A|Args], OpsLeft, Agenda, NewAgenda) :-
 % Any changes in interval values should come through here.
 %
 updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value
+updateValue_(_Old, [Pt,Pt], Rat, _, Agenda, Agenda) :-              % could be just equivalent rational 
+	rational(Rat), !,
+	Rat =:= Pt.  % should always be true
 updateValue_(_Old, [Pt,Pt], Int, _, Agenda, NewAgenda) :- !,        % Point value ==> update value
 	putValue_([Pt,Pt], Int, Nodelist),  % ignore node list, will run via 'instantiate' node
 	linkNode_(Agenda,node(instantiate,P,L,Int,Pt), NewAgenda).      % add 'instantiate' node to Agenda
@@ -487,7 +490,7 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 clpStatistics :- !.
 
 :- initialization((
-	nl,write("*** clpBNR v0.7.1alpha ***"),nl,
+	nl,write("*** clpBNR v0.7.3alpha ***"),nl,
 	set_prolog_stack(global,min_free(8196)),
 	create_prolog_flag(clpBNR_iteration_limit,10000,[type(integer)]),
 	create_prolog_flag(clpBNR_default_precision,6,[type(integer)]),

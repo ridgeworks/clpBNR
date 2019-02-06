@@ -131,8 +131,7 @@ clpStatistic(inferences(I)) :- statistics(inferences,I1), nb_getval(inferences_,
 
 % zero/increment/read global counter
 g_zero(G)   :- nb_setval(G,0).
-% g_inc(G)    :- nb_getval(G,N), N1 is N+1, nb_setval(G,N1).
-g_inc(G)    :- nb_getval(G,N), succ(N,N1), nb_setval(G,N1). % measured as slightly faster
+g_inc(G)    :- nb_getval(G,N), succ(N,N1), nb_linkval(G,N1).  % measured as slightly faster
 g_read(G,C) :- nb_getval(G,C).
 
 %
