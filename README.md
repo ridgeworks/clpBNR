@@ -113,6 +113,7 @@ Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 [clip]:      https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
 [cldl]:      http://interval.sourceforge.net/interval/index.html
 [swip]:      http://www.swi-prolog.org
+[swipdl]:    http://www.swi-prolog.org/Download.html
 [bnrpp]:     https://ridgeworks.github.io/BNRProlog-Papers
 [clpBNR_UG]: https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
 
@@ -146,7 +147,7 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 ## Getting Started
 
-If SWI-Prolog has not been installed, see [downloads][http://www.swi-prolog.org/Download.html].
+If SWI-Prolog has not been installed, see [downloads][swipdl].
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.7.4.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
