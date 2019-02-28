@@ -150,7 +150,7 @@ If SWI-Prolog has not been installed, see [downloads][http://www.swi-prolog.org/
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url(https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip)]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip')]).
 	﻿Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
