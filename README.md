@@ -146,7 +146,7 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 ## Getting Started
 
-If SWI-Prolog has not been installed, see [downloads][http://www.swi-prolog.org/Download.html].
+If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html).
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
