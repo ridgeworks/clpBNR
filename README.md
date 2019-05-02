@@ -149,9 +149,9 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html).
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1.zip')]).
 	﻿Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
