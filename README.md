@@ -1,5 +1,5 @@
 # CLP(BNR)
-This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix that has been lost (at least to the original implementors) so this is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environment (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
+This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix. (For a source archive of the last release of BNR Prolog, see [BNR Prolog Source Archive][BNRParchive].) This is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environment (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
  
 In the process of recreating this version of CLP(BNR) subsequent work in relational interval arithmetic has been used, in particular [Efficient Implementation of Interval Arithmetic Narrowing Using IEEE Arithmetic][ia1] and [Interval Arithmetic: from Principles to Implementation][ia2]. In addition, there is at least one comparable system [CLIP][clip] that is targeted at GNU Prolog, ([download CLIP][cldl]). While earlier implementations typically use a low level  of the relational arithmetic primitives, advances in computing technology enable this Prolog version of CLP(BNR) to achieve acceptable performance while maintaining a certain degree of platform independence (addressed by SWI-Prolog) and facilitating experimentation (no "building" required). [SWI-Prolog][swip] was used due it's long history (.ca 1987) as free, open-source software and for supporting attributed variables (`freeze` in previous versions of this repository) which is a key mechanism in implementing constrained logic variables.
 
@@ -108,13 +108,14 @@ Here is the current set of operators and functions supported in this version:
 
 Further explanation and examples can be found at [BNR Prolog Papers][bnrpp].
 
-[ia1]:       http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
-[ia2]:       http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
-[clip]:      https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
-[cldl]:      http://interval.sourceforge.net/interval/index.html
-[swip]:      http://www.swi-prolog.org
-[bnrpp]:     https://ridgeworks.github.io/BNRProlog-Papers
-[clpBNR_UG]: https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
+[ia1]:         http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
+[ia2]:         http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
+[clip]:        https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
+[cldl]:        http://interval.sourceforge.net/interval/index.html
+[swip]:        http://www.swi-prolog.org
+[bnrpp]:       https://ridgeworks.github.io/BNRProlog-Papers
+[clpBNR_UG]:   https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
+[BNRParchive]: https://github.com/ridgeworks/BNRProlog-Source-Archive
 
 ### Engineering Considerations
 
@@ -148,9 +149,9 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html).
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip')]).
 	﻿Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
@@ -158,11 +159,11 @@ If you do not want to download this entire repo, a package can be installed usin
 	Installed version:      0.8
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.8.zip" (26,826 bytes) Y/n? 
+	Install "clpBNR-0.8.1zip" (26,826 bytes) Y/n? 
 	
 	﻿?- use_module(library(clpBNR)).
 	
-	*** clpBNR v0.8alpha ***
+	*** clpBNR v0.8.1alpha ***
 	true.
    
 Or if the respository has been down dowloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.

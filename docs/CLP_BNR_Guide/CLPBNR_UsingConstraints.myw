@@ -1,0 +1,678 @@
+###  Constraint Based Logic Programming
+
+It's not always apparent when constraints can be used efectively to solve a problem. This section uses a number of examples which can be used as patterns to evaluate the use of constraints as an effective solution. The techniques decscribed in the section should be applicable to any CLP implementation depending on the domains supported.
+
+#### Transitive Closure
+
+"The [transitive closure] of a binary relation *R* on a set *X* is the smallest relation on *X* that contains *R* and is transitive." For example if *X* is a set of cities and the relation *R* between two cities means there is a direct flight between them, the transitive closure is the relation defining two cities which are connected by one or more flights.
+
+Among other things, the general notion of tranistive closure can be used to determine reachability in a graph (*R* defines nearest neighbour) or the functional dependance between attributes in a database (*R* specifies which attributes are a direct consequence of other attributes).
+
+An implementation of transitive closure using Prolog lists is fairly straight forward:
+eg
+	closure(In, RList, Out) :-
+		clos(RList, In, UOut),  % generate and test
+		sort(UOut,Out).         % sort for presentation purposes
+
+	clos(Rs, In, Out) :-
+		member((I -> O), Rs),   % select R: I -> O
+		subset(I, In),          % if I is a subset of In and
+		not(subset(O, In)),     % O is not already a subset of In, 
+		union(O, In, In1), !,   % add O to In
+		clos(Rs, In1, Out).     % and repeat
+	clos(Rs, Out, Out).         % quit
+
+Here the binary relation is assumed to be of the form `I -> O`. As an example, here's a list of functional dependancies of a hypothetical database whose attributes are labelled `a` to `k`.
+eg
+	fdList([
+		[a] -> [b, e, f, g],
+		[a, c, d, i] -> [h],
+		[c, d] -> [j],
+		[c, d, f] -> [k],
+		[b] -> [g],
+		[c, f] -> [a, b, e],
+		[a, c] -> [d],
+		[a, d] -> [c],
+		[e, g] -> [b]
+	]).
+This says the value of attribute `a` directly determines the values of attributes `b`, `e`, `f`, and `g`. The collective values of attributes `a`, `c`, `d`, and `i` determine the value of attribute `h`, etc.
+
+With this defintion of *R*, `closure/3` can be used to ask "What is the set of attrributes that can uniquely (directly or indirectly) be determind from the value of `a`?". (the binding of `FDs` has been omitted for clarity.)
+eg
+	?- fdList(FDs), closure([a], FDs, O).
+	O = [a,b,e,f,g].
+Other examples:
+eg
+	?- fdList(FDs), closure([c,d,f], FDs, O).
+	O = [a,b,c,d,e,f,g,j,k].
+
+	?- fdList(FDs), closure([c,d], FDs, O).
+	O = [c,d,j].
+
+	?- fdList(FDs), closure([b], FDs, O).
+	O = [b,g].
+
+	?- fdList(FDs), closure([a,c,d,i], FDs, O).
+	O = [a,b,c,d,e,f,g,h,i,j,k].
+
+Implementing transitive closure using constraints requires a different pespective. The general pattern for dealing with this class of combinatoric problems is:
+1..
+	* Set up the data structures and the declarations for the principle variables. 
+	* Set up all the constraints. This part should be strictly deterministic; any non-determinism should be postponed until step 3.
+	* Proceed to the enumeration of constrained variables, or other non-deterministic bits. The bulk of the execution time will normally be spent in this section on difficult combinatorial problems, so it should generally not be doing anything other than enumeration. Step 1 should have built data structures so that it is easy to extract the enumeration variables.
+	* Once the solution is obtained, there is usually some code required to capture the answer in a suitable form, e.g., for presentation on the terminal or writing to a file.
+
+We'll assume for now that the same `fdList` fact will be used for defining the relation, and the input and output will be the same as the initial Prolog program. However, in step 2 we need to build an intermediate data structure containing constrained variables that can be "enumerated" in step 3. For this purpose, a list of `label=Boolean` pairs will be used. `label` is the attribute name, e.g., `a`,`b`,`c`, etc. The meaning of the associated `Boolean` is as follows: if the variable is `1`, `label` is "reachable", otherwise it isn't. Constraints will be generated from the list of `I->O`'s. For example, `[c, f] -> [a, b, e]` will generate the equivalent of the following constraints:
+eg
+	{
+		(C and F -> A),
+		(C and F -> B),
+		(C and F -> E)
+	}
+where `A` is the boolean variable associated with `a`, `B` with `b`, and so on. "`->`" is reused as the constraint operator for boolean implication (`=<` could also be used).
+
+aside> Aside: The somewhat unnatural use of parentheses in the `{}` constraint expression is necessitated by the ruse of the '`->`' operator which has lower binding precedence than '`,`' in most standard Prologs.
+
+The enumeration step (3) just requires that the boolean variable associated with each input `label` is set to `1`; the constraint network will do the rest by propagating 1's to each of the "reachable" labels. Then the output list is just the list of `label`'s whose `Boolean`'s are 1. This constraint based solution looks like:
+
+eg
+	closureCI(In, Rs, Out) :-
+		extract_labels(Rs, [], Labels),  % extract labels from Rs and associate booleans
+		clos_constrain(Rs,Cs),           % define constraints
+		set_bools_(In,Cs),               % initial set
+		get_names_(Cs,UOut),             % retrieve all "reachable"
+		sort(UOut,Out).                  % sort for presentation purposes
+
+	extract_labels([], Labels, Labels).
+	extract_labels([I->O|FDList], In, Labels) :-
+		extract_labels(I,In,In1),
+		extract_labels(O,In1,In2), !,
+		extract_labels(FDList, In2, Labels).
+	extract_labels([L|List], In, Labels) :-
+		memberchk(L=_,In), !,  % already defined so skip
+		extract_labels(List, In, Labels).
+	extract_labels([L|List], In, Labels) :-
+		extract_labels(List, [L=B|In], Labels).  % add label definition
+
+	clos_constrain([],_).
+	clos_constrain([I->O|Rs],Cs) :-
+		clos_ins_(I,IExp,Cs),
+		clos_outs(O,IExp,Cs),
+		clos_constrain(Rs,Cs).
+
+	clos_ins_([A],AV,Cs) :- memberchk(A=AV,Cs),!.
+	clos_ins_([A|As],AV and B,Cs) :- memberchk(A=AV,Cs), !, clos_ins_(As,B,Cs).
+
+	clos_outs([],IExp,Cs).
+	clos_outs([O|Os],IExp,Cs) :-
+		memberchk(O=OV,Cs), !,
+		{IExp -> OV},
+		clos_outs(Os,IExp,Cs).
+
+	set_bools_([],FDs).
+	set_bools_([N|Ns],FDs) :-
+		memberchk(N=1,FDs), !,  % finds N=Bn and unifies Bn with 1, use deterministic version
+		set_bools_(Ns,FDs).
+
+	get_names_([],[]) :- !.
+	get_names_([N=0|FDs],Out) :- !,       % false (not set)
+		get_names_(FDs,Out).
+	get_names_([N=1|FDs],[N|Out]) :-      % true
+		get_names_(FDs,Out).
+
+Using the same `fdList` data:
+eg
+	?- fdList(FDs), closureCI([a], FDs, O).
+	O = [a,b,e,f,g].
+
+	?- fdList(FDs), closureCI([c,d,f], FDs, O).
+	O = [a,b,c,d,e,f,g,j,k].
+
+	?- fdList(FDs), closureCI([c,d], FDs, O).
+	O = [c,d,j].
+
+	?- fdList(FDs), closureCI([b], FDs, O).
+	O = [b,g].
+
+	?- fdList(FDs), closureCI([a,c,d,i], FDs, O).
+	O = [a,b,c,d,e,f,g,h,i,j,k].
+
+But notice that the amount of code has increased, in part because the initial Prolog version was able to take advantage of the predicates `subset/2` and `union/3` in the `lists` utility package. The constraint version doesn't need these, but instead constraints have to be constructed from the data (steps 1 and 2); a step which was unnecessary in the original version. And it also needs to build a suitable output form (step 4) from the constraint data structure (list of `label=Boolean`'s).
+
+Some of this code also depends on the format of the original data, i.e., `fdList/1`. It's worth noting that it's not much more difficult to hand build the constraints rather than use the original data (note that there is no need to declare the constrained variables as `boolean` since that's implied by the operators in the constraint expressions):
+eg
+	fdConstraints([a=A,b=B,c=C,d=D,e=E,f=F,g=G,h=H,i=I,j=J,k=K]) :-
+		{	(A -> B), (A -> E), (A -> F), (A -> G),
+			(A and C and D and I -> H),
+			(C and D -> J),
+			(C and D and F -> K),
+			(B -> G),
+			(C and F -> A), (C and F -> B), (C and F -> E),
+			(A and C -> D),
+			(A and D -> C),
+			(E and G -> B)
+		}.
+and now (this time exposing the internal constraints data structure):
+eg
+	?- fdConstraints(Cs), set_bools_([c,d,f],Cs), get_names_(Cs,O).
+	Cs = [a=1,b=1,c=1,d=1,e=1,f=1,g=1,h=0,i=0,j=1,k=1],
+	O = [a,b,c,d,e,f,g,j,k].
+
+So the bulk of the work has shifted to the construction of the constraint network. But, for the most part, this code is deterministic and relatively easy to write, test, and debug. A simple test procedure is just to specify one or more correct answers which, of course, must satisfy the constraints.
+
+There is also a potential significant upside on performance if constraints are used. Boolean satisfiability is the paradigm NP-complete problem: in the worst case one may need to explore `2**N` branches if there are `N` boolean variables to enumerate. The effect of constraints is to reduce this to `2**M` where `M<N`, at the cost of value propagation in the constraint network. But every constraint that forces a variable (thereby avoiding one choice) halves the overall cost.
+
+<#TableOfContents>
+
+#### Structural Analysis of Petri nets
+
+[Petri nets] are widely used to model discrete control systems, transaction systems, and communications protocols. A Petri net consists of a net together with a marking which represents the state of the net. The net is a bipartite graph consisting of places and transitions connected by directed arcs. Arcs connect places to transitions and transitions to places. A marking is a distribution of tokens over the places. Any transition may have input places (where the arc is directed from the place to the transition) and output places (arc from transition to place). A transition can fire if all of its input
+places have at least one token; firing a transaction removes a token from each input and puts a token into each output place. In general the evolution of the state is non-deterministic as there may be many transitions that can fire for any given marking.
+
+Structural analysis studies properties that depend only on the topology of the network independent of marking. Of particular
+importance are structural properties that determine behavioural possibilities, e.g., deadlock. One such property is a *siphon* A Petri net (and hence the process it is modelling) is deadlock free if none of the siphons in the net can be emptied of tokens. Thus, a sub-problem of the structural analysis of a Petri net is to identify all the siphons.
+
+A siphon is defined as a (non-empty) list of the places such that every transition that inputs to it also outputs to it. So for a siphon {`S`} and each transition {`t`}:
+`	`{`outputs(t) nn S <> O/ -> i\nputs(t) nn S <> O/`}
+or equivalently:
+`	`{`i\nputs(t) nn S = O/ -> outputs(t) nn S = O/`}
+For each place create a boolean variable `B` interpreted as `B=0` means that it is in the siphon S. Then for each transition `I -> 0`,  map `I` and `O` to their respective associated list of booleans `IB` and translate the above condition to `IB -> OB`. 
+
+Further, let's constrain a siphon to be at least two places but not all the places using the [`cardinality`] predicate defined earlier. The program:
+eg
+	siphon(List_of_names):-
+		places(Places),
+		map_table(Places, Map, Bs),
+		findall(T, transition(T), Tlist),   % collect transitions in a list
+		map_transitions(Tlist, Map),        % (step 2) define constraints:  definition of siphon
+		length(Places,Np),                  %  and a siphon is not [] or all the places
+		cardinality(Bs,2,Np-1),
+		enumerate(Bs),                      % (step 3)
+		select_names(Map, List_of_names).   % (step 4)
+
+	% build 'symbol table' of Place=Boolean for mapping place names, export boolean vector
+	map_table([],[],[]).
+	map_table([P|Ps], [P=B|Ms], [B|Bs]):- 
+		map_table(Ps,Ms,Bs).
+
+	map_transitions([],_).
+	map_transitions([I -> O|Ts], Map):-
+		map_places(I,Map,IB),  % IB is symbolic conjunction of I
+		map_places(O,Map,OB),  % OB is symbolic conjunction of O
+		{IB -> OB},            % for any transition, no inputs in siphon implies no outputs in siphon
+		map_transitions(Ts, Map).
+
+	map_places([],_,1).  % conjunction so [] is 'true'
+	map_places([P|Ps], Map, PB and B):- 
+		memberchk(P=PB, Map), !,
+		map_places(Ps,Map,B).
+
+	% convert solution to list of place names
+	select_names([], []).
+	select_names([P=0|Ms], [P|Ps]) :- !, select_names(Ms,Ps).  % B=0 means P is in the siphon
+	select_names([P=1|Ms], Ps)     :- select_names(Ms,Ps).     % P not in the siphon
+An example Petri net:
+eg
+	places([a,b,c,d,e,f,g,h,i,j,k]).
+
+	transition([a,d] -> [c]).
+	transition([c] -> [b,d]).
+	transition([b] -> [a]).
+	transition([b] -> [d,e,h]).
+	transition([e] -> [f,i]).
+	transition([f] -> [g]).
+	transition([g] -> [e]).
+	transition([i,j] -> [h,k]).
+	transition([k] -> [j]).
+and its siphons:
+eg
+	?- siphon(X),X\=[],writeln(X),fail.
+	[a,b,c,d,e,f,g,h,i,k]
+	[a,b,c,d,e,f,g,h,i]
+	[a,b,c,d,e,f,g,h,j,k]
+	[a,b,c,d,e,f,g,i,j,k]
+	[a,b,c,d,e,f,g,i,k]
+	[a,b,c,d,e,f,g,i]
+	[a,b,c,d,e,f,g,j,k]
+	[a,b,c,d,e,f,g]
+	[a,b,c,d,h,j,k]
+	[a,b,c,d,j,k]
+	[a,b,c,d]
+	[a,b,c,e,f,g,h,i,j,k]
+	[a,b,c,e,f,g,h,i,k]
+	[a,b,c,e,f,g,h,i]
+	[a,b,c,e,f,g,h,j,k]
+	[a,b,c,e,f,g,i,j,k]
+	[a,b,c,e,f,g,i,k]
+	[a,b,c,e,f,g,i]
+	[a,b,c,e,f,g,j,k]
+	[a,b,c,e,f,g]
+	[a,b,c,h,j,k]
+	[a,b,c,j,k]
+	[a,b,c]
+	[b,c,d,e,f,g,h,i,j,k]
+	[b,c,d,e,f,g,h,i,k]
+	[b,c,d,e,f,g,h,i]
+	[b,c,d,e,f,g,h,j,k]
+	[b,c,d,e,f,g,i,j,k]
+	[b,c,d,e,f,g,i,k]
+	[b,c,d,e,f,g,i]
+	[b,c,d,e,f,g,j,k]
+	[b,c,d,e,f,g]
+	[b,c,d,h,j,k]
+	[b,c,d,j,k]
+	[b,c,d]
+	[j,k]
+	false.
+A minimal siphon is a siphon which doesn't contain another siphon. To find the list of minimal siphons from the list of siphons:
+eg
+	minimal_siphons(Siphons,Minimal) :-
+		minimal_siphons_(Siphons,[],Minimal).
+
+	minimal_siphons_([],Minimal,Minimal).
+	minimal_siphons_([S|Ss],Mins,Minimal) :-
+		contains_subset(Ss,S), !,              % succeeds if a member of Ss is a subset of S
+		minimal_siphons_(Ss,Mins,Minimal).
+	minimal_siphons_([S|Ss],Mins,Minimal) :-   % S must be a minimal siphon
+		minimal_siphons_(Ss,[S|Mins],Minimal).
+
+	contains_subset([S1|Ss],S) :-
+		subset(S1,S),!.
+	contains_subset([S1|Ss],S) :-
+		contains_subset(Ss,S).
+and use `findall/3`:
+eg
+	?- findall(S,siphon(S),Ss),minimal_siphons(Ss,Mins).
+	Ss = [[a,b,c,d,e,f,g,h,i,k],[a,b,c,d,e,f,g,h,i],[a,b,c,d,e,f,g,h,j,k],[a,b,c,d,e,f,g,i,j,k],[a,b,c,d,e,f,g,i,k],[a,b,c,d,e,f,g,i],[a,b,c,d,e,f,g,j,k],[a,b,c,d,e,f,g],[a,b,c,d,h,j,k],[a,b,c,d,j,k],[a,b,c,d],[a,b,c,e,f,g,h,i,j,k],[a,b,c,e,f,g,h,i,k],[a,b,c,e,f,g,h,i],[a,b,c,e,f,g,h,j,k],[a,b,c,e,f,g,i,j,k],[a,b,c,e,f,g,i,k],[a,b,c,e,f,g,i],[a,b,c,e,f,g,j,k],[a,b,c,e,f,g],[a,b,c,h,j,k],[a,b,c,j,k],[a,b,c],[b,c,d,e,f,g,h,i,j,k],[b,c,d,e,f,g,h,i,k],[b,c,d,e,f,g,h,i],[b,c,d,e,f,g,h,j,k],[b,c,d,e,f,g,i,j,k],[b,c,d,e,f,g,i,k],[b,c,d,e,f,g,i],[b,c,d,e,f,g,j,k],[b,c,d,e,f,g],[b,c,d,h,j,k],[b,c,d,j,k],[b,c,d],[j,k]],
+	Mins = [[j,k],[b,c,d],[a,b,c]].
+
+A complementary concept to a siphon in a Petri net is a trap: a (non-empty) list of the places such that every transition that outputs to it also inputs from it. If a trap ever contains tokens, it will always contain tokens. The program above can be trivially converted to finding traps by reversing the transition constraint, i.e., `{OB -> IB}` instead of `{IB -> OB}`.
+
+For more on siphons and traps in Petri nets see [Siphons and Traps Structural Analysis Techniques Behaviour of a Petri Nets].
+
+<#TableOfContents>
+
+#### "Money" Cryptographic Puzzle
+
+There are numerous constraint puzles in the integer domain and one of the classics is "SEND MORE MONEY" which finds values corresponding to the letters in the sum:
+		 SEND
+		+MORE
+		-----
+		MONEY
+Leading 0's are not allowed so the constraints are defined by:
+eg
+	sendmoremoney([S,E,N,D,M,O,R,Y]) :-
+		[S,M]::integer(1,9),           % no leading 0's on any number
+		[E,N,D,O,R,Y]::integer(0,9),
+		distinct([S,E,N,D,M,O,R,Y]),   % all variables distinct
+		{	          1000 *(S+M)+ 100 *(E+O)+ 10 *(N+R) + (D+E) ==
+			10000*M + 1000 *   O + 100 *   N + 10 *   E  +  Y }.
+
+		distinct([]) .
+		distinct([X|Xs]):- distinct(Xs,X), distinct(Xs).
+		
+		distinct([],_).
+		distinct([X|Xs],Y):- {X<>Y}, distinct(Xs,Y).
+
+The constraints by themselves are insufficient to produce a solution:
+eg
+	?- sendmoremoney([S,E,N,D,M,O,R,Y]).
+	S = 9,
+	E = _978874::integer(2,8),
+	N = _978970::integer(2,8),
+	D = _979066::integer(2,8),
+	M = 1,
+	O = 0,
+	R = _979258::integer(2,8),
+	Y = _979354::integer(2,8).
+But solving (searching) for `E` produces the answer:
+eg
+	?- sendmoremoney([S,E,N,D,M,O,R,Y]),solve(E).
+	S = 9,
+	E = 5,
+	N = 6,
+	D = 7,
+	M = 1,
+	O = 0,
+	R = 8,
+	Y = 2 
+	false.
+The result may depend on which letter is chosen, for example:
+eg
+	?- clpStatistics,sendmoremoney([S,E,N,D,M,O,R,Y]),solve(D),clpStatistics(SS).
+	S = 9,
+	E = _1346188::integer(3,8),
+	N = _1346284::integer(3,8),
+	D = 2,
+	M = 1,
+	O = 0,
+	R = _1346572::integer(3,8),
+	Y = _1346668::integer(3,8),
+and this is just the first such answer. In fact just solving for `D` will not produce the desired solution. When in doubt, `solve/1` can be used on more than one (or all) of the variables:
+eg
+	?- sendmoremoney([S,E,N,D,M,O,R,Y]),solve([S,E,N,D,M,O,R,Y]).
+	S = 9,
+	E = 5,
+	N = 6,
+	D = 7,
+	M = 1,
+	O = 0,
+	R = 8,
+	Y = 2 
+	false.
+
+`solve/1` is a general purpose predicate that can be used for both `real` and `integer` (including `boolean`) intervals. (If the number of intervals and their domain sizes  are small, `enumerate/1` may be slightly more efficient.)
+
+The implmentation of `<>` in CLP(BNR) is not particularly effective since domains cannot be a set of disjoint ranges as in some other finite domain constraint systems. Problems that fit into this problem space and where efficiency is a concern, would be better solved by a different CLP package.
+
+#### Magic Series
+
+A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, M1, ... Mn]` such that `T` contains `M0` occurences of `0`, `M1` occurences of `M1`, ... , and `Mn` occurences of `Mn`. The first problem is to define what `M` occurences of a member of a list means in terms of constraints. One possibilty is to use the cardinality concept to count boolean variables which indicate whether the corresponding item is an occuence or not:
+
+eg
+	occurrences(X,List,N):- 
+		N::integer(0,_),           % number of occurences is positive
+		occurrenceBs_(List,X,Bs),  % create booleans which are true if corresponding list element is an occurence
+		sym_sum(Bs,S), {N == S}.   % sum booleans to find number of occurences
+
+	occurrenceBs_([], _, []).
+	occurrenceBs_([X|Xs], Y, [B|Bs]) :- 
+		{B == (X==Y)},             % B is true if X is an occurence of Y
+		occurrenceBs_(Xs,Y,Bs).
+
+	sym_sum([], 0).
+	sym_sum([X|Xs], X+S) :- sym_sum(Xs, S).
+Note the boolean constraint `{B == (X==Y)}` which means `B` is `1` (true) if `X` (a member of `List`) is numerically equal to `Y` even though `X` and `Y` are unknown. Given this defintion of `occurences/3`, it's straight forward to specify the constraints of a magic series of length `N`:
+eg
+	magic_series1(N, Ks) :- 
+		length(Ks,N), Ks::integer(0,N),
+		magic_(Ks, 0, Ks).
+
+	magic_([], N, _).
+	magic_([K|Ks],N,KS):- 
+		occurrences(N, KS, K),
+		N1 is N+1,
+		magic_(Ks,N1,KS).
+For `N=4` and `N=10`:
+	?- magic_series1(4,M),enumerate(M).
+	M = [1,2,1,0] 
+	M = [2,0,2,0] 
+	false.
+	
+	?- magic_series1(10,M),enumerate(M).
+	M = [6,2,1,0,0,0,1,0,0,0] 
+	false.
+
+	?- clpStatistics,magic_series(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_140::integer(0,10),_174::integer(0,10),_208::integer(0,10),_242::integer(0,10),_276::integer(0,10),
+	     _310::integer(0,10),_344::integer(0,10),_378::integer(0,10),_412::integer(0,10),_446::integer(0,10)],
+	Ms = [[6,2,1,0,0,0,1,0,0,0]],
+	SS = [userTime(0.8800000000000097),gcTime(0.088),globalStack(112376/1044464),trailStack(28008/522232),localStack(1752/249720),
+	inferences(4277916),narrowingOps(65629),narrowingFails(73),max_iterations(22/10000)].
+
+Looking at the statistics for `N=10`, we see that finding the single solution tooke 65629 narrowing operations with 73 failures. In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
+eg
+	magic_series2(N, Ks) :-
+		length(Ks,N), Ks::integer(0,_),
+		sym_sum(Ks, S), {S==N},            % <== redundant constraint
+		magic_(Ks, 0, Ks).
+Now:
+eg
+	?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_140::integer(0,10),_174::integer(0,10),_208::integer(0,10),_242::integer(0,10),_276::integer(0,10),
+	     _310::integer(0,10),_344::integer(0,10),_378::integer(0,10),_412::integer(0,10),_446::integer(0,10)],
+	Ms = [[6,2,1,0,0,0,1,0,0,0]],
+	SS = [userTime(0.3499999999999943),gcTime(0.021),globalStack(117088/1044464),trailStack(66152/522232),localStack(1752/118648),
+	inferences(1781494),narrowingOps(23924),narrowingFails(41),max_iterations(172/10000)].
+By forcing earlier failure during the enumeration, the redundant constraint reduces the number of narrowing operations by almost a factor of 3. This more than outweighs the additional cost of creating and checking that constraint.
+
+One can take this even further by noting that `N` also equals the sum of `M*Mn`:
+eg
+	magic_series3(N, Ks) :-
+		length(Ks,N), Ks::integer(0,_),
+		sum(Ks, S), {S==N},            % <== redundant constraint
+		sumProd_(Ks, 0, M), {M==N},    % <== second redundant constraint
+		magic_(Ks, 0, Ks).
+
+	sumProd_([], _, 0).
+	sumProd_([K|Ks], N, K*N+S):-  % summation of j*K(j), j=0,N-1
+		N1 is N+1,
+		sumProd_(Ks,N1,S).
+leading to almost a further factor of 4:
+eg
+	?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_140::integer(0,10),_174::integer(0,10),_208::integer(0,5),_242::integer(0,3),_276::integer(0,2),
+	     _310::integer(0,2),_344::boolean,_378::boolean,_412::boolean,_446::boolean],
+	Ms = [[6,2,1,0,0,0,1,0,0,0]],
+	SS = [userTime(0.13000000000000966),gcTime(0.002),globalStack(319672/1044464),trailStack(78376/522232),localStack(1752/118648),inferences(596842),narrowingOps(6341),narrowingFails(41),max_iterations(88/10000)].
+Note that the problem is considerably constrained (see domains of `M`) even before the enumeration step.
+
+The lesson here is that even though redundant constraints may not be necessary to finding solutions, they can considerably speed up the enumeration process and may even make it unnecessary.
+
+<#TableOfContents>
+
+#### Bin Packing
+
+A bin packing problem is one where one is given an assortment of objects of different types which are to be grouped into "bins" and where there are restrictions on the number and type of objects that can be placed in a bin. Such problems are often good abstract models for practical problems arising in the configuration of complex systems, and nicely illustrate the interaction of boolean and (usually) integer constraints.
+
+The challenge of using constraints on such problems is often that of mapping a symbolic or informal description to numeric constraints. As an example consider packing items which may be glass, plastic, steel, wood, or copper into red, green, and blue bins subject to the following constraints:
+eg
+	requires(wood, plastic).        % a wood item requires a plastic item in the same bin
+	excludes(glass, copper).        % a copper item can't be in the same bin as a glass item
+	excludes(copper, plastic).      %    or a plastic item
+
+	capacity(red, 3).               % total number of items in each type of bin
+	capacity(blue, 1).
+	capacity(green, 4).
+
+	capacity(red, wood, 1).         % at most 1 wood item in any red bin
+	capacity(red, steel, 0).        % no steel items in a red bin
+	capacity(red, plastic, 0).      % etc.
+	capacity(green, wood, 2).
+	capacity(green, glass, 0).
+	capacity(green, steel, 0).
+	capacity(blue, wood, 0).
+	capacity(blue, plastic, 0).
+	
+If the red, green and blue bin types are mapped to integers 1 to 3, then booleans can be used "condition" the sum constraints. Further `requires`, `excludes` and the capacity constraints can be mapped to constraints on numeric values. The definition of a bin with `Type`, `Contents` (a list of integers, one for each type of commodity), and `Total`, the number of items in the bin, can be specified by:
+eg
+	bin_types([red,green,blue]).
+
+	commodities([glass, plastic, steel, wood, copper]).
+
+	bin(Type, Contents, Total):-
+		Type::integer(1,3), [Red,Green,Blue]::boolean,
+		{Red == (Type==1), Green==(Type==2), Blue==(Type==3)},
+		Contents=[Glass,Plastic,Steel,Wood,Copper], Contents::integer(0,_),
+		{Binsize is Red*3 + Blue*1 + Green*4},            % "conditional" expression
+		Binsize::integer(1,4),                            % redundant constraint: range of bin capacities
+		{Total is Glass + Plastic + Steel + Wood + Copper},
+		{Total>=1, Total =< Binsize },
+		{(Wood >= 1) -> (Plastic >= 1)},                  % requires(wood,plastic).
+		{Glass * Copper == 0},                            % excludes(glass,copper).
+		{Copper * Plastic == 0},                          % excludes(copper,plastic)
+		{Blue  -> (Wood + Plastic == 0)},                 % capacity(blue,wood,0) & capacity(blue,plastic,0).
+		{Red   -> ((0==Steel + Plastic) and (Wood=<1))},  % capacity(red,wood,1) & capacity(red,steel,0) & capacity(red,plastic,0).
+		{Green -> ((0==Glass + Steel) and (Wood=<2))}.    % capacity(green, wood,2) & capacity(green,glass,0) & capacity(green,steel,0).
+Note that the redundant constraint `Binsize::integer(1,4)` specifying the range of bin sizes, has been added. Although perhaps obvious, it has a dramatic affect on performance as discussed below.
+
+This can be checked most easily by enumerating the possibilities:
+eg
+	?- bin(T,C,A),enumerate([T,A|C]),writeln([T,A,C]),fail.
+	[1,1,[0,0,0,0,1]]
+	[1,1,[1,0,0,0,0]]
+	[1,2,[0,0,0,0,2]]
+	[1,2,[2,0,0,0,0]]
+	[1,3,[0,0,0,0,3]]
+	[1,3,[3,0,0,0,0]]
+	[2,1,[0,0,0,0,1]]
+	[2,1,[0,1,0,0,0]]
+	[2,2,[0,0,0,0,2]]
+	[2,2,[0,1,0,1,0]]
+	[2,2,[0,2,0,0,0]]
+	[2,3,[0,0,0,0,3]]
+	[2,3,[0,1,0,2,0]]
+	[2,3,[0,2,0,1,0]]
+	[2,3,[0,3,0,0,0]]
+	[2,4,[0,0,0,0,4]]
+	[2,4,[0,2,0,2,0]]
+	[2,4,[0,3,0,1,0]]
+	[2,4,[0,4,0,0,0]]
+	[3,1,[0,0,0,0,1]]
+	[3,1,[0,0,1,0,0]]
+	[3,1,[1,0,0,0,0]]
+	false.
+
+The program takes as input a list of items of the form `Count*Type` and produces a list of bins packed with those items. Clearly, many solutions are possible including one where each bin contains a single item, but we're just interested in the first solution.
+eg
+	pack(Items, Bins) :-
+		commodities(Names),                                 % process input,
+		get_items_(Names,Items,Contents,0,Total),           % map to list of item counts and a total
+		pack_(Total,Contents,BinsRaw),                      % setup constraints,
+		enum_bins_(BinsRaw),                                % enumerate,
+		!,                                                  % take first solution
+		format_bins_(BinsRaw,Bins).                         % and format
+	
+	get_items_([],_,[],Total,Total).
+	get_items_([N|Names],ItemsList,[C|Counts],Acc,Total):-
+		(memberchk(C*N,ItemsList) -> NewAcc is Acc+C ; NewAcc=Acc),
+		get_items_(Names,ItemsList,Counts,NewAcc,Total).
+		
+	pack_(0, [0,0,0,0,0], []).                              % no residual items
+	pack_(Total, Amounts, [[Type,Contents,Size]|Bins]) :-
+		bin(Type,Contents,Size),                            % constraints on one bin
+		{T == Total - Size, T>=0},                          % reduce Total by number of items in the bin
+		subtract_(Amounts, Contents, Residual),             % reduce each commodity count for items in the bin
+		pack_(T, Residual, Bins).                           % and repeat until counts are 0
+
+	subtract_([], [], []).
+	subtract_([X|Xs], [Y|Ys], [Z|Zs]) :- {Z is X - Y, Z>=0},
+		subtract_(Xs,Ys,Zs).
+
+	enum_bins_([]).
+	enum_bins_([[T,C,S]|Bs]):- 
+		enumerate([T|C]),
+		enum_bins_(Bs).
+
+	format_bins_([],[]).
+	format_bins_([[T,Contents,_]|BinsRaw],[Bin|Bins]):-
+		bin_types(BTs), nth1(T,BTs,Type),
+		commodities(Names), format_commodities_(Names,Contents,Comms),
+		Bin =.. [Type|Comms], !,
+		format_bins_(BinsRaw,Bins).
+
+	format_commodities_([],[],[]).
+	format_commodities_([N|Names],[Count|Contents],[Count*N|Comms]) :- Count>0, !,
+		format_commodities_(Names,Contents,Comms).
+	format_commodities_([N|Names],[_|Contents],Comms) :-
+		format_commodities_(Names,Contents,Comms).
+
+Note that `pack_/3` will keep adding bins until all constraints can be satisfied with residual amounts of `0`. Failure in enumeration forces this backtracking to occur. When a slotution is found it will be "optimal" in the sense that there are no solutions which use fewer bins. (There may be other solutions that use the same number of bins.) One reason the redundant constraint is effective (reduces the count of `narrowingOps` required by approximately a factor of 4), is that it quickly fails for a small number of bins:
+eg
+	?- clpStatistics,pack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [red(2*copper),red(3*glass),green(2*plastic,2*wood),green(2*plastic,2*wood),blue(1*steel)],
+	SS = [userTime(0.5500000000010914),gcTime(0.003),globalStack(721632/1044464),trailStack(167008/522232),localStack(1752/118648),
+	inferences(2749283),narrowingOps(35281),narrowingFails(412),max_iterations(59/10000)].
+
+Also note that only the bin type and contents need be enumerated since the total number of items in the bin is pre-determined by the contents.
+
+There is a symmetry issue since the bins could have been listed in any order. To mitigate against this, the list of bins can be sorted, e.g., by number of items in the bin and type, before enumeration. Because enumeration begins at the low end, it is best to make this an ascending sort.
+eg
+	ordpack(Items, Bins) :-
+		commodities(Names),                                 % process input,
+		get_items_(Names,Items,Contents,0,Total),           % map to list of item counts and a total
+		pack_(Total,Contents,BinsRaw),                      % setup constraints,
+		order(BinsRaw),                                     % order constraint
+		enum_bins_(BinsRaw),                                % enumerate,
+		!,                                                  % take first solution
+		format_bins_(BinsRaw,Bins).                         % and format
+
+	order([_]) :- !.   % finish with 1 bin
+	order([X,Y|Xs]) :-
+		order_(X,Y),   % order constraint on first two bins
+		order([Y|Xs]). % order second and remaining bins
+
+	order_([T1,_,S1], [T2,_,S2]) :- {(T1<T2) or ((T1==T2) and (S1=<S2))}.
+This requires significantly less `narrowingOps` than the first version:
+eg
+	?- clpStatistics,ordpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [red(2*copper),red(3*glass),green(2*plastic,2*wood),green(2*plastic,2*wood),blue(1*steel)],
+	SS = [userTime(0.3899999999994179),gcTime(0.008),globalStack(790792/1044464),trailStack(167840/522232),localStack(1752/118648),
+	inferences(1947783),narrowingOps(25685),narrowingFails(253),max_iterations(66/10000)].
+
+These solutions are fairly effective for small numbers of bins, but do not scale well when the number of items is large and the bin sizes are small. A different approach uses `setof/3` to generate a sorted list (from smallest to largest capacity) of all the 22 possible bin configurations:
+eg
+	?- setof([S,T,C],(bin(T,C,S),enumerate([T|C])),Bins),length(Bins,BL).
+	Bins = [[1,1,[0,0,0,0,1]],[1,1,[0,0,1,0,0]],[1,1,[1,0,0,0,0]],[1,2,[0,0,0,0,1]],[1,2,[0,1,0,0,0]],
+	[1,3,[0,0,0,0,1]],[1,3,[1,0,0,0,0]],[2,2,[0,0,0,0,2]],[2,2,[0,1,0,1,0]],[2,2,[0,2,0,0,0]],[2,3,[0,0,0,0,2]],
+	[2,3,[2,0,0,0,0]],[3,2,[0,0,0,0,3]],[3,2,[0,1,0,2,0]],[3,2,[0,2,0,1,0]],[3,2,[0,3,0,0,0]],[3,3,[0,0,0,0,3]],
+	[3,3,[3,0,0,0,0]],[4,2,[0,0,0,0,4]],[4,2,[0,2,0,2,0]],[4,2,[0,3,0,1,0]],[4,2,[0,4,0,0,0]]],
+	BL = 22.
+Backtracking is now confined to the enumeration step, which now is just concerned with how many of each bin definition is required to hold the total contents:
+eg
+	fastpack(Items, Bins) :-
+		commodities(Names),                                           % process input,
+		get_items_(Names,Items,Contents,0,Total),                     % map to list of item counts and a total
+		setof([S,T,C], (bin(T,C,S),enumerate([T|C])), BinDefs),       % set of bin definitions
+		summation(BinDefs, Ns, NB, Total, [Glass,Plastic,Steel,Wood,Copper]),  % constraints with counts of each def.
+		enumerate(Ns),       % enumerate the counts of each bin definition
+		!,                   % first solution
+		compress(NB,NBins).  % remove definitions with count=0
+
+	summation([], [], [], 0, [0,0,0,0,0]).
+	summation([[Sz,T,Cn]|Bs], [N|Ns], [(N*[T,Cn,Sz])|Xs], Tot, [G,P,S,W,C]) :-
+		N::integer(0,_),
+		Cn=[Glass,Plastic,Steel,Wood,Copper],
+		{	T1 == Tot - N*Sz,
+			G1 ==   G - N*Glass,
+			P1 ==   P - N*Plastic,
+			S1 ==   S - N*Steel,
+			W1 ==   W - N*Wood,
+			C1 ==   C - N*Copper
+		},
+		summation(Bs ,Ns ,Xs, T1, [G1,P1,S1,W1,C1]).
+
+	compress([], []).
+	compress([(0*_)|Xs], Ys):- !,  % discard unused definitions
+		compress(Xs,Ys).
+	compress([(N*[S,T,C])|Xs], [(N*Bin)|Ys]):-
+		format_bins_([[T,C,S]],[Bin]),  % use existing bin formatting utility
+		compress(Xs,Ys).
+This version has excellent performance characteristics with minimal sensitivity to the number of bins required:
+eg
+	?- clpStatistics,fastpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [1*blue(1*steel),1*green(2*copper),1*red(3*glass),2*green(2*plastic,2*wood)],
+	SS = [userTime(0.03999999999996362),gcTime(0.003),globalStack(414824/520176),trailStack(87488/260088),localStack(1752/118648),
+	inferences(162949),narrowingOps(1750),narrowingFails(0),max_iterations(210/10000)].
+
+	?- clpStatistics,fastpack([32*glass,44*plastic,11*steel,44*wood,230*copper],Bins),clpStatistics(SS).
+	Bins = [11*blue(1*steel),1*red(2*glass),10*red(3*glass),2*green(3*copper),56*green(4*copper),22*green(2*plastic,2*wood)],
+	SS = [userTime(0.05999999999994543),gcTime(0.004),globalStack(303080/1044464),trailStack(79712/522232),localStack(1752/118648),
+	inferences(219958),narrowingOps(2480),narrowingFails(2),max_iterations(690/10000)].
+
+	?- clpStatistics,fastpack([132*glass,414*plastic,1001*steel,414*wood,230*copper],Bins),clpStatistics(SS).
+	Bins = [1001*blue(1*steel),44*red(3*glass),2*green(3*copper),56*green(4*copper),207*green(2*plastic,2*wood)],
+	SS = [userTime(0.07000000000016371),gcTime(0.006),globalStack(1017976/1044464),trailStack(225736/522232),localStack(1752/118648),
+	inferences(315145),narrowingOps(3702),narrowingFails(1),max_iterations(1917/10000)].
+
+Note that the number of `narrowingOps` has been drastically reduced (factor of 20) from the previous versions. However, it's not so clear in this case that the first solution found is one with the minimal number of bins. But if one considers the following:
+1..
+	- `enumerate/1` is a depth first enumeration of the list. The last item is fully "enumerated" before backtracking to the second last, etc.
+	- the bin configurations are ordered (using `setof`) from smallest to largest.
+Therefore, solutions are generated using the largest capacity bins first. Given the first solution, a better solution (fewer bins) can only occur if two or more bins in that solution can be combined into fewer bins, but that can only be done using at least one bin of a larger capacity. But all the solutions with larger capacity bins have already been enumerated (and failed) so there can't be a solution with fewer bins. (Again, there may be another solution with the same number of bins.)
+
+This example is interesting for a number of reasons:
+1..
+	- It exploits a mixture of boolean and integer constraints (see `bin/3`).
+	- It demonstrates again the value of redundant constraints (first two versions).
+	- Different design approaches can have radically different performance chracteristics (no real surprise there), again use `clpStatistics`, in addition to Prolog's built-in tools (debuggers and profilers) for analysis.
+
+<#TableOfContents>
+
+&
+	[transitive closure] <- link https://en.wikipedia.org/wiki/Transitive_closure
+	\\ [Boolean satisfiability problem] <- link https://en.wikipedia.org/wiki/Boolean_satisfiability_problem
+	\\ [NP-complete]        <- link https://en.wikipedia.org/wiki/NP-completeness
+	[`cardinality`]      <- link #cardinality
+	[Petri nets]         <- link https://en.wikipedia.org/wiki/Petri_net
+	[Siphons and Traps Structural Analysis Techniques Behaviour of a Petri Nets] <- link https://www.academia.edu/19468769/Siphons_and_Traps_Structural_Analysis_Techniques_Behaviour_of_a_Petri_Nets

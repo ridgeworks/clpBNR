@@ -213,7 +213,7 @@ eg
 	S = 1+(2+(3+0)),
 	Sum = 6.
 	
-	﻿?- sym_sum([1,2,3],S), Sum #= S.
+	?- sym_sum([1,2,3],S), Sum #= S.
 	S = 1+(2+(3+0)),
 	Sum = 6.
 	
@@ -234,6 +234,18 @@ A possible downside, from a pure logic programming perspective, is that the expr
 
 This pattern of working symbolically and only afterwards converting to constraints enables the same predicate to be used with different arithmetic systems. It can be helpful during development because the expressions may be more readable before the logic variables are constrained.
 
+Counting booleans{#id cardinality} is an important use of integer constraints and since `boolean` variables are implemented as numeric intervals (`integer(0,1)`), `sym_sum/2` can be used to define a cardinality predicate for a list of boolean variables:
+eg
+	cardinality(Blist, L, H) :- sym_sum(Blist, Sum), C::integer(L,H), {C is Sum}.
+
+For example for a list of booleans, `Bs`, of length `N`:
+eg
+	cardinality(Bs, 1, 1)		% exactly one B is true (1)
+	cardinality(Bs, M, M)		% exactly M B's are true
+	cardinality(Bs, M, N)		% at least M B's are true
+	cardinality(Bs, 0, M)		% at most M B's are true
+	cardinality(Bs, N, N)		% all B's are true
+
 <#TableOfContents>
 
 #### Example 3, N Factorial
@@ -247,7 +259,7 @@ eg
 			n_factorial(N1, F1).          %    F1 is !N1.
 and examples of usage:
 eg
-	﻿?- n_factorial(10,F).
+	?- n_factorial(10,F).
 	F = 3628800 
 	false.
 	
@@ -255,7 +267,7 @@ eg
 	N = 10 
 	false.
 	
-	﻿?- n_factorial(N,F).
+	?- n_factorial(N,F).
 	N = 0,
 	F = 1 
 	N = F, F = 1 
@@ -295,3 +307,7 @@ The double negation:
 eg
 	not(not({C}))
 indicates that the constraint `C` is possibly consistent, but does not actually impose the constraint. Success here does not actually guarantee consistency, because the underlying mechanism is incomplete, as discussed in a previous section.
+
+<#TableOfContents>
+
+&

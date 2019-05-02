@@ -535,9 +535,11 @@ narrowing_op(le, P, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], [NYl,NYh]]):- 
 	!,
 	(NXh =< NYl -> P=p ; true).              % will? always be true
 
-narrowing_op(le, p, [Z, [Xl,Xh], [Yl,Yh]], [NewZ, [Xl,Xh], [Yl,Yh]]):-    % persistent false case, set Z, X,Y unchanged
-	Yh < Xl, !,
-	^(Z, [0,0], NewZ).
+narrowing_op(le, p, [Z, [Xl,Xh], [Yl,Yh]], [NewZ, [Xl,Xh], [Yl,Yh]]):-    % persistent case, set Z, X,Y unchanged
+	(Yh  < Xl -> Z1=[0,0]
+	;Xh =< Yl -> Z1=[1,1]
+	), !,
+	^(Z, Z1, NewZ).
 
 narrowing_op(le, P, [[0,0], X, Y], [[0,0], NewX, NewY]):-                 % (not le) not closed, i.e., integer op?
 	narrowing_op(lt, P, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
@@ -555,9 +557,11 @@ narrowing_op(lt, P, [[1,1], [Xl,Xh], [Yl,Yh]], [[1,1], [NXl,NXh], [NYl,NYh]]):-
 	!,
 	(NXh < NYl -> P=p ; true).                % will? always be true
 
-narrowing_op(lt, p, [Z, [Xl,Xh], [Yl,Yh]], [NewZ, [Xl,Xh], [Yl,Yh]]):-     % persistent false case, set Z, X,Y unchanged
-	Yh =< Xl, !, %lt_disjoint_(X,Y,Z1), !,
-	^(Z, [0,0], NewZ).
+narrowing_op(lt, p, [Z, [Xl,Xh], [Yl,Yh]], [NewZ, [Xl,Xh], [Yl,Yh]]):-     % persistent case, set Z, X,Y unchanged
+	(Yh =< Xl -> Z1=[0,0]
+	;Xh <  Yl -> Z1=[1,1]
+	), !,
+	^(Z, Z1, NewZ).
 
 narrowing_op(lt, P, [[0,0], X, Y], [[0,0], NewX, NewY]):-   % if Z false, Y=<X must be true
 	narrowing_op(le, P, [[1,1], Y, X], [[1,1], NewY, NewX]), !.
@@ -585,8 +589,15 @@ narrowing_op(add, _, [Z, X, Y], [NewZ, NewX, NewY]):-
 % Z==X*Y
 narrowing_op(mul, _, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	*(X,Y,Z1), ^(Z,Z1,NewZ),
-	intersect_odiv(X,Y,NewZ,NewY),
-	intersect_odiv(NewY,X,NewZ,NewX).
+	intersect_odiv(X,Y,NewZ,Yp),
+	intersect_odiv(Yp,X,NewZ,NewX),
+	% if X narrowed it may be necessary to recalculate Y due to non-optimal ordering.
+	mul_redoY(Y,Yp,X,NewX,NewY,NewZ).
+
+mul_redoY(Y,Y,X,NewX,NewY,NewZ) :-     % if initial Y narrowwing didn't change (contain 0?)
+	X \= NewX, !,                      % and X did narrow 
+	intersect_odiv(NewX,Y,NewZ,NewY).  % recalculate Y with NewX
+mul_redoY(_,NewY,_,_,NewY,_).          % else keep Y as NewY
 
 % Y:= Y ^ Z/X  % used in mul relation
 intersect_odiv([Xl,Xh],Y,[Zl,Zh],Y) :-
@@ -790,10 +801,14 @@ try_tan_(X,Z,[],[],MXS,MXF,MXF).  % if tan_ fails, return empty X interval for u
 
 
 % Z== ~X boolean negation (Z and X boolean)
-narrowing_op(not, _, [Z,X], [NewZ, NewX]) :-
+narrowing_op(not, P, [Z,X], [NewZ, NewX]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB),
+	notB_(ZB,XB,NewZ,NewX,P), !.
+
+notB_(Z,X,NewZ,NewX,P) :-
 	~(Z,X1), ^(X,X1,NewX),
-	~(NewX,Z1), ^(Z,Z1,NewZ).
+	~(NewX,Z1), ^(Z,Z1,NewZ),
+	(NewZ=[B,B] -> P=p ; true).  % if either was a point, both are now
 
 
 % Z==X and Y  boolean 'and'
@@ -871,13 +886,12 @@ narrowing_op(imB, P, [Z,X,Y], [NewZ, NewX, NewY]) :-
 	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
 	imB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
 	
-imB_rel_(Z,[B,B],[B,B], NewZ,[B,B],[B,B], p) :- !, ^(Z,[1,1],NewZ).
-imB_rel_(Z,[X,X],[Y,Y], NewZ,[X,X],[Y,Y], p) :- !, ^(Z,[Y,Y],NewZ).
-imB_rel_([B,B],[1,1],Y, [B,B],[1,1],NewY, p) :- !, ^(Y,[B,B],NewY).
-imB_rel_([1,1],[0,0],Y, [1,1],[0,0],NewY, p) :- !, ^(Y,[0,1],NewY).
-imB_rel_([B,B],X,[0,0], [B,B],NewX,[0,0], p) :- !, N is B+1 mod 2,^(X,[N,N],NewX).
-imB_rel_([1,1],X,[1,1], [1,1],NewX,[1,1], p) :- !, ^(X,[0,1],NewX).
-imB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+imB_rel_(Z,[1,1],Y, New,[1,1],New,   P) :- !, ^(Z,Y,New), New=[B,B] -> P=p ; true.  % X=1, Z=Y, persistant if point 
+imB_rel_(Z,[0,0],Y, NewZ,[0,0],Y,    p) :- !, ^(Z,[1,1],NewZ).                      % X=0, Z=1, persistant
+imB_rel_(Z,X,[0,0], NewZ,NewX,[0,0], P) :- !, notB_(Z,X,NewZ,NewX,P).               % Y=0, Z=~X, persistant if point
+imB_rel_(Z,X,[1,1], NewZ,X,[1,1],    P) :- !, ^(Z,[1,1],NewZ).                      % Y=1, Z=1, persistant
+imB_rel_([0,0],X,Y, [0,0],NewX,NewY, p) :- !, ^(X,[1,1],NewX), ^(Y,[0,0],NewY).     % Z=0,X=1,Y=0, persistant
+imB_rel_(Z,X,Y,     Z,X,Y,           P).  % still indeterminate
 
 
 % optimize if already boolean, forces all intervals to boolean range

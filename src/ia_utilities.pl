@@ -196,7 +196,9 @@ minimize__(Min,Vs,Solver) :-
 	
 minimize__(Min,Vs,Solver) :-
 	catch((nb_getval(minimize__, [1,NewMin,NewVs]),nb_setval(minimize__, [0,NewMin,NewVs])),_,fail),
-	range(NewMin,[_,UB]), {Min=<pt(UB)},	% constrain UB, use pt() to avoid outward rounding
+	%range(NewMin,[_,UB]), {Min=<pt(UB)},	% constrain UB, use pt() to avoid outward rounding
+	range(NewMin,[_,UB]), interval_object(Min,Type,_,_),
+	(Type=integer -> {Min<UB} ; {Min=<pt(UB)}),  % constrain UB, use pt() to avoid outward rounding
 	minimize__(Min,Vs,Solver),
 	!.
 	
@@ -226,7 +228,9 @@ maximize__(Max,Vs,Solver) :-
 	
 maximize__(Max,Vs,Solver) :-
 	catch((nb_getval(maximize__, [1,NewMax,NewVs]),nb_setval(maximize__, [0,NewMax,NewVs])),_,fail),
-	range(NewMax,[LB,_]), {Max>=pt(LB)},	% constrain LB, use pt() to avoid outward rounding
+	%range(NewMax,[LB,_]), {Max>=pt(LB)},	% constrain LB, use pt() to avoid outward rounding
+	range(NewMax,[LB,_]), interval_object(Max,Type,_,_),
+	(Type=integer -> {Max>LB} ; {Max>=pt(LB)}),  % constrain UB, use pt() to avoid outward rounding
 	maximize__(Max,Vs,Solver),
 	!.
 	

@@ -26,6 +26,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	CLPBNR_Module.myw
 	CLPBNR_SynSem.myw
 	CLPBNR_PrgCons.myw
+	CLPBNR_UsingConstraints.myw
 &
 	[Markdown]    <- link https://en.wikipedia.org/wiki/Markdown
 	[Grit]        <- link GritGrammarParser.html

@@ -128,9 +128,8 @@ typeValue_(real,Val,Val).
 typeValue_(integer,[L,H],[IL,IH]) :-  % narrow to integer bounds avoiding overflow due to inf's
 	(abs(L) =\= inf -> IL is ceiling(L) ; IL=L),
 	(abs(H) =\= inf -> IH is floor(H)   ; IH=H),
-	%(IL=IH -> trace ; true),
 	IL=<IH, !.
-	
+
 queue_nodes_([Pt,Pt],Int,_,[node(instantiate,_,_,[Int,Pt]),_]) :- !.  % if point value just instantiate 
 queue_nodes_(Val,Int,NList,NList).                                    % else queue interval nodelist
 
@@ -470,26 +469,25 @@ update_values_([P|PrimArgs], [N|New], [A|Args], OpsLeft, Agenda, NewAgenda) :-
 
 %
 % Any changes in interval values should come through here.
-% Note: This captures all updated state for undoing on backtracking - do not cut
+% Note: This captures all updated state for undoing on backtracking
 %
 updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value
-%updateValue_(_Old, [Pt,Pt], Int, _, Agenda, NewAgenda) :- !,        % Point value ==> update value
-%	putValue_([Pt,Pt], Int, Nodelist),  % ignore node list, will run via 'instantiate' node
-%	%linkNode_(Agenda,instantiate(Int,_,L,Pt), NewAgenda).           % add special 'instantiate' node to Agenda
-%	linkNode_(Agenda,node(instantiate,_,_,[Int,Pt]), NewAgenda).           % add special 'instantiate' node to Agenda
+
 updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
 	% NewL=<NewH,  % check unnecessary if primitives do their job
-	putValue_(New, Int, Nodelist),                      % update value (fails if not an interval))
-	(propagate_if_(OpsLeft, Old, New)                   % if OpsLeft >0 or narrowing sufficent
-		-> linkNodeList_(Nodelist, Agenda, NewAgenda)   % then propagate change
-		 ; NewAgenda = Agenda                           % else continue with remaining Agenda
-	).
+	(propagate_if_(OpsLeft, Old, New) ->               % if OpsLeft >0 or narrowing sufficent
+		(putValue_(New, Int, Nodelist),                % update value (fails if not an interval)) ??
+		 linkNodeList_(Nodelist, Agenda, NewAgenda)    % then propagate change
+		)
+		; NewAgenda = Agenda                           % else continue with remaining Agenda
+	), !.
+
 updateValue_(_Old, [Pt,Pt], Rat, _, Agenda, Agenda) :-  % if not interval, could be just equivalent rational 
 	rational(Rat), 
 	Rat =:= Pt.  % should always be true
 
 propagate_if_(Ops, _, _)           :- Ops>0.  % ! unnecessary since it's used in '->' test
-propagate_if_(_, [OH,OL], [NH,NL]) :- catch((NH-NL)/(OH-OL) < 0.9,_,true).  % any overflow in calculation will propagate
+propagate_if_(_, [OL,OH], [NL,NH]) :- catch((NH-NL)/(OH-OL) < 0.9,_,true).  % any overflow in calculation will propagate
 
 linkNodeList_([X|Xs], List, NewList) :-
 	nonvar(X),                                     % not end of list ...
@@ -515,7 +513,7 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 clpStatistics :- !.
 
 :- initialization((
-	nl,write("*** clpBNR v0.8alpha ***"),nl,
+	nl,write("*** clpBNR v0.8.1alpha ***"),nl,
 	(current_prolog_flag(bounded,true) -> 
 		(nl,write("Warning: This version expects unbounded integers; no overflow checking will be done."))
 	;	true

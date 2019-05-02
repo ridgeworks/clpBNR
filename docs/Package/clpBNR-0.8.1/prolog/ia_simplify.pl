@@ -157,42 +157,25 @@ collect_exp_(A, List, Head/NewT) :-    % floats as terms, can collect but not do
 	F is abs(A),
 	List=Head/[term(Op,F,1)|NewT].
 
-collect_exp_(N*A, List, Head/NewT) :-  % user written terms
-	mul_term_(N,A,Term), !,
-	List=Head/[Term|NewT].
-
-collect_exp_(A*N, List, Head/NewT) :-  % user written terms
-	mul_term_(N,A,Term), !,
-	List=Head/[Term|NewT].
-
-collect_exp_(-A,List/T, List/NewT) :-
-	simplify(A,AT), collect_exp_(AT,P/P,ListA),
-	negate_exp_(ListA,T/NewT).
-
 collect_exp_(A-B,List,NewList) :-
-	simplify(A,AT), collect_exp_(AT,List,ListA),
+	!,
+	left_exp_(A,AE),
+	collect_exp_(AE,List,ListA),
 	collect_exp_(-B,ListA,NewList).
 	
 collect_exp_(A+B, List, NewList) :-
-	simplify(A,AT), collect_exp_(AT,List,ListA),
+	!,
+	left_exp_(A,AE),
+	collect_exp_(AE,List,ListA),
 	simplify(B,BT), collect_exp_(BT,ListA,NewList).
 
 collect_exp_(T, List/[Term|NewT], List/NewT) :-
 	simplify_term(T,Term).
 
-mul_term_(N,A,Term) :-
-	simplify(N,NT), rational(NT),
-	simplify(A,AT),
-	(rational(AT) -> Term is AT*NT ; (sign_val_(Op,NT,M), Term = term(Op,AT,M))).
+left_exp_(A,A)  :- var(A), !.
+left_exp_(A,A)  :- A=..[AOp|_], negate_op_(AOp,_), !.
+left_exp_(A,AE) :- simplify(A,AE).
 	
-negate_exp_(T/T,NewT/NewT) :- var(T).
-negate_exp_([term(Op,V,N)|Es]/T,[term(NOp,V,N)|NEs]/NewT) :- !,
-	negate_op_(Op,NOp),
-	negate_exp_(Es/T,NEs/NewT).
-negate_exp_([C|Es]/T,[NC|NEs]/NewT) :-
-	rational(C), NC is -C,
-	negate_exp_(Es/T,NEs/NewT).
-
 collect_exp_items([],[]).
 collect_exp_items([E|Es],[NE|NEs]) :-
 	collect_exp_item_(Es,E,NE,ENxt), !,
@@ -300,18 +283,26 @@ collect_term_(A**N, List, Head/NewT) :-  % possible special case of user written
 	List=Head/[Term|NewT].
 
 collect_term_(A*B,List,NewList) :-
-	simplify(A,AT),	simplify(B,BT),
-	collect_term_(AT,List,ListA),
+	!,
+	left_term_(A,AE),
+	collect_term_(AE,List,ListA),
+	simplify(B,BT),
 	collect_term_(BT,ListA,NewList).
 	
 collect_term_(A/B,List,NewList) :-
-	simplify(A,AT),	simplify(B,BT),
-	collect_div_(AT,BT,List,NewList).
+	!,
+	left_term_(A,AE),
+	simplify(B,BT),
+	collect_div_(AE,BT,List,NewList).
 
 collect_term_(E,List/[elem(*,Exp,1)|NewT], List/NewT) :-
 	E =.. [F|IArgs],
 	simplify_list_(IArgs,OArgs),
 	Exp =.. [F|OArgs].
+
+left_term_(A,A)  :- var(A), !.
+left_term_(A,A)  :- A=..[AOp|_], invert_op_(AOp,_), !.
+left_term_(A,AE) :- simplify(A,AE).
 
 simplify_list_([],[]).
 simplify_list_([I|IArgs],[O|OArgs]) :-
@@ -360,14 +351,14 @@ collect_term_item_([elem(Op1,V,N1)|Es],elem(Op2,U,N2),Eo,EsNxt) :-
 collect_term_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-
 	collect_term_item_(Es,E,Eo,EsNxt).
 
-reduce_term_items_([0|_],0).    % element is 0 => 0
-reduce_term_items_([T],Exp) :-  %%%% guaranteed to have at least one item
+reduce_term_items_([Z|_],0) :- Z==0,!.  % element is 0 => 0
+reduce_term_items_([T],Exp) :-          % guaranteed to have at least one item
 	reduce_term_item_(T,E,Op),
-	build_term_(1,E,Op,Exp).  %% (Op = / -> Exp=1/E ; Exp=E).
+	build_term_(1,E,Op,Exp), !.         % (Op = / -> Exp=1/E ; Exp=E).
 reduce_term_items_([T1,T2|Ts],Exp) :-
 	reduce_term_item_(T1,Exp1,_),
 	reduce_term_item_(T2,Exp2,Op),
-	build_term_(Exp1,Exp2,Op,ExpN),  %% ExpN =.. [Op,Exp1,Exp2],
+	build_term_(Exp1,Exp2,Op,ExpN),     % ExpN =.. [Op,Exp1,Exp2],
 	!,
 	reduce_term_items_([ExpN|Ts],Exp).
 
@@ -376,6 +367,7 @@ build_term_( One, Exp, /,IExp) :- One==1, (rational(Exp,M,N) -> IExp is N rdiv M
 build_term_( Exp, One, _, Exp) :- One==1.
 build_term_(Exp1,Exp2,Op, Exp) :- Exp =.. [Op,Exp1,Exp2].
 
+reduce_term_item_(           V,    V,  *) :- var(V),!.  % already reduced to var
 reduce_term_item_(elem( _,_,0),    1,  *).
 reduce_term_item_(elem(Op,V,1),    V, Op).
 reduce_term_item_(elem(Op,V,E), V**E, Op).

@@ -486,6 +486,45 @@ However, it's often useful to combine boolean and numeric constraints as we'll s
 
 <#TableOfContents>
 
+#### Controlling Constraint Propogation
+
+This topic requires a little understanding of what's happening "under the covers". A constraint expression is broken down into a set of primitive narrowing operations like `add`, `mul`, `le`, etc., that share intervals, i.e., constrained logic variables. When a primitive operation results in the narrowing of one of its argument intervals, any operations that share that interval must be "scheduled" so that the constraint network stays consistent and sound. Any narrowing may result in an empty range, which means the constraint network is inconsistent, causing backtracking and the "undoing" of the operation.
+
+This propogation can take a while to "settle"; one constraint triggering the re-evaluation of another which (directly or indirectly) may cause the original to execute again. Only when no changes in interval ranges occur will the propogation terminate (fixed point achieved), and that can take a while with 64-bit floating point values. To avoid the appearance of non-termination (a steady state network will eventually always be achieved), an internal limit is place on the amount of work that is done for any new constraint added to the network. Once this limit is exceeded, only "significant" changes will be propogated until a steady state is achieved. Note that result of this limiting will always be sound, i.e., if an answer exists, it will be present in the interval set. However, the set may not be as narrow as if the propogation was allowed to continue unchecked.
+
+The work limit is a represented by a count of primitive operations that are executed bfore the limiting mechansim is enabled, and is user controllable using the Prolog environment flag `clpBNR_iteration_limit`; the default value is `10,000` which should be adequate for most purposes.
+
+It's usually not possible to predict which problems are affected by this "throttling" mechanism, but here's a simple example:
+eg
+	?- X::real,{X**2-2*X+1==0}.
+	X = _60::real(0.999203058873612,1.0008048450318359).
+This is a simple quadratic with a single root at `X=1`:
+[simple_quad]
+As the interval `X` narrows towards the solution, the amount of narrowing achieved with each step decreases, so it can take a long time to reach the precision limit of the floating point representation. In this case, the throttling mechanism was enabled after reaching approximately 4 digits of precision. This can be seen using the `clpStatistic/1` predicate:
+eg
+	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
+	X = _21622::real(0.999203058873612,1.0008048450318359),
+	T = 0.2799999999999727,
+	I = 10002/10000.
+Propogation was terminated in `0.28` seconds after `10,002` primitive operations (limit is `10,000`). A higher threshold is can be set:
+eg
+	?- set_prolog_flag(clpBNR_iteration_limit,100000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
+	X = _90::real(0.9999200380415186,1.0000800555866574),
+	T = 3.25,
+	I = 100002/100000.
+A tenfold increase in the limit achieved another digit of precision but took over ten times longer. This will not always be the case, but illustrates the general effect of changing the value of this flag. It's there if you need it, but in most cases just leaving the flag set to the default value should suffice.
+
+```aside>
+Aside: `clpStatistics/0`, which resets the statistics values, and `clpStatistic/1` and `clpStatistics/1` support operational measurements of CLP(BNR) applications. A further example illustrating all the available mesurements:
+eg
+	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistics(SS).
+	X = _1686::real(0.999203058873612,1.0008048450318359),
+	SS = [userTime(0.2700000000000955),gcTime(0),globalStack(23672440/33550320),trailStack(3908296/8386552),localStack(1752/8376184),
+	inferences(1079004),narrowingOps(10009),narrowingFails(0),max_iterations(10002/10000)].
+```
+
+<#TableOfContents>
+
 #### Summary
 
 By sharing the same fundamental framework based on numeric intervals, CLP(BNR) enables the mixing of arithmetic and boolean types in constraints. The implementation primarily consists of just two key predicates, `::/2` (used as an infix operator) for creating intervals (logic variables constrained to be numeric values) and `{}/1` (used as an outfix operator) to apply constraints to intervals. In many cases explicit creation isn't necessary as constraints in CLP(BNR) imply the existence of intervals.
@@ -499,5 +538,6 @@ Given sufficient constraints, it's possible to narrow an interval to a small ran
 &
 	[circle-parabola] <- image images/circle-parabola.png width=25% height=25% style="margin-left:200px"
 	[dependency]      <- image images/dependency.png width=25% height=25% style="margin-left:200px"
+	[simple_quad]     <- image images/simple_quad width=25% height=25% style="margin-left:200px"
 	[markup language] <- link https://en.wikipedia.org/wiki/Markup_language
 	[data type]       <- link https://en.wikipedia.org/wiki/Data_type
