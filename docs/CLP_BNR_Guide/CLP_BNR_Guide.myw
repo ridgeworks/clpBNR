@@ -30,7 +30,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 &
 	[Markdown]    <- link https://en.wikipedia.org/wiki/Markdown
 	[Grit]        <- link GritGrammarParser.html
-	@import MyWordDocStyle.mmk pkgs/demo.mmk pkgs/toc.mmk pkgs/asciimath.mmk
+	@import MyWordDocStyle.mmk pkgs/demo.mmk pkgs/toc.mmk pkgs/asciimath.mmk pkgs/tsv.mmk
 	{` .. `}      <- <math class = my_math display=inline> asciimath
 	.myw ..     <- myword
 	// Turn off fancy apostrophe so it can be used as single quote
@@ -40,6 +40,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	title> ..       <- <h1 class=_centre>
 	centreblock> .. <- <div class=_centre>
 	aside> ..       <- <aside class=my_aside>
+	math> ..        <- <math class=my_math> asciimath
 	@css
 		._centre {text-align: center;}
 		div.eg, div.demo {margin: 4pt 0;}

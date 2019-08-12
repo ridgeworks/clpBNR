@@ -388,50 +388,63 @@ chkDiv(_,_).  % Y non-zero
 %
 % * cases
 %
-multCase(p,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xl*Yl, Zh isH Xh*Yh.
-multCase(p,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xh*Yl, Zh isH Xl*Yh.
+multCase(p,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, multLo(Xl,Yl,Zl), multHi(Xh,Yh,Zh).
+multCase(p,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, multLo(Xh,Yl,Zl), multHi(Xl,Yh,Zh).
+multCase(n,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, multLo(Xl,Yh,Zl), multHi(Xh,Yl,Zh).
+multCase(n,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, multLo(Xh,Yh,Zl), multHi(Xl,Yl,Zh).
+
 multCase(p,s, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xh*Yl, Zh isH Xh*Yh.
-multCase(n,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xl*Yh, Zh isH Xh*Yl.
-multCase(n,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xh*Yh, Zh isH Xl*Yl.
 multCase(n,s, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xl*Yh, Zh isH Xl*Yl.
 multCase(s,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xl*Yh, Zh isH Xh*Yh.
 multCase(s,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, Zl isL Xh*Yl, Zh isH Xl*Yl.
+
 multCase(s,s, [Xl,Xh], [Yl,Yh], [Zl,Zh]):-
 	L1 isL Xl*Yh, L2 isL Xh*Yl,	Zl is min(L1,L2),
 	H1 isH Xl*Yl, H2 isH Xh*Yh, Zh is max(H1,H2).
 
+% multiply signed rounding operations: 1) underflow to 0 not outward rounded, 2) overflow caught here
+multLo(X,Y,Z) :- catch((0 =:= X*Y,Z=0),Err,recover(X*Y,Err,Z)), !.
+multLo(X,Y,Z) :- Z isL X*Y.  % shouldn't overflow
+
+multHi(X,Y,Z) :- catch((0 =:= X*Y,Z=0),Err,recover(X*Y,Err,Z)), !.
+multHi(X,Y,Z) :- Z isH X*Y.  % shouldn't overflow
 
 %
 % / cases
 %
-odivCase(p,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xl,Yh,Zl,1),  odiv(hi,Xh,Yl,Zh,1).   % Zl isL Xl/Yh, Zh isH Xh/Yl.
-odivCase(p,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xh,Yh,Zl,-1), odiv(hi,Xl,Yl,Zh,-1).  % Zl isL Xh/Yh, Zh isH Xl/Yl.
+
+odivCase(p,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xl,Yh,Zl,p), odivHi(Xh,Yl,Zh,p).   % Zl isL Xl/Yh, Zh isH Xh/Yl.
+odivCase(p,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xh,Yh,Zl,n), odivHi(Xl,Yl,Zh,n).  % Zl isL Xh/Yh, Zh isH Xl/Yl.
+odivCase(n,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xl,Yl,Zl,p), odivHi(Xh,Yh,Zh,p).   % Zl isL Xl/Yl, Zh isH Xh/Yh.
+odivCase(n,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xh,Yl,Zl,n), odivHi(Xl,Yh,Zh,n).  % Zl isL Xh/Yl, Zh isH Xl/Yh.
 odivCase(p,s, X,       Y,       Z      ):- !, universal_interval(Z).
-odivCase(n,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xl,Yl,Zl,1),  odiv(hi,Xh,Yh,Zh,1).   % Zl isL Xl/Yl, Zh isH Xh/Yh.
-odivCase(n,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xh,Yl,Zl,-1), odiv(hi,Xl,Yh,Zh,-1).  % Zl isL Xh/Yl, Zh isH Xl/Yh.
 odivCase(n,s, X,       Y,       Z      ):- !, universal_interval(Z).
-odivCase(s,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xl,Yl,Zl,1),  odiv(hi,Xh,Yl,Zh,1).   % Zl isL Xl/Yl, Zh isH Xh/Yl.
-odivCase(s,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odiv(lo,Xh,Yh,Zl,-1), odiv(hi,Xl,Yh,Zh,-1).  % Zl isL Xh/Yh, Zh isH Xl/Yh.
+odivCase(s,p, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xl,Yl,Zl,p), odivHi(Xh,Yl,Zh,p).   % Zl isL Xl/Yl, Zh isH Xh/Yl.
+odivCase(s,n, [Xl,Xh], [Yl,Yh], [Zl,Zh]):- !, odivLo(Xh,Yh,Zl,n), odivHi(Xl,Yh,Zh,n).  % Zl isL Xh/Yh, Zh isH Xl/Yh.
 odivCase(s,s, X,       Y,       Z      ):-    universal_interval(Z).
 	
-% check for divide by zero, sign of inf resulting depends on sign of zero.
-odiv(_,  X, Y, Z, Zsgn) :- Y =:= 0, !, Xsgn is sign(float(X)),odivInfinityVal(Zsgn,Xsgn,Z).
-odiv(_,  X, Y, X, Zsgn) :- X =:= 0, !.  % could be integer 0 or float 0.0 or -0.0.
-odiv(_,  X, Y, Z, _)  :- rational(X), rational(Y), N rdiv D is X rdiv Y, check_rational_(N,D,Z), !.  % fails to float value
-odiv(lo, X, Y, Z, _)  :- Z isL X/Y.
-odiv(hi, X, Y, Z, _)  :- Z isH X/Y.
+% divide rounding operations: 1) underflow to 0 not outward rounded, 2) errors caught here
+odivLo(X,Y,Z,S) :- catch((0 =:= X/Y,Z=0),Err,div_recover(Err,X,Y,S,Z)), !.
+odivLo(X,Y,Z,_) :- rational(X), rational(Y), N rdiv D is X rdiv Y, check_rational_(N,D,Z), !.  % fails to float value
+odivLo(X,Y,Z,_)  :- Z isL X/Y.
 
-odivInfinityVal( 1,-1.0,-1.0Inf).
-odivInfinityVal( 1, 0.0, 1.0Inf).
-odivInfinityVal( 1, 1.0, 1.0Inf).
-odivInfinityVal(-1, 1.0,-1.0Inf).
-odivInfinityVal(-1, 0.0,-1.0Inf).
-odivInfinityVal(-1,-1.0, 1.0Inf).
+odivHi(X,Y,Z,S) :- catch((0 =:= X/Y,Z=0),Err,div_recover(Err,X,Y,S,Z)), !.
+odivHi(X,Y,Z,_) :- rational(X), rational(Y), N rdiv D is X rdiv Y, check_rational_(N,D,Z), !.  % fails to float value
+odivHi(X,Y,Z,_)  :- Z isH X/Y.
+
+div_recover(error(evaluation_error(zero_divisor),_),X,_,S,Z) :- !,   % special case divide by zero
+	Xsgn is sign(float(X)),odivInfinityVal(S,Xsgn,Z).
+div_recover(Err,X,Y,S,Z) :- recover(X/Y,Err,Z).  % general recovery for isH/L
+
+odivInfinityVal(p,-1.0,-1.0Inf) :-!.
+odivInfinityVal(p,   _, 1.0Inf).
+odivInfinityVal(n,-1.0, 1.0Inf) :-!.
+odivInfinityVal(n,   _,-1.0Inf).
 
 check_rational_(N,1,N).           % integer result
 check_rational_(N,D,N rdiv D) :-  % rational, check that abs(N)+D are less than max_tagged_integer, avoid bignums.
-	current_prolog_flag(max_tagged_integer,M), % nb_getval(max_tagged_integer,M),  % 
-	abs(N)+D =< M.  % fails if too big
+	current_prolog_flag(max_tagged_integer,M), % nb_getval(max_tagged_integer,M),  %
+	abs(N)+D =< M.  % fails if N+D too big
 
 
 %
@@ -439,20 +452,46 @@ check_rational_(N,D,N rdiv D) :-  % rational, check that abs(N)+D are less than 
 %
 ipCase(p,p,_,N, [Xl,Xh], [Zl,Zh]) :- ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh).                        % X pos, N pos,any
 ipCase(p,n,_,N, [Xl,Xh], [Zl,Zh]) :- ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh).                        % X pos, N neg,any
+
 ipCase(n,p,0,N, X,       [Zl,Zh]) :- -(X,[Xl,Xh]), ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh).                % X neg, N pos,even
 ipCase(n,n,0,N, X,       [Zl,Zh]) :- -(X,[Xl,Xh]), ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh).                % X neg, N neg,even
 ipCase(n,p,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xl,N,Zl), ipowHi(Xh,N,Zh), -([Zl,Zh],Z).  % X neg, N pos,odd
 ipCase(n,n,1,N, X,       Z)       :- -(X,[Xl,Xh]), ipowLo(Xh,N,Zl), ipowHi(Xl,N,Zh), -([Zl,Zh],Z).  % X neg, N neg,odd
-ipCase(s,p,0,N, [Xl,Xh], [0,Zh])  :- Xmax is max(-Xl,Xh), ipowHi(Xmax,N,Zh).                        % X split, N pos,even
-ipCase(s,p,1,N, [Xl,Xh], [Zl,Zh]) :- Xlp is -Xl, ipowHi(Xlp,N,Zlp), Zl is -Zlp, ipowHi(Xh,N,Zh).    % X split, N pos,odd
+
+ipCase(s,p,0,N, [Xl,Xh], [0,Zh])  :- Xmax is max(-Xl,Xh), Zh isH Xmax**N.
+		%ipowHi(Xmax,N,Zh).                        % X split, N pos,even
+ipCase(s,p,1,N, [Xl,Xh], [Zl,Zh]) :- Zlp isH (-Xl)**N, Zl is -Zlp, Zh isH Xh**N.
+		%Xlp is -Xl, ipowHi(Xlp,N,Zlp), Zl is -Zlp, ipowHi(Xh,N,Zh).    % X split, N pos,odd
 ipCase(s,n,0,N, X,       [0,1.0Inf]).                                                         % X split, N neg,even
 ipCase(s,n,1,N, X,       [-1.0Inf,1.0Inf]).                                                   % X split, N neg,odd
 
-ipowLo(X,N,X) :- X=:=0.  % avoid rounding at 0
+% power rounding operations: 1) underflow to 0 not outward rounded, 2) overflow caught here
+/*
+ipowLo(X,N,Z) :- catch((0 =:= X**N,Z=0),Err,recover(X**N,Err,Z)).  % catch underflow to avoid rounding at 0
+ipowLo(X,N,Z) :- Z isL X**N.  % shouldn't overflow
+
+ipowHi(X,N,Z) :- catch((0 =:= X**N,Z=0),Err,recover(X**N,Err,Z)).  % catch underflow to avoid rounding at 0
+ipowHi(X,N,Z) :- Z isH X**N.  % shouldn't overflow
+*/
+ipowLo(X,N,Z) :- catch((0 =:= X**N,Z=0),Err,recover(X**N,Err,Z)).  % catch underflow to avoid rounding at 0
+ipowLo(X,N,Z) :- rational(X),rational(N,Num,Den),rpow(X,Num,Den,Z).
 ipowLo(X,N,Z) :- Z isL X**N.
 
-ipowHi(X,N,X) :- X=:=0.  % avoid rounding at 0
+ipowHi(X,N,Z) :- catch((0 =:= X**N,Z=0),Err,recover(X**N,Err,Z)).  % catch underflow to avoid rounding at 0
+ipowHi(X,N,Z) :- rational(X),rational(N,Num,Den),rpow(X,Num,Den,Z).
 ipowHi(X,N,Z) :- Z isH X**N.
+
+% try for rational result
+rpow(X,Num,Den,PD rdiv PN) :- Num<0, !,       % negative power
+	NNum is -Num, 
+	rpow(X,NNum,Den,P), 
+	rational(P,PN,PD).
+rpow(X,Num,1,Z) :- !,                         % positive integer power
+	Z is X**Num, rational(Z).
+rpow(X,Num,Den,Z)         :-                  % positive rational power
+	nth_integer_root_and_remainder(Den,X,R,0),
+	Z is R**Num,
+	rational(Z).
 
 %
 % Nth root cases:  nthrootCase(Cx,Cn,Cz,Odd,N,X,Z), N<>0

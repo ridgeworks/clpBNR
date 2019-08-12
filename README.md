@@ -24,7 +24,7 @@ To constrain an interval to integer values, type `integer` can be used in place 
 Finally, a `boolean` is an `integer` constrained to have values `0` and `1` (meaning `false` and `true` respectively).
 
 	?- B::boolean.
-	B = _2622::integer(0,1).
+	B = _2622::boolean.
 
 Interval declarations define the initial bounds of the interval which are narrowed over the course of program execution. Narrowing is controlled by defining constraints in curly brackets, e.g.,
 
@@ -149,21 +149,21 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html).
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.2.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.1zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.8.2.zip')]).
 	﻿Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
-	Title:                  CLP over Reals using Interval Arithmetic - includes Integer and Boolean domains as subsets.
-	Installed version:      0.8
+	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
+	Installed version:      ?0.8.2?
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.8.1zip" (26,826 bytes) Y/n? 
+	Install "clpBNR-0.8.2zip" (?26,826? bytes) Y/n? 
 	
 	﻿?- use_module(library(clpBNR)).
 	
-	*** clpBNR v0.8.1alpha ***
+	*** clpBNR v0.8.2alpha ***
 	true.
    
 Or if the respository has been down dowloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
@@ -194,13 +194,14 @@ The `clpBNR` module declaration is:
 		op(700, xfx, =>),      % set inclusion
 					   
 		% utilities
-		print_interval/1,      % print interval as a list of bounds, for compaability, 
+		print_interval/1,      % print interval as a list of bounds, for compatability, 
 		solve/1, solve/2,      % search intervals using split
 		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
 		minimize/3,            % minimize interval using user defined Solver
 		maximize/3,            % maximize interval using user defined Solver
 		enumerate/1,           % specialized search on integers
+		partial_derivative/3,  % differentiate Exp wrt. X and simplify
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected
 		clpStatistics/1        % get all defined in a list

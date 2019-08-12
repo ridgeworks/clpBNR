@@ -179,30 +179,36 @@ enumerate_([X|Xs]) :-
 %  on successful exit Vars will be narrowed consistent with the minimized Interval (single solution)
 %
 minimize(Min,Vs,Solver) :-
-	nb_delete(minimize__),  % Note: depends on global var so not thread-safe
-	minimize__(Min,Vs,Solver).
+	nb_delete(minimize__),  % Note: depends on global var so not thread-safe?
+	Min::Dom,               % only works on intervals (numbers, and others, can't be minimized)
+	functor(Dom,Type,_),
+	minimize__(Type,Min,Vs,Solver).
 
-minimize__(Min,Vs,Solver) :-
-	interval(Min),               % only works on intervals (numbers, and others, can't be minimized)
-	once(                        %% get first solution with a lower UB
-		(range(Min,[_,PUB]),
+minimize__(integer,Min,Vs,Solver) :-
+	once(Solver),           % get first solution with a lower UB
+	nb_setval(minimize__, [1,Min,Vs]),  % new Min values for next iteration
+	fail.
+	
+minimize__(real,Min,Vs,Solver) :-
+	once(                   % get first solution with a lower UB
+		(range(Min, [_,PUB]),
 		 Solver,
 		 range(Min, [_,UB]),
-		 UB < PUB  % specific check for new smaller UB, discards equivalent (and same) solutions
+		 % specific check for new smaller UB, discards  same solutions, can't use {<} with real
+		 UB < PUB
 		)
 	),
 	nb_setval(minimize__, [1,Min,Vs]),  % new Min values for next iteration
 	fail.
 	
-minimize__(Min,Vs,Solver) :-
+minimize__(Type,Min,Vs,Solver) :-
 	catch((nb_getval(minimize__, [1,NewMin,NewVs]),nb_setval(minimize__, [0,NewMin,NewVs])),_,fail),
-	%range(NewMin,[_,UB]), {Min=<pt(UB)},	% constrain UB, use pt() to avoid outward rounding
-	range(NewMin,[_,UB]), interval_object(Min,Type,_,_),
+	range(NewMin,[_,UB]),
 	(Type=integer -> {Min<UB} ; {Min=<pt(UB)}),  % constrain UB, use pt() to avoid outward rounding
-	minimize__(Min,Vs,Solver),
+	minimize__(Type,Min,Vs,Solver),
 	!.
 	
-minimize__(Min,Vs,_):-  % can't minimize UB any further, retrieve last solution and fail if none
+minimize__(_,Min,Vs,_):-  % can't minimize UB any further, retrieve last solution and fail if none
 	catch((nb_getval(minimize__, [_,Min,Vs]),nb_delete(minimize__)),_,fail).
 
 %
@@ -212,29 +218,34 @@ minimize__(Min,Vs,_):-  % can't minimize UB any further, retrieve last solution 
 %
 maximize(Max,Vs,Solver) :-
 	nb_delete(maximize__),  % Note: depends on global var so not thread-safe
-	maximize__(Max,Vs,Solver).
+	Min::Dom,               % only works on intervals (numbers, and others, can't be minimized)
+	functor(Dom,Type,_),
+	maximize__(Type,Max,Vs,Solver).
 
-maximize__(Max,Vs,Solver) :-
-	interval(Max),               % only works on intervals (numbers, and others, can't be maximized)
+maximize__(integer,Max,Vs,Solver) :-
+	once(Solver),           % get first solution with a higher LB
+	nb_setval(maximize__, [1,Max,Vs]),  % new Min values for next iteration
+	fail.
+	
+maximize__(real,Max,Vs,Solver) :-
 	once(                        %% get first solution with a lower UB
 		(range(Max,[PLB,_]),
 		 Solver,
 		 range(Max, [LB,_]),
-		 LB > PLB  % specific check for new smaller UB, discards equivalent (and same) solutions
+		 LB > PLB  % specific check for new lareger LB, discards same solutions
 		)
 	),
 	nb_setval(maximize__, [1,Max,Vs]),  % new Min values for next iteration
 	fail.
 	
-maximize__(Max,Vs,Solver) :-
+maximize__(Type,Max,Vs,Solver) :-
 	catch((nb_getval(maximize__, [1,NewMax,NewVs]),nb_setval(maximize__, [0,NewMax,NewVs])),_,fail),
-	%range(NewMax,[LB,_]), {Max>=pt(LB)},	% constrain LB, use pt() to avoid outward rounding
-	range(NewMax,[LB,_]), interval_object(Max,Type,_,_),
-	(Type=integer -> {Max>LB} ; {Max>=pt(LB)}),  % constrain UB, use pt() to avoid outward rounding
-	maximize__(Max,Vs,Solver),
+	range(NewMax,[LB,_]),
+	(Type=integer -> {Max>LB} ; {Max>=pt(LB)}),  % constrain LB, use pt() to avoid outward rounding
+	maximize__(Type,Max,Vs,Solver),
 	!.
 	
-maximize__(Max,Vs,_):-  % can't minimize UB any further, retrieve last solution and fail if none
+maximize__(_,Max,Vs,_):-  % can't minimize UB any further, retrieve last solution and fail if none
 	catch((nb_getval(maximize__, [_,Max,Vs]),nb_delete(maximize__)),_,fail).
 
 %
@@ -252,8 +263,8 @@ splitsolve(X,P) :-
 	number(X), !.                 % already a point value
 splitsolve(X,P) :-                     % assume list
 	Err is 10**(-(P+1)),          % convert digits of precision to normalized error value 
-	simplesolveall_(X,Err).
-	   
+	simplesolveall_(X,Err). 
+
 simplesolveall_([],Err) :- !.
 simplesolveall_(Xs,Err) :-
 	simplesolve_each_(Xs,Us,Err),     % split once and collect successes
@@ -306,8 +317,11 @@ simple_split_(integer,X,_,_,enumerate_([X])).           % failed to split, so en
 %  like what "solve(X)"did under the old system.
 
 
-absolve( X ):- absolve(X,12),!.
+absolve( X ):-
+	current_prolog_flag(clpBNR_default_precision,P),
+	absolve(X,P),!.
 
+absolve( X , _ ):- numeric(X),!.
 absolve( X , Limit ):-
 	interval_object(X, Type, [L,U], _),     % get interval type and value
 	delta_(Type,L,U,Delta),
@@ -326,15 +340,12 @@ absolve_l(X, _, _, _, _) :-
 absolve_l(X, DL,LB, NL,Limit):- NL<Limit, % work on left side
 	interval_object(X, Type, [LB2, UB2], _),     % get interval type and value
 	trim_point_(NL,NL1,Type,Limit, DL,DL1),
-	% DL1 > 0,
-		%domain_(X, real(LB2, UB2)),
-        Split is LB + DL1,
-		Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
-        not(  {X=<Split}),!,  % so X must be > split
-        {X >= Split},
+	Split is LB + DL1,
+	Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
+	not({X=<Split}),!,  % so X must be > split
+	{X >= Split},
   	interval_object(X, Type, [LB1, _], _),     % get interval type and value
-        % domain_(X, real(LB1, U)),!,  %  nl, print(X)
-        absolve_l(X, DL1, LB1,NL1,Limit).
+	absolve_l(X, DL1, LB1,NL1,Limit).
 absolve_l(_, _, _,  _,_).
          
 absolve_r(X, _, _, _, _) :-
@@ -343,15 +354,12 @@ absolve_r(X, _, _, _, _) :-
 absolve_r(X, DU,UB, NU,Limit):- NU<Limit, % work on right side
 	interval_object(X, Type, [LB2, UB2], _),     % get interval type and value
 	trim_point_(NU,NU1,Type,Limit, DU,DU1),
-	% DU1 > 0,
-		%domain_(X, real(LB2, UB2)),
-        Split is UB - DU1,
-		Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
-        not(  {X>=Split}),!,       % so X must be > split
-        {X =< Split},
-  	interval_object(X, Type, [_, UB1], _),     % get interval type and value
-       % domain_(X, real(_, UB1) ),!,  % nl, print(X), 
-        absolve_r(X, DU1,UB1, NU1,Limit).
+	Split is UB - DU1,
+	Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
+	not({X>=Split}),!,       % so X must be > split
+	{X =< Split},
+	interval_object(X, Type, [_, UB1], _),     % get interval type and value
+	absolve_r(X, DU1,UB1, NU1,Limit).
 absolve_r(_, _, _,  _,_).
 
 trim_point_( N,N, _Type, _Limit, Delta, Delta).
@@ -373,7 +381,7 @@ solve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
 	solve([X],P).
 solve(X,P) :-
-	number(X), !.                 % already a point value
+	numeric(X), !.                % already a point value
 solve(X,P) :-                     % assume list
 	Err is 10**(-(P+1)),          % convert digits of precision to normalized error value 
 	xpsolveall_(X,Err).
@@ -405,7 +413,6 @@ xpsolve_each_([X|Xs],Us,Err) :-
 %
 splitinterval_(real,X,Err,({X =< SPt};{SPt =< X})) :-
 	getValue(X,V),
-	% nl,write(splitting(V)),
 	splitinterval_real_(V,Pt,Err), !,           % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 	
@@ -414,8 +421,8 @@ splitinterval_(integer,X,_,({X =< Pt};{Pt < X})) :-   % try to split and on fail
 	splitinterval_integer_(V,Pt), !.
 splitinterval_(integer,X,_,enumerate_([X])).           % failed to split, so enumerate
 
-splitinterval_(boolean,X,Err,Choices) :-
-	splitinterval_(integer,X,Err,Choices).
+%splitinterval_(boolean,X,Err,Choices) :-
+%	splitinterval_(integer,X,Err,Choices).
 
 
 %  split a real interval
@@ -451,25 +458,82 @@ splitinterval_integer_([L,H],Pt) :-
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
 
-splitinterval_real_([L,H],0.0,E) :-  % if interval contains 0, split on 0.
-	L < 0, H > 0, !,
-	catch((H-L) > E, _, true).       % fail if width is less than error criteria, overflow is OK
-splitinterval_real_([-1.0Inf,H],Pt,_) :-   % neg. infinity to zero or neg. H
-	Pt is H*10-1.                    % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
-splitinterval_real_([L,1.0Inf],Pt,_) :-   % zero or pos. L to pos. infinity
-	Pt is L*10+1.                    % add 1 in case L is 0. (1, 11, 101, 1001, ...)
-splitinterval_real_([L,H],Pt,E) :-   % finite L,H, positive or negative but not split
+splitinterval_real_([L,H],0.0,E) :-   % if interval contains 0, split on 0.
+	L < 0, H > 0, !,                  % cut in case error criteria fails
+	catch((H-L) > E, _, true).        % fail if width is less than error criteria, overflow is OK
+
+splitinterval_real_([-1.0Inf,H],Pt,_) :-   % neg. infinity to H=<0
+	!,  % if following overflows, split failed
+	catch(Pt is H*10-1,_,fail).       % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
+splitinterval_real_([L,1.0Inf],Pt,_) :-   % L>=0 to pos. infinity
+	!,  % if following overflows, split failed
+	catch(Pt is L*10+1,_,fail).       % add 1 in case L is 0. (1, 11, 101, 1001, ...)
+
+splitinterval_real_([L,H],Pt,E) :-    % finite L,H, positive or negative but not split, Pt\=0.
 	splitMean_(L,H,Pt),
-	MinZ isH 0.0,                    % use rounding to limit 0.0 case
-	MinW is max(MinZ,abs(Pt)*E),     % Minimum width at Pt due to Err criteria
-	(Pt-L) > MinW, (H-Pt) > MinW.
+	Pt =\= 0,                         % if calculated split point zero, underflow occurred -> fail
+	catch((H-L) > max(abs(Pt),1)*E, _, true). % fail if width is less than relative error, overflow is OK
+	
+%splitinterval_real_([L,H],Pt,E) :-
+%	writeln('FAIL'([L,H],Pt,E)),fail.
+
+% (approx.) geometric mean of L and H (same sign)
+splitMean_(L,H,M) :- L>0, !, M is sqrt(L)*sqrt(H).       % all > 0
+splitMean_(L,H,M) :- H<0, !, M is -sqrt(-L)*sqrt(-H).    % all < 0
+
+splitMean_(L,H,M) :- L=:=0, !, M is min(H/2, sqrt( H)).  % L endpoint is 0
+splitMean_(L,H,M) :- H=:=0, !, M is max(L/2,-sqrt(-L)).  % H enpdoint is 0
 
 
-% geometric mean of L and H (same sign) if not non-zero, arithmetic mean if either 0
-splitMean_(L,H,M) :- L>0, !, M is sqrt(L)*sqrt(H).     % avoid overflow
-splitMean_(L,H,M) :- H<0, !, M is -sqrt(-L)*sqrt(-H).
-splitMean_(L,H,M) :- L=:=0, !, M is H/2.
-splitMean_(L,H,M) :- H=:=0, !, M is L/2.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%					partial_derivative(E, X, D)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Perform symbolic differentiation followed by simplify/2:  D = dE/dX
+%
+%  located in utilities as it's a common requirement for applying series expansion
+%  to improve convergance. Avoids necessity of exposing simplify/2.
+%  Note that the set of rules only covers functions supported by {}.
+%
+partial_derivative(F,X,DFX) :-
+	pd(F,X,DD),
+	simplify(DD,DFX).
+
+pd(Y,X,D)                      :- var(Y), (X==Y -> D=1 ; D=0), !.
+
+pd(C,_,0)                      :- numeric(C), !.
+
+pd(-U,X,-DU)                   :- pd(U,X,DU).
+
+pd(U+V,X,DU+DV)                :- pd(U,X,DU), pd(V,X,DV).
+
+pd(U-V,X,DU-DV)                :- pd(U,X,DU), pd(V,X,DV).
+
+pd(U*V,X,V*DU+U*DV)            :- pd(U,X,DU), pd(V,X,DV).
+
+pd(U**N,X,(N*U**(N-1))*DU)     :- pd(U,X,DU).
+
+pd(U/V,X,(V*DU-U*DV)/(V**2))   :- pd(U,X,DU), pd(V,X,DV).
+
+pd(log(U),X,DU/U)              :- pd(U,X,DU).
+
+pd(exp(U),X,exp(U)*DU)         :- pd(U,X,DU).
+
+pd(sqrt(U),X,DU/(2*sqrt(U)))   :- pd(U,X,DU).
+
+pd(sin(U),X,cos(U)*DU)         :- pd(U,X,DU).
+
+pd(cos(U),X,-sin(U)*DU)        :- pd(U,X,DU).
+
+pd(tan(U),X,DU/cos(U)**2)      :- pd(U,X,DU).
+
+pd(asin(U),X,DU/sqrt(1-U**2))  :- pd(U,X,DU).
+
+pd(acos(U),X,-DU/sqrt(1-U**2)) :- pd(U,X,DU).
+
+pd(atan(U),X,DU/(1+U**2))      :- pd(U,X,DU).
 
 
 %
@@ -482,3 +546,4 @@ sandbox:safe_primitive(clpBNR:splitsolve(_)).
 sandbox:safe_primitive(clpBNR:splitsolve(_,_)).
 sandbox:safe_primitive(clpBNR:minimize(_,_,_)).
 sandbox:safe_primitive(clpBNR:maximize(_,_,_)).
+sandbox:safe_primitive(clpBNR:partial_derivative(_,_,_)).

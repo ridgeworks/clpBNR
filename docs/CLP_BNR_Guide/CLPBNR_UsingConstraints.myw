@@ -669,6 +669,521 @@ This example is interesting for a number of reasons:
 
 <#TableOfContents>
 
+#### Timing Analysis of Digital Circuits
+
+Interface timing verification is the problem of verifying that the interfaces of various system components in a digital circuit can be connected and operate correctly. Each interface is given as a collection of events and constraints relating the occurrence times of these events. Verifying correct operation by exhaustive simulation is generally impractical, so some form of analytical approach is required. Even this simplistic description of the problem suggest that a CLP approach based on intervals (timing windows) might be advantageous.
+
+A common example in the literature, e.g., [Solving linear, min and max constraint systems using CLP based on relational interval arithmetic], is the read cycle of a 8086 CPU in "Minimum" system configuration to a 2716 EPROM. From the [8086 Datasheet], the hardware configuration looks like:
+[8086ReadCircuit]
+Although this example is common in academic papers, the specifics of the circuit being analysed are unclear. So rather than rely on the intermediate timing graph from the papers, the approach described here goes back to the original information in the component datasheets:
+*..
+	* CPU : [8086 Datasheet]
+	* EPROM : [2716 Datasheet]
+	* Address Latch : [8282 Datasheet]
+	* Bus Transceiver : [8286 Datasheet]
+The timing characteristics of the devices typically are compose of a wave diagram and a table of timing values whose labels refer to the wave diagram. In this particular case the 8086 wave diagram for a read operation is:
+[8086ReadWave]
+The actual table of timing values is available in the 8086 datasheet and won't be reproduced here, but the relevant values will be used in the code below.
+
+In addition, a common solution in the literature is to optimize the separation of event times which can be an NP-complete problem. However, the underlying objective is to prove that the timing specification is consistent and all timing requirements are met when components are inter-connected. So the solution described below directly tackles these objectives in a (hopefully) more transparent way while provided additional diagnostic information when these objectives aren't met.
+
+For the purposes of timing analysis, capturing the circuit properties can be broken down into two steps. The first step is to identify the timing events and give them a label and a type. The type of event is necessary because any particular event may be dependent on more than one "parent" event. In some cases these are simple constraints which must be mutually satisified, but in others the event may depend on the earliest or latest parent. The names corresponding to these types are `lin` (mutual constraints), `min` (earliest parent), and `max` (latest parent).
+
+The events themselves are things like clocks, address available on CPU address bus, etc. For the purposes of this example, some signals and associated events will be ignored, e.g., M/IO, Status controls, etc. The events are declared in a list containing elements of the form: `Type(Label)`:
+```
+events([
+	lin(c1),     % **Reference** falling edge of clock 1 (T1)
+	lin(c2),     % falling edge of clock 2 (T2)
+	lin(ce),     % falling edge of final clock in the cycle (T4)
+	lin(a1),     % address available from CPU
+	lin(a2),     % address unavailable from CPU
+	lin(r1),     % read strobe (RD) falling edge
+	lin(r2),     % read strobe (RD) rising edge
+	lin(l1),     % address latch (ALE) rising edge
+	lin(l2),     % address latch (ALE) falling edge
+	max(mA1),    % address available to EPROM
+	lin(r1),     % read strobe (RD) falling edge
+	lin(r2),     % read strobe (RD) rising edge
+	max(d1),     % data available from EPROM
+	min(d2),     % data unavailable from EPROM
+	lin(rD1),    % data available to CPU
+	lin(rD2)     % data unavailable to CPU
+]).
+```
+The first event in the list is designated as the *reference* event and is assigned time value 0. All other event times are relative to the reference event time. 
+
+For analysis purposes, a "net list" is created from the event list by adding an event time represented by an `integer` interval representing the earliest and latest time that the event can occur:
+```
+% Create Net list from list of event names
+label_events([], []).
+label_events([Ev|Events], [ev(Type,Name,Time)|Net]) :-
+	Ev =.. [Type,Name],
+	Time::integer,
+	label_events(Events, Net).
+```
+The second step in defining a network for analysis is to apply constraints to the event times based on the information in the component datasheets. There are actually two kinds of timing relationships. The first kind deals with causal relationships, e.g., "the address from the CPU becomes valid between 10 and 100 ns. after the leading edge of clock 1". (A value of 0 is assumed if no minimum time is given; an unspecified maximum can be represented by a variable.) These are "hard" constraints specified by the component manufacturer.
+
+The second kind of constraint are setup and hold times between components; these will be called "hazards" since violating these relationships indicate the circuit as defined fails to meet the timing requirements specified in the datasheets. These are "design" constraints used to validate correct circuit operation and, unlike hard constraints, cannot be used to used to narrow other event times.
+
+A causal relationship (hard constraint) will be represented by a rule of the form `timing(Ev1,Ev2,[Min,Max])` which says event `Ev2` will follow parent event `Ev1` by a time interval between `Min` and `Max` ns. (or whatever common timing unit is implied). A hazard is represented by a rule of the form `hazard(Ev,SEv+ST,HEv-HT)` where `ST` is the setup time between `SEv` and `Ev` and `HT` is the hold time between `Ev` and `HEv`. 
+
+The address latch is a simple component that requires both kinds of timing relationships:
+```
+% 8282 Octal Latch
+timing(a1,mA1,[0,35]).    % TIVOV (Input to Output Delay)
+timing(l1,mA1,[0,55]).    % TIVOV (Input to Output Delay)
+
+hazard(l2,a1+0,a2-25).    % TIVSL/TSLIX (Input to Strobe Setup/Hold Time)
+```
+The `timing` rules capture the delay between the inputs `a1` (address start) and `l1` (latch start) and the output (`mA1`). The `hazard` rule indicates the setup/hold requirements for `l2` (latch end) on the address from the CPU.
+
+To facilitate experimentation, two additional rules to define the clock characteristics and wait cycles are added. (For simplicity, the circuitry to correctly control the insertion of wait cycles has been assumed.) The complete set of timing information is below; the comments refer to timing labels in the datasheets:
+```
+:- discontiguous timing/3,hazard/3.  % info for SWIP compiler
+% 8086 CPU
+clock_period(TCLCL,TCLCH,TCHCL) :-  % Clock Period, Clock Low Duration, Clock High Duration
+	% Minimum values: 200 ns, 118 ns., 69 ns. from datasheet
+	TCLCL=200, LL=118, HL=69,
+	LH is TCLCL-HL, HH is TCLCL-LL,
+	TCLCH=[LL,LH], TCHCL=[HL,HH].
+wait_cycles(0).     % number of wait cycles injected between T3 and T4
+
+timing(c1,c2,[T,T]) :-    % T2 clock begin
+	clock_period(T,_,_).
+timing(c2,ce,[T,T]) :-    % Tend (T4) clock begin
+	clock_period(C,_,_), wait_cycles(W), T is C*(2+W).
+timing(c1,a1,[10,110]).   % TCLAV (Address Valid Delay)
+timing(c1,l1,[0,80]).     % TCLLH (ALE Start)
+timing(l1,l2,[L,H]) :-    % TLHLL=TCLCH-20 (ALE End)
+	clock_period(_,[LL,LH],_), L is LL-20, H is LH-20.
+timing(a1,l2,[L,H]) :-    % TAVAL=TCLCH-60
+	clock_period(_,[LL,LH],_), L is LL-60, H is LH-60.
+timing(c1,l2,[L,H]) :-    % =TCLCH+TCHLL
+	clock_period(_,[L,LH],_), H is LH+85.
+timing(c2,a2,[10,80]).    % TCLAX/TCLAZ (Address Hold Time, Address Float Delay)
+timing(c2,r1,[10,165]).   % TCLRL (Read Active Delay)
+timing(ce,r2,[10,150]).   % TCLRH (Read Inactive Delay)
+
+hazard(ce,rD1+30,rD2-10). % TDVCL/TCLDX (End Clock to Data Setup/Hold)
+
+% 8282 Octal Latch
+timing(a1,mA1,[0,35]).    % TIVOV (Input to Output Delay)
+timing(l1,mA1,[0,55]).    % TIVOV (Input to Output Delay)
+
+hazard(l2,a1+0,a2-25).    % TIVSL/TSLIX (Input to Strobe Setup/Hold Time)
+
+% 2716 EPROM
+timing(mA1,d1,[0,450]).   % tACC (Address to Output Delay)
+timing(r1,d1,[0,120]).    % tOE (Output Enable to Output Delay)
+timing(r2,d2,[0,100]).    % tOH/tOF (Output Disable to [Output Float])
+
+% 8286 Data Transceiver
+timing(d1,rD1,[0,35]).    % TIVOV (Input to Output Delay)
+timing(d2,rD2,[0,35]).    % TIVOV (Input to Output Delay)
+```
+Note that the `l2` event (end of address latch enable) is specified in the datasheet by three separate timing relationships relative to `l1`, `a1`, and `c1`. These will just be treated as three independant constraints (`l2` is event type `lin`) resulting in the narrowest possible event time for `l2` (see below).
+
+This example just has two hazards to consider: address/control for loading the address latch and data available to the 8086 CPU.
+
+aside> Aside: some published papers use the term "produced timing" for `timing/3` constraints and "required timing" for hazards. One might be tempted to also treat hazards as constraints. While this may be possible, it's difficult to diagnose problems since failure could be caused by either inconsistent `timing` defintions (rare) or unsatisfied requirements (the common case). Hence, the approach described here separates *definition* and *verification* into two distinct steps.
+
+The process of timing analysis requires that the network be defined, which will include checking that the `timing` rules are consistent. The second step validates the circuit by checking the hazard conditions.
+
+The pocess of defining the network involves creating the `Net` list and setting the reference event time to 0. The constraints implied by the `timing` rules are then applied. Any failure is an indication that the timing rules are inconsistent (an event time interval is empty) and a diagnostic message is output.
+```
+define_network(Evs, Net) :-
+	label_events(Evs, Net),  % from above
+	Net = [ev(_,_,0)|_],     % designate the first event to be the reference event at T=0
+	constrain_net_(Net,Net).
+
+% Apply timing constraints to each Net list entry
+% Note the use of memberchk/2 to access event information in Net list.
+constrain_net_([], _).
+constrain_net_([ev(Type,Ev,TEv)|Ds], Net) :-  % for each target event in the list
+	% findall ancestors and keep time and edge delta
+	findall(delta_(Par,Range),timing(Par,Ev,Range),TLs),
+	% constrain based on event type, ouput dignostic on failure, but continue processing
+	(constrain_type(TLs,Type,TEv,Net) -> true
+	; writeln(timing_INCONSISTENCY(ev(Type,Ev),TLs))
+	),
+	constrain_net_(Ds,Net).
+	
+constrain_type([],_,_,_) :- !.
+constrain_type([delta_(Par,[L,U])|TLs],lin,TEv,Net) :- !,  % lin event
+	memberchk(ev(_,Par,ParTime),Net),
+	Delta::integer(L,U),
+	{TEv == ParTime + Delta},
+	constrain_type(TLs,lin,TEv,Net).
+constrain_type(TLs,Type,TEv,Net) :-                         % max/min event
+	min_max(TLs,Type,Ms,Net),
+	{TEv == Ms}.
+	
+% collect a min/max expression; must be at least one item
+min_max([delta_(Par,[L,U])],Type,ParTime+Delta,Net) :- !,
+	memberchk(ev(_,Par,ParTime),Net),  % single argument
+	Delta::integer(L,U).
+min_max([TL|TLs],Type,MinMax,Net) :-
+	MinMax =.. [Type,Delta,More],
+	min_max([TL],Type,Delta,Net),  % argument 1
+	min_max(TLs,Type,More,Net).    % argument 2
+```
+Constraints on `lin` event times are simply `{TEv == ParTime+Delta}` where `Delta` is an interval defined by the value in `timing` rules. Constraints on `min/max` events are the `min/max` of all parents `Delta` constraints. (Since `min/max` is arity two, a nested chain of `min/max` expressions must be constructred if there are more than two parent events.)
+
+To confirm that all the requirements are met, the `verify` step (Step 3) checks that no `hazard` violation has occurred. A violation is detected when the event time window intersects with interval time defined by the setup and hold specifications in the `hazard` defintion. For this example, a violation will be reported to the Prolog console.
+```
+verify(Net) :-  % for each hazard, check setup and hold times
+	forall(hazard(Ev,Setup,Hold), verify_(Net,Ev,Setup,Hold)).
+
+verify_(Net,Ev,SEv+ST,HEv-HT) :-
+	memberchk(ev(_,Ev,ETime),Net),                  % reference event time
+	memberchk(ev(_,SEv,STime),Net),                 % setup event time
+	memberchk(ev(_,HEv,HTime),Net),                 % hold event time
+	(\+({(ETime<STime+ST) or (ETime>HTime-HT)}) ->  % assume integers so <,> are complete
+		true    % no violation
+	;
+		writeln(verify_FAIL(event(Ev,ETime),setup(SEv,STime+ST),hold(HEv,HTime-HT)))
+	).
+```
+Note that Prolog negation (`\+`) is used in checking the hazard timing, i.e., success means the event did not fall into either the setup or hold window. This ensures that other event times are not changed (narrowed).
+
+Analysing the timing operation of a nominal circuit (5 Mhz. clock, 0 wait states):
+```
+?- events(Es),define_network(Es,Net),verify(Net),nl.
+
+verify_FAIL(event(ce,600),setup(rD1,_792{integer(210,630)}+30),hold(rD2,_840{integer(610,885)}-10))
+
+Es = [lin(c1),lin(c2),lin(ce),lin(a1),lin(a2),lin(l1),lin(l2),max(mA1),lin(r1),lin(r2),max(d1),min(d2),lin(rD1),lin(rD2)],
+Net = [ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),
+ev(lin,a1,_360::integer(47,110)),ev(lin,a2,_408::integer(210,280)),
+ev(lin,l1,_456::integer(7,80)),ev(lin,l2,_504::integer(118,181)),
+ev(max,mA1,_552::integer(47,145)),
+ev(lin,r1,_600::integer(210,365)),ev(lin,r2,_648::integer(610,750)),
+ev(max,d1,_696::integer(210,595)),ev(min,d2,_744::integer(610,850)),
+ev(lin,rD1,_792::integer(210,630)),ev(lin,rD2,_840::integer(610,885))].
+```
+A timing violation has been detected; the data read from the EPROM via the transceiver arrives too late to meet the setup requirements of the CPU. If the source is modified to inject a wait state (`wait_cycles(1)`), the violation is avoided:
+```
+?- events(Es),define_network(Es,Net),verify(Net),nl.
+
+Es = [lin(c1),lin(c2),lin(ce),lin(a1),lin(a2),lin(l1),lin(l2),max(mA1),lin(r1),lin(r2),max(d1),min(d2),lin(rD1),lin(rD2)],
+Net = [ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,800),
+ev(lin,a1,_360::integer(47,110)),ev(lin,a2,_408::integer(210,280)),
+ev(lin,l1,_456::integer(7,80)),ev(lin,l2,_504::integer(118,181)),
+ev(max,mA1,_552::integer(47,145)),
+ev(lin,r1,_600::integer(210,365)),ev(lin,r2,_648::integer(810,950)),
+ev(max,d1,_696::integer(210,595)),ev(min,d2,_744::integer(810,1050)),
+ev(lin,rD1,_792::integer(210,630)),ev(lin,rD2,_840::integer(810,1085))].
+```
+Another alternative is to use 0 wait states but relax the clock frequency specified in `clock_period/3`, e.g., to 220 ns. :
+```
+?- events(Es),define_network(Es,Net),verify(Net),nl.
+
+Es = [lin(c1),lin(c2),lin(ce),lin(a1),lin(a2),lin(l1),lin(l2),max(mA1),lin(r1),lin(r2),max(d1),min(d2),lin(rD1),lin(rD2)],
+Net = [ev(lin,c1,0),ev(lin,c2,220),ev(lin,ce,660),
+ev(lin,a1,_360::integer(27,110)),ev(lin,a2,_408::integer(230,300)),
+ev(lin,l1,_456::integer(0,80)),ev(lin,l2,_504::integer(118,201)),
+ev(max,mA1,_552::integer(27,145)),
+ev(lin,r1,_600::integer(230,385)),ev(lin,r2,_648::integer(670,810)),
+ev(max,d1,_696::integer(230,595)),ev(min,d2,_744::integer(670,910)),
+ev(lin,rD1,_792::integer(230,630)),ev(lin,rD2,_840::integer(670,945))].
+```
+This example is a natural fit between the problem's event timing windows and the underlying CLP/intervals model, necessitating only 50 lines of code plus the circuit description. In reality, most of the work is mapping the timing information in the datasheets' waveform diagrams and timing tables. Execution times for analysing this admittedly simple circuit is a few milliseconds because of the simple nature of the constraints which can be easily narrowed by the fixed point iteration mechanism. Where large numbers of events are required, it's usually possible to de-construct the circuit into sub-circuits which can be analysed independently. To verify correct operation of the whole circuit, recombine the individual results with the same techniques used at the component level in this simple example.
+
+This example can be easily adapted to other memory devices by replacing the EPROM timing information with the corresponding information of the devices, e.g., [2142-3] static RAM (capable of running at the designated CPU clock speed without wait states):
+```
+% 2142-3 Static Ram
+timing(mA1,d1,[0,300]).   % tACC (Address to Output Delay)
+timing(r1,d1,[20,100]).   % tOE (Output Enable to Output Delay)
+timing(r2,d2,[0,80]).     % tOH/tOF (Output Disable to [Output Float])
+```
+Analysis of write cycles would require additional events since the data originates from the CPU and the relevant hazard relates to the data setup and hold times of the static RAM.
+
+See also [Design and Implementation of a Static Timing Analyzer using CLP(BNR)] for a more in-depth treatment of this subject.
+
+<#TableOfContents>
+
+#### Solving Polynomial Equations in one Variable
+
+Finding the roots of a univariate polynomial equation is the same as asking what is the value of `X` given the constraint `{P(X)==0}`. (Some of this section was covered earlier in "Constraints on Real Intervals".) A simple quadratic with two real roots (1 and 3):
+eg
+	?- X::real,{X**2-4*X+3 == 0}.
+	X = _60::real(0.9999999999999989,3.000000000000008).
+The interval result must include both roots. To produce a single value, the problem must be further constrained:
+eg
+	?- X::real(2,_),{X**2-4*X+3 == 0}.
+	X = _54::real(2.999999999999994,3.000000000000008).
+or to find both:
+eg
+	?- X::real,{X**2-4*X+3 == 0},({X=<2};{X>=2}).
+	X = _66::real(0.9999999999999989,1.000000000000001) ;
+	X = _60::real(2.999999999999994,3.000000000000008).
+Rather than guess at addtional constraints to isolate roots, `clpBNR` provides the `solve` predicate which uses a bifurcating search ideal for finding roots of polynomials:
+eg
+	?- X::real,{X**2-4*X+3 ==0},solve(X).
+	X = _60::real(0.9999999999999989,1.000000000000001) ;
+	X = _60::real(2.999999999999994,3.000000000000008).
+	
+A fourth degree polynomial equation with two real roots:
+eg
+	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
+	X = _60::real(0.9999999190627636,1.0000000016923434) ;
+	X = _60::real(2.999999966786581,3.0000001192379773) ;
+	false.
+Note that this last example does not narrow `X` to the same extent as the first example. `solve`works by splitting intervals into pieces and discarding those pieces which provably do not contain solutions. Pieces which *may* contain solutions are split again, and the process is repeated. However to keep execution and time space under control, there is a minimum size interval which can be split as determined by the Prolog environment flag `clpBNR_default_precision` (default value=6) which roughly approximates the number of digits of precision. More precise answers can only be achieved by the basic fixed point iteration driven by the interval primitive operations (as indicated by the first example).
+
+Formulas exist for solving equations of low degree, so this may hardly seem to be worth the trouble, but this same technique works for pretty much any polynomial:
+eg
+	?- X::real,{17*X**256+35*X**17-99*X == 0},solve(X).
+	X = _60::real(-7.866422732096173e-309,1.168725663054289e-308) ;
+	X = _60::real(1.0050278928940106,1.005027892894011).
+
+	?- X::real,{35*X**256-14*X**17+X == 0},solve(X).
+	X = _60::real(-0.8479436608273155,-0.847943660827315) ;
+	X = _60::real(-1.0902861906685296e-306,3.1151034019100843e-307) ;
+	X = _60::real(0.847943660827315,0.8479436608273155) ;
+	X = _60::real(0.9958424942004978,0.9958424942004983) ;
+	false.
+
+So far, so good, but consider the following polynomial equation with roots at 0, 3, 4, and 5:
+eg
+	?- X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),writeln(X),fail.
+	_60{real(-4.450147717014407e-309,4.45014771701474e-309)}
+	_60{real(2.9999975143122604,2.999997762200814)}
+	_60{real(2.999997762200814,2.999998010089388)}
+	_60{real(2.999998010089388,2.9999982579779827)}
+	_60{real(2.9999982579779827,2.9999985058665977)}
+	_60{real(2.9999985058665977,2.9999987537552335)}
+	_60{real(2.9999987537552335,2.9999990016438893)}
+	_60{real(2.9999990016438893,2.9999992495325656)}
+	_60{real(2.9999992495325656,2.9999994974212627)}
+	_60{real(2.9999994974212627,2.9999997453099803)}
+	_60{real(2.9999997453099803,2.9999999931987187)}
+	_60{real(2.9999999931987187,3.0000002410874766)}
+	_60{real(3.0000002410874766,3.000000488976256)}
+	_60{real(3.000000488976256,3.0000007368650556)}
+	_60{real(3.0000007368650556,3.0000009847538758)}
+	_60{real(3.0000009847538758,3.0000012326427163)}
+	_60{real(3.0000012326427163,3.0000014805315773)}
+	_60{real(3.0000014805315773,3.0000017284204588)}
+	_60{real(3.0000017284204588,3.0000019763093606)}
+	_60{real(3.0000019763093606,3.0000022241982833)}
+	_60{real(3.0000022241982833,3.000002472087226)}
+	_60{real(3.000002472087226,3.000002719976189)}
+	_60{real(3.999995740042136,3.9999960340456164)}
+	_60{real(3.9999960340456164,3.999996328049119)}
+	_60{real(3.999996328049119,3.9999966220526426)}
+	_60{real(3.9999966220526426,3.9999969160561877)}
+	_60{real(3.9999969160561877,3.9999972100597545)}
+	_60{real(3.9999972100597545,3.999997504063343)}
+	_60{real(3.999997504063343,3.999997798066953)}
+	_60{real(3.999997798066953,3.999998092070585)}
+	_60{real(3.999998092070585,3.999998386074238)}
+	_60{real(3.999998386074238,3.9999986800779133)}
+	_60{real(3.9999986800779133,3.9999989740816098)}
+	_60{real(3.9999989740816098,3.999999268085328)}
+	_60{real(3.999999268085328,3.9999995620890676)}
+	_60{real(3.9999995620890676,3.999999856092829)}
+	_60{real(3.999999856092829,4.0000001500966125)}
+	_60{real(4.0000001500966125,4.000000444100417)}
+	_60{real(4.000000444100417,4.000000738104243)}
+	_60{real(4.000000738104243,4.0000010321080905)}
+	_60{real(4.0000010321080905,4.00000132611196)}
+	_60{real(4.00000132611196,4.00000162011585)}
+	_60{real(4.00000162011585,4.000001914119763)}
+	_60{real(4.000001914119763,4.000002208123698)}
+	_60{real(4.000002208123698,4.000002502127653)}
+	_60{real(4.000002502127653,4.000002796131631)}
+	_60{real(4.000002796131631,4.00000309013563)}
+	_60{real(4.00000309013563,4.000003384139651)}
+	_60{real(4.000003384139651,4.000003678143694)}
+	_60{real(4.000003678143694,4.000003972147757)}
+	_60{real(4.000003972147757,4.000004266151843)}
+	_60{real(4.999997753701849,4.999998121206426)}
+	_60{real(4.999998121206426,4.999998488711029)}
+	_60{real(4.999998488711029,4.99999885621566)}
+	_60{real(4.99999885621566,4.999999223720318)}
+	_60{real(4.999999223720318,4.999999591225002)}
+	_60{real(4.999999591225002,4.999999958729714)}
+	_60{real(4.999999958729714,5.000000326234453)}
+	_60{real(5.000000326234453,5.000000693739218)}
+	_60{real(5.000000693739218,5.000001061244012)}
+	_60{real(5.000001061244012,5.000001428748832)}
+	_60{real(5.000001428748832,5.000001796253678)}
+	_60{real(5.000001796253678,5.000002163758553)}
+	_60{real(5.000002163758553,5.000002531263454)}
+	false.
+`solve` has found numerous "solutions" (false positives) in the vicinity of the roots that it cannot prove are incorrect within the default precision limit. This is due to the multiple occurence of `X` in the constraint set (the *dependency* problem discussed previously) and the shape of the polynomial in the vicinity of the X axis (a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0). And to make matters worse, it can take a considerable amount of work to generate these false positives.
+
+So although the internal fixed point iteration in combination with `solve` is very general in nature, it can result in less than optimal solutions. One way to compensate for this is the use of the `absolve` predicate which attempts to narrow an interval by "nibbling away" at the edges. Using it in combination with `solve` provides a more acceptable result:
+eg
+	?- X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X),writeln(X),fail.
+	_60{real(-1.3906711615653e-310,1.63e-322)}
+	_60{real(2.99999991960674,2.9999999931987187)}
+	_60{real(2.9999999931987187,3.000000074537231)}
+	_60{real(3.9999998698742547,4.000000127127569)}
+	_60{real(4.9999999300183955,4.999999952987454)}
+	_60{real(4.999999964471975,5.000000067832698)}
+	false.
+It's still not quite optimal (2 false positives generated) since the `clpBNR_default_precision` controls how much nibbling is done, but the default value can overriden with an optional second argument to `absolve`:
+eg
+	?- X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X,10),writeln(X),fail.
+	_60{real(-8.69169475961e-312,1.63e-322)}
+	_60{real(2.9999999953774257,3.0000000050606346)}
+	_60{real(3.9999999918972597,4.0000000079757)}
+	_60{real(4.999999995695503,5.000000004308952)}
+	false.
+`absolve` has removed all the bogus answers but at some cost in performance and it all feels a little hand-crafted and problem data dependent. The underlying, general purpose machinery is all operating correctly but it doesn't really understand the specifics of the problem captured by the constraints.
+
+The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parobala. `solve` (and `absolve`) can spend a lot of time in the vicinity of the solution (in this case, {`x=1`}) trying to disprove solutions in small intervals of `X`:
+eg
+	?- X::real,{X**2-2*X+1==0}.
+	X = _60::real(0.999203058873612,1.000805168919598).
+
+	?- X::real,{X**2-2*X+1==0},solve(X).
+	X = _60::real(0.9999556550105428,0.999955997600023) ;
+	X = _60::real(0.9999791299086654,0.9999793713395979) ;
+	X = _60::real(0.9999803828342873,0.9999807566895678) ;
+	X = _60::real(0.999982445404372,0.9999831915543161) ;
+	X = _60::real(0.9999838692534806,0.999984737440908) ;
+	X = _60::real(0.9999869736250041,0.9999873487287306) ;
+	X = _60::real(0.9999877365222976,0.9999881606132325) ;
+	X = _60::real(0.9999888221723332,0.999989368309631) ;
+	X = _60::real(0.9999896435204586,0.9999902338674798) ;
+	X = _60::real(0.9999909002491526,0.9999916555642545) ;
+	X = _60::real(0.9999918260457336,0.9999926203591547) ;
+	X = _60::real(0.9999928829098332,0.9999937540460123) ;
+	X = _60::real(0.9999938500550112,0.9999947516062333) ;
+	X = _60::real(0.9999950441453145,0.999995496144011) ;
+	X = _60::real(0.9999955462786555,0.9999960096429473) ;
+	X = _60::real(0.999996087679726,0.9999965724478452) ;
+	X = _60::real(0.9999966015601411,0.9999970951682335) ;
+	X = _60::real(0.9999971570840895,0.9999976744334229) ;
+	X = _60::real(0.9999976878705101,0.9999982114065267) ;
+	X = _60::real(0.9999982272514523,0.9999987604320995) ;
+	X = _60::real(0.999998764258027,0.9999993007704718) ;
+	X = _60::real(0.9999993056137646,0.9999998496720799) ;
+	X = _60::real(0.9999998497256375,1.0000003941931317) ;
+	X = _60::real(1.000000394965577,1.0000009372886627) ;
+	X = _60::real(1.0000009394868463,1.0000014792623064) ;
+	X = _60::real(1.000001495846261,1.0000020234587206) ;
+	X = _60::real(1.0000020337418545,1.0000025559290877) ;
+	X = _60::real(1.0000025890034032,1.0000030972085454) ;
+	X = _60::real(1.0000031213697187,1.00000362136702) ;
+	X = _60::real(1.0000039620403922,1.0000048523312155) ;
+	X = _60::real(1.0000049119018053,1.0000057793055328) ;
+	X = _60::real(1.0000059512348756,1.0000067607601886) ;
+	X = _60::real(1.0000068769675772,1.0000076554880233) ;
+	X = _60::real(1.0000081217014474,1.000008774758283) ;
+	X = _60::real(1.0000089715227183,1.0000095877301314) ;
+	X = _60::real(1.0000100703863337,1.0000105895577807) ;
+	X = _60::real(1.0000108774647383,1.0000113544979035) ;
+	X = _60::real(1.0000128085313547,1.0000129825813753) ;
+	X = _60::real(1.0000134179889821,1.000013553141321) ;
+	X = _60::real(1.0000145381175183,1.0000145428808327) ;
+	X = _60::real(1.000016620525248,1.0000173661492389) ;
+	X = _60::real(1.0000181541510764,1.000018769642286) ;
+	false.
+Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while generationg many false positives. `absolve` can be used to filter out some solutions but it takes much longer. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
+
+By applying these general mechanisms, a satisfactory solution can usually be found but as is often the cse in using constraints, perfotmance can often be improved (space and/or time) by adding constraints ([Algorithmic Power from Declarative Use of Redundant Constraints]). The [Mean value theorem] states that if {`f`} is a continuous function on a closed interval and differentialble over the interval:
+
+math>
+	f(x) = f(x_0) + f'(xi)(x-x_0) " where " (x_0<=xi<=x)or(x<=xi<=x_0)
+
+Roots are values of {`x`} when {`f(x)=0`} (zero crossings). This equation yields three constraints: the Taylor expansion equation and the two ranges of {`xi`}. An algorithm to use these constraints involves selecting an advantageous value of {`x_0`} and using it to split the {`x`} interval. Applying the constraints, where {`f(x)=0`} will succeed if there is a zero crossing (a root) within either (or both) of the sub-intervals. Then the process can be recursively applied to the sub-intervals until an error threshold is reached (like `solve`).
+
+Here's one implementation:
+eg
+	findroots(P,X) :-
+		partial_derivative(P,X,D),         % must be differentiable
+		% create templates for original polynomial and derivative
+		copy_term([P,X],Poly),
+		copy_term([D,X],Derv),
+		% apply constraint f(X)=0
+		copy_term(Poly,[Px,X]), {Px==0},   % f(X) = 0
+		% generate minimum width criteria from flag
+		current_prolog_flag(clpBNR_default_precision,Pr),
+		Eps is 10**(-(Pr+1)),
+		% taylor expansion search
+		taylor_(Poly,Derv,Eps,X).
+
+	taylor_(Poly,Derv,Eps,X) :-
+		% continue if interval X wider than error criteria
+		range(X,[XL,XH]),                  % reached Eps limit?
+		catch(XH-XL > Eps, _, true),  !,   % catch in case of overflow (limit not reached)
+		% calculate simple midpoint value for X0
+		X0 is XL/2+XH/2,
+		% symbolically apply function
+		copy_term(Poly,[FX0,X0]),          %  f(X0) = FX0
+		copy_term(Derv,[DXi,Xi]),          % f'(Xi) = DXi
+		% Taylor expansion constraints
+		{0 == FX0 + (X-pt(X0)) * DXi},
+		({X =< Xi, Xi =< pt(X0)} ; {pt(X0) =< Xi, Xi =< X}),
+		taylor_(Poly,Derv,Eps,X).          % rinse and repeat
+	taylor_(Poly,Derv,Eps,X).              % based on Eps, X is too small to split
+
+The Taylor expansion constraints (end of the first clause of `taylor_/4`) are almost copied direxctly from the original equation, and the termination condition (width of `X` less than `Eps`) is fairly obvious, but what are all those `copy_term`s about? The polynomial expression, `P` (as a function of `X`), is provided as an input argument but it has to be used multiple times, each with a different value of `X`. For example, the primary constraint must equate {`f(x)`} to 0, while each recursive call to `taylor_/4` evaluates {`f(x_0)`} with {`x_0`} calculated from the current bounds of `X`. Each such evaluation requires a new copy of `P` and argument `X`; hence the `copy_term`s.
+
+aside>
+	Aside: This could be also be done using extralogical features such as `assertz` or globals (implementation dependent), but using ISO standard `copy_term` is simpler (no retract/delete required) and achieves the desired effect.
+
+The derivative expression (generated by `partial_derivative/2`) also requires multiple instantiations and must be copied.
+
+A final point: note the use of `pt(X0)` rather than just `X0`. This bypasses the "fuzz" normally applied to floating point values in constraint defintions. In this case you just need a single value in the range of `X` so no fuzzing is preferable. (The implementation of `solve` also uses `pt(N)`.)
+
+The question is what does this added complexity buy over the simple `solve` technique described earlier. CLearly there are additional (redundant) constraints which must be enforced, and since almost all of the computuion is fixed point iteration, there is some cost to do do this. When the simple `solve` technique works and converges well, it is more effiecient. But for the more difficult cases where convergance is poor and/or false positives are produced, `findroots` has a distinct advantage. Corresponding examples from above:
+eg
+	?- X::real(-1E100,1E100),findroots(X**2-4*X+3,X).
+	X = _60::real(0.9999999999999989,1.000000000000001) ;
+	X = _60::real(2.999999999999994,3.000000000000008).
+
+	?- X::real(-1E100,1E100),findroots(X**4-4*X**3+4*X**2-4*X+3,X).
+	X = _60::real(0.9999999999999944,1.0000000000000056) ;
+	X = _60::real(2.9999999999999845,3.000000000000016) ;
+	false.
+
+	?- X::real(-1E10,1E10),findroots(17*X**256+35*X**17-99*X,X).
+	X = _60::real(-7.866422732096173e-309,1.168725663054289e-308) ;
+	X = _60::real(1.0050278928940106,1.005027892894011).
+
+	?- X::real(-1E10,1E10),findroots(35*X**256-14*X**17+X,X).
+	X = _60::real(-0.8479436608273155,-0.847943660827315) ;
+	X = _60::real(-1.0902861906685296e-306,3.1151034019100843e-307) ;
+	X = _60::real(0.847943660827315,0.8479436608273155) ;
+	X = _60::real(0.9958424942004978,0.9958424942004983).
+
+	?- X::real(-1E100,1E100),findroots(X**4-12*X**3+47*X**2-60*X,X).
+	X = _60::real(-4.450147717014407e-309,2.2250738585072034e-308) ;
+	X = _60::real(2.9999999971112437,3.000000002890653) ;
+	X = _60::real(3.999999992773785,4.000000007215807) ;
+	X = _60::real(4.999999999999662,5.000000000000325) ;
+	false.
+
+	?- X::real(-1E100,1E100),findroots(X**2-2*X+1,X).
+	X = _60::real(0.9999996975366555,1.0000001605493585) ;
+	false.
+Note that an initial range of interest for `X` must be defined so as evaluating the polynomial in that range does not cause a floating point overflow.
+
+Comparing `solve` and `findroots` in terms of narrowing operations performed (should be relatively implementation and machine independent):
+.myw
+	.tsv
+		Polynomial						`solve`			`findroots`
+		`X**2-4*X+3`					`    781`		`  1363`
+		`X**4-4*X**3+4*X**2-4*X+3`		`  22252`		` 85970`
+		`17*X**256+35*X**17-99*X`		`    237`		`   382`
+		`35*X**256-14*X**17+X`			`   2117`		`  1853`
+		`X**4-12*X**3+47*X**2-60*X`		` 294083`		`276910`
+		`X**2-2*X+1`					`1224536`		` 80288`
+	&	// local styles for table
+		@css
+			table.my_array { border-collapse:collapse; }
+			table.my_array tr td { background:whitesmoke; padding: 4px 16px; }
+			table.my_array tr:nth-child(1) td { background:lightgray; }
+
+When `solve` works well (arguably the first four examples) it is more efficient than `findroots`. However, `findroots` is not that far off and in worst case scenarios can considerably outperform `solve` (factor of 15 in the "pathological" last example) and does a better job at eliminating false positives (and the time to calculate them) due to precision limits. (Multiple roots at one value are usually problematical; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a triple root at `X=1`.)
+
+
+<#TableOfContents>
 &
 	[transitive closure] <- link https://en.wikipedia.org/wiki/Transitive_closure
 	\\ [Boolean satisfiability problem] <- link https://en.wikipedia.org/wiki/Boolean_satisfiability_problem
@@ -676,3 +1191,16 @@ This example is interesting for a number of reasons:
 	[`cardinality`]      <- link #cardinality
 	[Petri nets]         <- link https://en.wikipedia.org/wiki/Petri_net
 	[Siphons and Traps Structural Analysis Techniques Behaviour of a Petri Nets] <- link https://www.academia.edu/19468769/Siphons_and_Traps_Structural_Analysis_Techniques_Behaviour_of_a_Petri_Nets
+	[Solving linear, min and max constraint systems using CLP based on relational interval arithmetic] <- link https://www.sciencedirect.com/science/article/pii/S0304397596001983
+	// [timing_graph] <- image images/timing80286_2716.png width=50% height=50% style="margin-left:200px"
+	// [Min-Max_Inequalities] <- linkhttps://www.researchgate.net/publication/220652141_Min-Max_Inequalities_and_the_Timing_Verification_Problem_with_Max_and_Linear_Constraints
+	[8086 Datasheet] <- link supplemental/8086-datasheet.pdf target="_blank"
+	[2716 Datasheet] <- link supplemental/2716-datasheet.pdf target="_blank"
+	[8282 Datasheet] <- link supplemental/8282-datasheet.pdf target="_blank"
+	[8286 Datasheet] <- link supplemental/8286-datasheet.pdf target="_blank"
+	[2142-3] <- link supplemental/2142-datasheet.pdf target="_blank"
+	[8086ReadCircuit] <- image images/EgMinConfig.png width=50% height=50% style="margin-left:200px"
+	[8086ReadWave] <- image images/EgWaveforms.png width=50% height=50% style="margin-left:200px"
+	[Design and Implementation of a Static Timing Analyzer using CLP(BNR)] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/StaticTimingAnalyzer/StaticTimingAnalyzer.html
+	[Algorithmic Power from Declarative Use of Redundant Constraints] <- link http://webhome.cs.uvic.ca/~vanemden/Publications/redund.pdf
+	[Mean value theorem] <- link https://en.wikipedia.org/wiki/Mean_value_theorem

@@ -33,7 +33,7 @@ eg
 		minimize/3,            % minimize interval using user defined Solver
 		maximize/3,            % maximize interval using user defined Solver
 		enumerate/1,           % "enumerate" integers
-		simplify/2,            % general purpose predicate for simplifying expressions of variables
+		partial_derivative/3,  % differentiate Exp wrt. X and simplify
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected
 		clpStatistics/1        % get all defined in a list

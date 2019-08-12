@@ -54,6 +54,7 @@
 	minimize/3,            % minimize interval using user defined Solver
 	maximize/3,            % maximize interval using user defined Solver
 	enumerate/1,           % "enumerate" integers
+	partial_derivative/3,  % differentiate Exp wrt. X and simplify
 	clpStatistics/0,       % reset
 	clpStatistic/1,        % get selected
 	clpStatistics/1        % get all defined in a list
@@ -108,30 +109,31 @@ interval_object(Int, Type, Val, Nodelist) :-
 	get_attr(Int, clpBNR, interval(Type, Val, Nodelist)).       %%SWIP
 
 % get current value
-getValue(Num, Val) :-
-	number(Num), !,         % floats and integers
-	Val=[Num,Num].
-getValue(Int, Val) :-       % an interval, get value from attribute
+getValue(Int, Val) :-       % if an interval, get value from attribute
 	get_attr(Int, clpBNR, interval(_, Val, _)), !.     %% optimized for SWIP
-getValue(Num, [Num,Num]) :-
-	rational(Num).          % rationals (rarest case) 
+getValue(Num, [Num,Num]).   % else assumed to be a number or rational
 
 % set current value (assumes bounds check has already been done)
-putValue_(New, Int, Nodelist) :-      % update bounds and return node list
+putValue_([Pt,Pt], Int, NodeList) :- !, % narrowed to a point, instantiate
 	get_attr(Int, clpBNR, Def),       %%SWIP
+	setarg(2,Def,[Pt,Pt]),
+	NodeList = [node(instantiate,_,0,[Int,Pt])|_].
+putValue_(New, Int, NodeList) :-                                % L<H, trim and queue node list
+	get_attr(Int, clpBNR, Def),       %%SWIP
+	setarg(2,Def,New),
 	Def = interval(Type, _, NList),
-	typeValue_(Type,New,Val),
-	queue_nodes_(Val,Int,NList,Nodelist),
-	setarg(2,Def,Val).                % write new value, undone on backtracking
+	trim_persistent_(NList,TrimList),
+	setarg(3,Def,TrimList),
+	queue_nodes_(Type,Int,New,TrimList,NodeList).  % all setarg's undone on backtracking
 
-typeValue_(real,Val,Val).
-typeValue_(integer,[L,H],[IL,IH]) :-  % narrow to integer bounds avoiding overflow due to inf's
-	(abs(L) =\= inf -> IL is ceiling(L) ; IL=L),
-	(abs(H) =\= inf -> IH is floor(H)   ; IH=H),
-	IL=<IH, !.
+trim_persistent_(T,T) :- var(T), !.  % end of indefinite list
+trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P),!,trim_persistent_(Ns,TNs).
+trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
 
-queue_nodes_([Pt,Pt],Int,_,[node(instantiate,_,_,[Int,Pt]),_]) :- !.  % if point value just instantiate 
-queue_nodes_(Val,Int,NList,NList).                                    % else queue interval nodelist
+queue_nodes_(real,    _,  _,     TrimList,TrimList).
+queue_nodes_(integer, _,  [L,H], TrimList,TrimList) :- integer(L), integer(H), !.
+queue_nodes_(integer, Int, _,    _,[node(integral,_,0,[Int])|_]).    % need to ensure that all nodes re-run
+
 
 %
 % Test for interval:
@@ -259,7 +261,8 @@ applyType_(boolean, real, Int, Agenda, NewAgenda) :- !,     % narrow real to boo
 applyType_(integer, real, Int, Agenda, NewAgenda) :- !,     % narrow real to integer
 	get_attr(Int, clpBNR, Def),   %% SWIP
 	setarg(1,Def,integer),               % set Type (only case allowed)
-	linkNodeList_(Nodes, Agenda, NewAgenda).
+	Def = interval(Type,Val,NodeList),
+	linkNodeList_(NodeList, Agenda, NewAgenda).
 applyType_(Type,IType,Int, Agenda, Agenda).                       % anything else: no change
 
 %
@@ -342,15 +345,15 @@ build_(Num, Num, _, Agenda, Agenda) :-              % rational numeric value is 
 	% rational(Num,M,N), C is M/N, !.  %%integer(Num), !.
 build_(pt(Num), Num, _, Agenda, Agenda) :-          % point value, must be a number
 	numeric(Num), !.
+build_(Exp, Int, VarType, Agenda, NewAgenda) :-     % ground Exp which evaluates to a number
+	ground(Exp),
+	catch(V is Exp, _, fail),                       % also catches symbolic "numbers", e.g., inf, pi, ..
+	build_(V, Int, VarType, Agenda, NewAgenda), !.  % may be fuzzed, so not a point
 build_(Exp, Z, _, Agenda, NewAgenda) :-             % supported arithmetic op
 	Exp =.. [F|Args],
 	fmap_(F,Op,[Z|Args],ArgsR,Types), !,
 	build_args_(ArgsR,Objs,Types,Agenda,ObjAgenda),
 	newNode_(Op,Objs,ObjAgenda,NewAgenda).
-build_(Exp, Int, VarType, Agenda, NewAgenda) :-     % ground Exp which evaluates to a number
-	ground(Exp),
-	catch(V is Exp, _, fail),                       % also catches symbolic "numbers", e.g., inf, pi, ..
-	build_(V, Int, VarType, Agenda, NewAgenda), !.  % may be fuzzed, so not a point
 
 build_args_([],[],_,Agenda,Agenda).
 build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
@@ -400,7 +403,7 @@ fmap_(atan,tan,   [Z,X],    [X,Z],   [real,real]).
 % Node constructor
 %
 newNode_(Op, Args, Agenda, NewAgenda) :-
-	NewNode = node(Op, P, L, Args),
+	NewNode = node(Op, P, 0, Args),  % L=0
 	addNode_(Args,NewNode),
 	linkNode_(Agenda, NewNode, NewAgenda).
 
@@ -427,7 +430,8 @@ stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda
 	nb_getval(clpBNR_iterations_,Cur),      % maintain "low" water mark (can be negative)
 	(OpsLeft<Cur -> nb_linkval(clpBNR_iterations_,OpsLeft);true).  % nb_linkval OK for numbers
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
-	doNode_(Node, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
+	Node = node(Op,P,1,Args),
+	doNode_(Op, Args, P, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
 	nb_setarg(3,Node,0),                    % reset linked bit
 	RemainingOps is OpsLeft-1,              % decrement OpsLeft (can go negative)
 	stableLoop_(NewAgenda,RemainingOps).
@@ -446,16 +450,23 @@ clpStatistic(max_iterations(O/L)) :-
 
 %
 % Execute a node on the queue
+%	Note: "special" ops like instantiate and integral not counted as narrowing op in clpStatistics
 %
-doNode_(node(instantiate,_,_,[Int,Pt]), _, Agenda, Agenda) :-  % thawing must be run as stable_/1 step
+doNode_(instantiate, [Int,Pt], _, _, Agenda, Agenda) :-        % thawing must be run as stable_/1 step
 	!, Int=Pt.  % cut before 'thaw', constraints run now on thaw
-doNode_(node(Op,P,_,Args), OpsLeft, Agenda, NewAgenda) :-
+doNode_(integral, [Int], _, OpsLeft, Agenda, NewAgenda) :- !,  % narrow to integer boundary 
+	getValue(Int,[L,H]),
+	(abs(L) =\= inf -> NL is ceiling(L) ; NL=L),
+	(abs(H) =\= inf -> NH is floor(H)   ; NH=H),
+	NL=<NH,
+	updateValue_([L,H], [NL,NH], Int, OpsLeft, Agenda, NewAgenda).
+doNode_(Op, Args, P, OpsLeft, Agenda, NewAgenda) :-
 	var(P), !,                             % check persistent bit
 	marshal_args_(Args,PrimArgs),
-	evalNode(Op, P, PrimArgs, New),        % can fail causing stable_ to fail => backtracking
-%	traceIntOp_(Op, Args, PrimArgs, New),  % in ia_utilities
+	evalNode(Op, P, PrimArgs, New),               % can fail causing stable_ to fail => backtracking
+%	traceIntOp_(Op, Args, PrimArgs, New),         % in ia_utilities
 	update_values_(PrimArgs, New, Args, OpsLeft, Agenda, NewAgenda).  % leave cpt's to undo changes
-doNode_(Node, OpsLeft, Agenda, Agenda).    % persistent bit "set", skip node
+doNode_(Op, Args, P, OpsLeft, Agenda, Agenda).    % persistent bit "set", skip node
 
 marshal_args_([],[]).
 marshal_args_([A|Args],[P|PrimArgs]) :-
@@ -471,36 +482,30 @@ update_values_([P|PrimArgs], [N|New], [A|Args], OpsLeft, Agenda, NewAgenda) :-
 % Any changes in interval values should come through here.
 % Note: This captures all updated state for undoing on backtracking
 %
-updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value
+updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value (constant?)
 
 updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
 	% NewL=<NewH,  % check unnecessary if primitives do their job
-	(propagate_if_(OpsLeft, Old, New) ->               % if OpsLeft >0 or narrowing sufficent
-		(putValue_(New, Int, Nodelist),                % update value (fails if not an interval)) ??
-		 linkNodeList_(Nodelist, Agenda, NewAgenda)    % then propagate change
-		)
-		; NewAgenda = Agenda                           % else continue with remaining Agenda
-	), !.
+	propagate_if_(OpsLeft, Old, New),             % if OpsLeft >0 or narrowing sufficent
+	putValue_(New, Int, Nodelist),                % update value (fails if Int not an interval)) ??
+	linkNodeList_(Nodelist, Agenda, NewAgenda),   % then propagate change
+	!.                                            % commit (no "otherwise")
 
-updateValue_(_Old, [Pt,Pt], Rat, _, Agenda, Agenda) :-  % if not interval, could be just equivalent rational 
-	rational(Rat), 
-	Rat =:= Pt.  % should always be true
+updateValue_(_, _, _, _, Agenda, Agenda).         % otherwise just continue with Agenda
 
-propagate_if_(Ops, _, _)           :- Ops>0.  % ! unnecessary since it's used in '->' test
+propagate_if_(Ops, _, _)           :- Ops>0, !.   % check work limiter
 propagate_if_(_, [OL,OH], [NL,NH]) :- catch((NH-NL)/(OH-OL) < 0.9,_,true).  % any overflow in calculation will propagate
 
 linkNodeList_([X|Xs], List, NewList) :-
-	nonvar(X),                                     % not end of list ...
-	X = node(_,P,0,_), var(P), !,                  % not already linked and not persistent
-	linkNode_(List, X, NextList),                  % add to list
+	nonvar(X),                                      % not end of list ...
+	linkNode_(List, X, NextList), !,
 	linkNodeList_(Xs, NextList, NewList).
-linkNodeList_([X|Xs], List, NewList) :-            % skip node until end of list
-	nonvar(X), !,
-	linkNodeList_(Xs, List, NewList).
 linkNodeList_(_, List, List).                      % end of indefinite node list (don't make it definite)
 
-linkNode_(List/[X|NextTail], X, List/NextTail) :-
-	setarg(3,X,1).                                 %% SWIP set linked bit, reset on backtracking
+% Assumes persistant nodes are pre-trimmed (see putValue_/3)
+linkNode_(List, node(_,_,1,_), List).                 % already linked
+linkNode_(List/[X|NextTail], X, List/NextTail) :-     % add to list
+	setarg(3,X,1).
 
 :- include(ia_utilities).  % print,solve, etc.
 
@@ -513,7 +518,7 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 clpStatistics :- !.
 
 :- initialization((
-	nl,write("*** clpBNR v0.8.1alpha ***"),nl,
+	nl,write("*** clpBNR v0.8.2alpha ***"),nl,
 	(current_prolog_flag(bounded,true) -> 
 		(nl,write("Warning: This version expects unbounded integers; no overflow checking will be done."))
 	;	true
