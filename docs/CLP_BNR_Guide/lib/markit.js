@@ -25,9 +25,9 @@
 
 ;(function () {
 	
-	// if necessary, a shim for Array.flatten() 
-	if (typeof Array.prototype.flatten == 'undefined')
-		Array.prototype.flatten = function(depth) {
+	// if necessary, a shim for Array.flat() 
+	if (typeof Array.prototype.flat == 'undefined')
+		Array.prototype.flat = function(depth) {
 			if ((typeof depth == 'undefined') || depth==1)
 				return [].concat.apply([], this)  // efficient shallow flatten
 			else if (depth == Infinity)
@@ -35,7 +35,7 @@
 			else if (depth > 1)                   // intermediate flatten
 				return this.reduce(
 					(acc, item) =>
-						acc.concat(Array.isArray(item) ? item.flatten(depth-1) : item),
+						acc.concat(Array.isArray(item) ? item.flat(depth-1) : item),
 					[]
 					)
 			else return this                     // no flatten
@@ -47,7 +47,7 @@
 					[]
 				)
 			} // flattenDeep(arr)
-		} // Array.prototype.flatten(depth)
+		} // Array.prototype.flat(depth)
 
 
 	/*
@@ -154,7 +154,7 @@
 				throw new Error(["loading grit.js: ", err.message].join(''))
 			}
 			return self.Grit;
-		} else { // assumes Node.js, or something eslae that supports 'require'
+		} else { // assumes Node.js, or something else that supports 'require'
 			try {
 				require('fs');	// TODO is there a better place for this?load fs for io
 				return require("./grit.js");  // Load Grit - grit.js assumed to be co-located
@@ -465,7 +465,6 @@
 
 		function metamarkAdd(content) {
 			try {       // all exceptions turned into errorString's
-				//return metaword.flatten(metaword.parse(content)).join('')
 				return metaword.parse(content)
 			} catch (err) {
 				return newNode('errorString', err.message)
@@ -643,6 +642,8 @@
 	/*
 	 *  4. Transform for private type (can be used but not overridden): «markup»
 	 *  create and translate markup block elements; unlabelled content is 'paragraph' which contains 'prose'.
+	 *  Note: the grammar contains a capture group back reference in the 'fencend' rule which would be
+	 *  flagged as an illegal octal escape if ever run in 'script' mode. If that ever happens, use '\\1'.
 	 */
 
 	core.addBaseType('«markup»', function() {
@@ -677,7 +678,7 @@
 			                                                        (markit.applyLabel(pat ,null) !== null) ? pat : null) ()
 			blkblank     :~ (?!%inset) %blank
 			fence        :~ [~\x60]{3,}
-			fencend      :~ \\1 %sep (?: %nl | $)
+			fencend      :~ \1 %sep (?: %nl | $)
 			inset        :~ \t | [ ]{4}
 			blank        :~ [ \t]* %nl
 			sep          :~ [ \t]*
@@ -732,7 +733,7 @@
 
 		simpleProse.span = function(bmark, xs, emark) {     // span := sstart (nested/(!end nota))+ end
 						                                    // => newNode('inlinenotation', xs, makePat(SPAN, bmark, emark))
-			return newNode('inlinenotation', xs.flatten(Infinity).join(''), makePat(SPAN, bmark, emark))
+			return newNode('inlinenotation', xs.flat(Infinity).join(''), makePat(SPAN, bmark, emark))
 		} // simpleProse.span(bmark, xs, emark)
 
 		var _qmarker	// save span begin and end (in closure)

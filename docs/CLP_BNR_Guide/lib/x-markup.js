@@ -35,7 +35,7 @@ window.addEventListener('load', function (ev) {  // Note: doesn't overwrite othe
 	const htmlScript = target.querySelector('script#x-markitApp')  // if running from HTML vs. extension
 	const appScriptURL = (htmlScript) ? appURL(htmlScript.getAttribute('src')) : chrome.runtime.getURL("lib/x-markup.js")
 	const appName = (appScriptURL.lastIndexOf('/') === -1) ? appScriptURL : appScriptURL.substring(appScriptURL.lastIndexOf('/') + 1)
-	const versionString = appName + ' Version: 1.1'
+	const versionString = appName + ' Version: 1.2'
 	//const mimeType = 'text/x-markup.'              // in practice: text/x-markup.transformName
 	const workerName = 'markit.js'
 	const lingoName = 'x-markup.mmk'
