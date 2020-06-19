@@ -1,0 +1,9 @@
+### Appendices
+
+#### Appendix 1 - `linear.pl` Source
+@include supplemental/linear.pl
+
+&
+	//@import pkgs/highlight.mmk
+	// pl :: (content) => `<pre class=pl>${markit('text',content)}</pre>` 
+	//pl :: (content) => `<pre class=pl>${hljs.highlightAuto(content).value}</pre>`

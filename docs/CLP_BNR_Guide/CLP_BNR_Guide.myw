@@ -2,7 +2,7 @@
 title>	A Guide to CLP(BNR)
 centreblock>
 	**Constraint Logic Programming over Booleans, Integers and Reals**
-	**Version 0.0, January 2019**
+	**Version 0.9, April 2020**
 
 The word "constraint" is used in a variety of contexts from everyday life to physics, mathematics, and other sciences with much the same intuitive meaning, even when the formalization is different. A bead on a wire, a weight on a string, a beaker open to the atmosphere, a space mission limited by onboard fuel, a desert ecology limited by the lack of water are all examples of constrained systems.
 
@@ -12,11 +12,11 @@ CLP systems began appearing an the 1980's and span a considerable variety in sys
 
 Interval based CLP has a somewhat different character from previous approaches for continuous domains, which were based on traditional technology (such as linear programming) and thus represent only a marginal change. The use of intervals, however, permits one to deal with uncertain or unknown data as well as non-linear models, and thus represents a significant enlargement of the space of problems that can be tackled. In addition, the interval approach can be applied also to discrete domain problems and there provides solutions similar to traditional finite-domain methods. Finally, because of the uniformity of the approach, problems which involve closely interacting mixtures of discrete and continuous domains can be addressed.
 
-The original CLP(BNR) was developed at Bell Northern Research (then the R&D organization of Nortel) and subsequently licensed to Applied Logic Systems of Newton, Mass. in 1994. With the demise of Nortel, the implementation was lost, at least to the orginal developers. However, much of the original literature still is available ([BNR Prolog Papers]), so an attempt to provide an implmentation to support this wealth of information seemed warranted.
+The original CLP(BNR) was developed at Bell Northern Research (then the R&D organization of Nortel) and subsequently licensed to Applied Logic Systems of Newton, Mass. in 1994. Although source of the last known, Unix based application has been archived (see [BNR Prolog source]) it is no longer actively supported. However, much of the original literature still is available (see [BNR Prolog Papers]), so an attempt to provide an implementation to support this wealth of information seemed warranted.
 
-CLP systems have either been modified Prolog systems (like Prolog III) or embedded in Prolog (like the original CLP(BNR)). This version of CLP(BNR) takes a different approach. Like [CLP(FD)] (available as a library for SWI-Prolog and others), it is constructed as a module which can be loaded into a SWI-Prolog and is implemented entirely in Prolog (no "foreign language" components). Hopefully this will facilitate better understanding of the internal workings of the system and to encourage further experimentation. It should also facilitate porting to other Prolog systems.
+CLP systems have either been modified Prolog systems (like Prolog III) or embedded in Prolog (like the original CLP(BNR)). This version of CLP(BNR) takes a different approach. Like [CLP(FD)] (available as a library for SWI-Prolog and others), it is constructed as a module which can be loaded on [SWI-Prolog] and is implemented entirely in Prolog (no "foreign language" components). Hopefully this will facilitate better understanding of the internal workings of the system and to encourage further experimentation. It should also facilitate porting to other Prolog systems.
 
-This version of CLP(BNR) was largely based on the original, but has also incorporated ideas from more recent CLP interval systems. In particular, ideas in [CLIP] developed by Tim Hickey and his team at Brandeis University in the late 1990's and [Hickey and Van Emden's work] on the primitive interval relations, have been used. While largely compatible with the original, this version has some differences, partly mandated its implementation as a module on top of SWIP and partly to improve its usability. Specifics of these changes will be covered in the relevant sections of this document.
+This version of CLP(BNR) was largely based on the original, but has also incorporated ideas from more recent CLP interval systems. In particular, ideas in [CLIP] developed by Tim Hickey and his team at Brandeis University in the late 1990's and [Interval Arithmetic: from Principles to Implementation] on the primitive interval relations, have been used. While largely compatible with the original, this version has some differences, partly mandated its implementation as a module on top of SWIP and partly to improve its usability. Specifics of these changes will be covered in the relevant sections of this document.
 
 This document is not focused on either the theoretical underpinnings of CLP(BNR) or on other CLP systems over other domains; these are adequately covered by the existing academic literature and relevant Web sites. Rather the focus is on the practical details of how Prolog programmers can use this version of CLP(BNR) to solve real problems.
 
@@ -26,10 +26,17 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	CLPBNR_Module.myw
 	CLPBNR_SynSem.myw
 	CLPBNR_PrgCons.myw
+	CLPBNR_DevTools.myw
 	CLPBNR_UsingConstraints.myw
+	CLPBNR_Appendices.myw
 &
-	[Markdown]    <- link https://en.wikipedia.org/wiki/Markdown
-	[Grit]        <- link GritGrammarParser.html
+	[BNR Prolog Papers] <- link https://ridgeworks.github.io/BNRProlog-Papers
+	[BNR Prolog source]  <- link https://github.com/ridgeworks/BNRProlog-Source-Archive
+	[CLP(FD)]           <- link https://www.metalevel.at/prolog/clpz
+	[CLIP]              <- link https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
+	[Interval Arithmetic: from Principles to Implementation] <- link http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
+	[SWI-Prolog]        <- link https://www.swi-prolog.org/
+
 	@import MyWordDocStyle.mmk pkgs/demo.mmk pkgs/toc.mmk pkgs/asciimath.mmk pkgs/tsv.mmk
 	{` .. `}      <- <math class = my_math display=inline> asciimath
 	.myw ..     <- myword
@@ -40,8 +47,15 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	title> ..       <- <h1 class=_centre>
 	centreblock> .. <- <div class=_centre>
 	aside> ..       <- <aside class=my_aside>
-	math> ..        <- <math class=my_math> asciimath
+	// math> ..        <- <math class=my_math display=block> asciimath
+	
+	.pl ..          <-  pl
+	@import pkgs/highlight.mmk
+	// pl :: (content) => `<pre class=pl>${markit('text',content)}</pre>` 
+	pl :: (content) => `<pre class=pl>${hljs.highlight("prolog",content).value}</pre>`
+
 	@css
 		._centre {text-align: center;}
 		div.eg, div.demo {margin: 4pt 0;}
 		aside.my_aside {font-size:smaller; position:relative; margin-left:30px; margin-right:50px}
+		pre.pl {padding-left:10pt}

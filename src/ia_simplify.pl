@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019 Rick Workman
+ *	Copyright (c) 2019,2020 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -25,9 +25,6 @@
 % Note floats are treated like variables and no arithmetic is performed on them
 %
 
-% works for print and listener but may be misleading
-% user:portray(M rdiv N) :- print(M/N).
-
 % negatable operators
 negate_op_(+,-).
 negate_op_(-,+).
@@ -45,12 +42,13 @@ pwr_val_(/,C,N) :- N is -C.
 
 
 % utility to distribute A*(B1+B2) if they have variables in common or A is a constant
+% former is safe for intervals (sub-distributive law), latter is valid
 distribute_(C,B,Exp) :-
-	rational(C), !,
+	number(C), !,
 	B=..[AddOp,B1,B2], negate_op_(AddOp,_),  % watch out for vars
 	DExp=..[AddOp,C*B1,C*B2],
 	simplify(DExp,Exp).
-distribute_(A,B,Exp) :-
+distribute_(A,B,Exp) :-  % not always a good thing, e.g., X*(X-1) may be better than X**2-X
 	B=..[Op,B1,B2], negate_op_(Op,_),        % watch out for vars
 	shared_vars_(A,B), !, % any shared vars
 	DExp=..[Op,A*B1,A*B2],
@@ -58,10 +56,10 @@ distribute_(A,B,Exp) :-
 
 % utility for (in)equality reduction 
 normalize_(A,B,Op,ROp,Exp) :-
-	B==0, !,  %%rational(B,0,_), !,           % RHS = 0
+	B==0, !,                      % RHS = 0
 	n_build_(Op, A, 0, Exp).
 normalize_(A,B,Op,ROp,Exp) :-
-	A==0, !,  %%rational(A,0,_), !,           % LHS = 0
+	A==0, !,                      % LHS = 0
 	n_build_(ROp, B, 0, Exp).
 normalize_(A,B,Op,ROp,Exp) :-
 	occurs_in_(A,B), !,           % RHS is shared var
@@ -195,7 +193,6 @@ negate_term_([term(V,N)|Es]/T,[term(V,NN)|NEs]/NewT) :-
 	NN is -N,
 	negate_term_(Es/T,NEs/NewT).
 negate_term_([N|Es]/T,[NN|NEs]/NewT) :-
-	rational(N),  % constants
 	NN is -N,
 	negate_term_(Es/T,NEs/NewT).
 
@@ -210,15 +207,11 @@ collect_exp_item_([V|Es],U,Eo,EsNxt) :-
 	S is U+V,
 	collect_exp_item_(Es,S,Eo,EsNxt).
 collect_exp_item_([term(V,N1)|Es],term(U,N2),Eo,EsNxt) :-
-	V==U, catch(abs(V) =\= inf,_,true), !,  % if V==U = infinity, fail to next choice.
+	V==U,
 	N is N1+N2,
 	collect_exp_item_(Es,term(V,N),Eo,EsNxt).
-collect_exp_item_([term(V,N1)|Es],term(U,N2),Eo,EsNxt) :-
-	atomic(V), atomic(U), abs(V) =:= inf, abs(U) =:= inf,
-	throw(error("Arithmetic operations not allowed on two infinities.")).
 collect_exp_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-  % Note that imprecise floats are not added
 	collect_exp_item_(Es,E,Eo,EsNxt).
-
 
 reduce_exp_items_([V],V) :-                 % terminate: var
 	var(V), !.
@@ -262,6 +255,7 @@ reduce_exp_item_(-Exp,        -, Exp).
 reduce_exp_item_(Exp,         +, Exp).
 
 mult_term_(T,   N, Op, M*T)   :- var(T), val_sign_(N,Op,M).
+mult_term_(T,   N, Op, V)     :- ground(V), T is V*N.
 mult_term_(X*Y, N, Op, Exp*Y) :- mult_term_(X,N,Op,Exp).     % maintain Op associativity
 mult_term_(X/Y, N, Op, Exp/Y) :- mult_term_(X,N,Op,Exp).
 mult_term_(T,   N, Op, M*T)   :- val_sign_(N,Op,M).
@@ -308,11 +302,13 @@ collect_term_(A*B,List,NewList) :-
 	simplify(B,BT),
 	collect_term_(BT,ListA,NewList).
 	
-collect_term_(A/B,List,NewList) :-
+collect_term_(A/B,List,ListA/NewT) :-
 	!,
 	left_term_(A,AE),
 	simplify(B,BT),
-	collect_div_(AE,BT,List,NewList).
+	collect_term_(AE,List,ListA/T),
+	collect_term_(BT,P/P,ListB),
+	invert_term_(ListB,T/NewT).
 
 collect_term_(E,List/[elem(Exp,1)|NewT], List/NewT) :-
 	E =.. [F|IArgs],
@@ -335,24 +331,14 @@ simplify_list_([I|IArgs],[O|OArgs]) :-
 	simplify(I,O),
 	simplify_list_(IArgs,OArgs).
 
-collect_div_(AT,BT,List/[N|NewT], List/NewT) :-
-	rational(AT),rational(BT),
-	(BT==0 -> throw(error("Zero divisor in constraint expression":AT/BT)) ; true),  % throw exception if BT=0
-	N is AT rdiv BT.  % rational constant expressed as AT/BT
-collect_div_(AT,BT,List,ListA/NewT) :-
-	collect_term_(AT,List,ListA/T),
-	collect_term_(BT,P/P,ListB),
-	invert_term_(ListB,T/NewT).
-	
 invert_term_(T/T,NewT/NewT) :- var(T),!.
-invert_term_([elem(V,N)|Es]/T,[elem(V,NN)|NEs]/NewT) :-
+invert_term_([elem(V,N)|Es]/T,[elem(V,NN)|NEs]/NewT) :-  !,
 	(V==0.0 -> throw(error("Zero divisor in constraint expression":'_'/V)) ; true),  % throw exception if V=0.0
 	NN is -N,
 	invert_term_(Es/T,NEs/NewT).
 invert_term_([N|Es]/T,[NN|NEs]/NewT) :-
-	rational(N,A,B),  % constants
-	(A==0 -> throw(error("Zero divisor in constraint expression":N)) ; true),       % throw exception if A=0
-	NN is B rdiv A,
+	(N=:=0 -> throw(error("Zero divisor in constraint expression":N)) ; true),       % throw exception if A=0
+	NN is 1/N,
 	invert_term_(Es/T,NEs/NewT).
 	
 collect_term_items_([],[]).
@@ -366,12 +352,9 @@ collect_term_item_([V|Es],U,Eo,EsNxt) :-
 	S is U*V,
 	collect_term_item_(Es,S,Eo,EsNxt).
 collect_term_item_([elem(V,N1)|Es],elem(U,N2),Eo,EsNxt) :-
-	V==U, catch(abs(V) =\= inf,_,true), !,  % if V==U = infinity, fail to next choice.
+	V==U, 
 	N is N1+N2,
 	collect_term_item_(Es,elem(V,N),Eo,EsNxt).
-collect_term_item_([elem(V,N1)|Es],elem(U,N2),Eo,EsNxt) :-
-	atomic(V), atomic(U), abs(V) =:= inf, abs(U) =:= inf,
-	throw(error("Arithmetic operations not allowed on two infinities.")).
 collect_term_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-
 	collect_term_item_(Es,E,Eo,EsNxt).
 

@@ -1,0 +1,60 @@
+###  Development Tools for CLP(BNR)
+
+The version of CLP(BNR) as a SWI-Prolog package is entirely implemented in Prolog, so all the standard Prolog development tools (debugger, profiler, etc.) ca be used with CLP(BNR) applications. However, the details of the execution of interval narrowing can be overwhelming - many millions of narrowing operations may be required in what may seem to be simple programs. To help with this problem `clpBNR` has been added as a [`debug` topic]. Enabling this topic will generate a trace of constraint additions and narrowing operation failures on the console:
+eg
+	?- debug(clpBNR).
+	true.
+	
+	﻿?- X::real(0,10),{X=<5},{X>19}.
+	% Add {_1448118{real(0,10)}=<5}
+	% Add {_1448118{real(0,5)}>19}
+	% Fail lt(1,19,_1448118{real(0,5)})
+	false.
+Sheer volume makes this approach infeasible for narrowing operations, so this must be debugged at the package source level using standard tools. Hopefully this is seldom necessary.
+
+In addition, it is possible to set interval watch points which generate a trace of changes of that interval using the `watch/2` predicate:
+eg
+	?- debug(clpBNR).
+	true.
+	
+	?- [X,Y]::real, watch(X,log),{1==X+2*Y, Y-3*X==0}.
+	% Add {1==_1603016{real(-1.0e+16,1.0e+16)}+2*_1603118{real(-1.0e+16,1.0e+16)}}
+	% Add {_1603118{real(-1.0e+16,1.0e+16)}-3*_1603016{real(-1.0e+16,1.0e+16)}==0}
+	﻿% Set value of _9682{real(-1.0e+16,1.0e+16)} to (-3333333333333333.5,3333333333333333.5)
+	% Set value of _9682{real(-3333333333333333.5,3333333333333333.5)} to (-1666666666666666.8,1.666666666666667e+15)
+	% Set value of _9682{real(-1666666666666666.8,1.666666666666667e+15)} to (-555555555555555.44,555555555555555.75)
+	% Set value of _9682{real(-555555555555555.44,555555555555555.75)} to (-277777777777777.7,277777777777777.97)
+	% Set value of _9682{real(-277777777777777.7,277777777777777.97)} to (-92592592592592.47,92592592592592.75)
+	% Set value of _9682{real(-92592592592592.47,92592592592592.75)} to (-46296296296296.164,46296296296296.45)
+	% Set value of _9682{real(-46296296296296.164,46296296296296.45)} to (-15432098765431.959,15432098765432.246)
+	% Set value of _9682{real(-15432098765431.959,15432098765432.246)} to (-7716049382715.909,7716049382716.194)
+	% Set value of _9682{real(-7716049382715.909,7716049382716.194)} to (-2572016460905.208,2572016460905.493)
+	% Set value of _9682{real(-2572016460905.208,2572016460905.493)} to (-1286008230452.5325,1286008230452.8184)
+	% Set value of _9682{real(-1286008230452.5325,1286008230452.8184)} to (-428669410150.7489,428669410151.03467)
+	% Set value of _9682{real(-428669410150.7489,428669410151.03467)} to (-214334705075.30307,214334705075.58875)
+	% Set value of _9682{real(-214334705075.30307,214334705075.58875)} to (-71444901691.67245,71444901691.95816)
+	% Set value of _9682{real(-71444901691.67245,71444901691.95816)} to (-35722450845.76479,35722450846.050514)
+	% Set value of _9682{real(-35722450845.76479,35722450846.050514)} to (-11907483615.159695,11907483615.44541)
+												.
+												.
+												.
+												.
+	﻿% Set value of _9682{real(0.1428571428571159,0.1428571428571698)} to (0.14285714285713386,0.14285714285715184)
+	% Set value of _9682{real(0.14285714285713386,0.14285714285715184)} to (0.14285714285713835,0.14285714285714737)
+	% Set value of _9682{real(0.14285714285713835,0.14285714285714737)} to (0.14285714285714135,0.14285714285714438)
+	% Set value of _9682{real(0.14285714285714135,0.14285714285714438)} to (0.14285714285714207,0.14285714285714363)
+	% Set value of _9682{real(0.14285714285714207,0.14285714285714363)} to (0.14285714285714257,0.14285714285714313)
+	% Set value of _9682{real(0.14285714285714257,0.14285714285714313)} to (0.1428571428571427,0.14285714285714302)
+	% Set value of _9682{real(0.1428571428571427,0.14285714285714302)} to (0.1428571428571428,0.1428571428571429)
+	% Set value of _9682{real(0.1428571428571428,0.1428571428571429)} to (0.14285714285714282,0.1428571428571429)
+	% Set value of _9682{real(0.14285714285714282,0.1428571428571429)} to (0.14285714285714285,0.14285714285714288)
+	﻿X = X:: 0.1428571428571428...,
+	Y = Y:: 0.428571428571428... .
+`watch/2` will also take a list of intervals the first argument, and the second argument can be be one of `none`, `log`, or `trace` actions. Action `trace` outputs the standard log message and then invokes the debugger.
+
+Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true` can also be helpful in some situations.
+
+<#TableOfContents>
+
+&
+	[`debug` topic] <- link https://www.swi-prolog.org/pldoc/man?section=debug

@@ -45,88 +45,65 @@ As a further consequence, as shown in the last example, the distributive law ove
 
 #### Real Intervals
 
-One way to model real numbers while addressing the deficiencies of floating point arithmetic is to represent each arithmetic variable by an interval bounding its range of possible values. Constraints on intervals result in a narrowing of their ranges much in the same way as Prolog resolution "narrows" logic variables through unification.
+Implementing a mathematically sound arithmetic system over the (infinite) set of real numbers on a finite computer is a challenging task. Commonly only a small subset of the reals, e.g., integers and IEEE floating point numbers, are represented in the finite numeric formats. This sacrifices precision and, as soon as any arithmetic operations requiring rounding are done, mathematical soundness (as shown above). Aribitrary precision can partially achieved for a price using multi-precision libraries, as SWI-Prolog's use of the GNU MP library demonstrates. However even that is insufficient since irrational values cannot concretely be represented in such a system. To address mathematical soundness requires a different approach and interval arithmetic is one way to tackle this problem.
+ 
+An interval is a pair of numeric values, specifically a lower and upper bound, representing the set of real numbers between (and including) the bounds. Conventional arithmetic operations on numeric values is replaced by the corresponding arithmetic operations over intervals (e.g., see [Interval Arithmetic: from Principles to Implementation]). Since these involve arithmetic on the individual bounds, care must be taken to round any computed bounds outwards, i.e., lower bounds to {`-oo`} and upper bounds toward {`oo`}, to ensure that the interval result contains the real value being computed. This not only guarantees soundness but also quantifies the upper limit on any rounding errors accumulated during the computation. In a CLP context, intervals representing real values initially have large "widths" (the difference between the upper and lower bounds) and use constraints to narrow the bounds in much the same way as Prolog resolution "narrows" logic variables through unification.
 
 In CLP(BNR), a real number {`x`} is associating a constrained logic variable with a closed interval defined by a numeric lower bound {`L`} and a numeric upper bound {`U`} such that {`L<=x<=U`}. If the bounds of such an arithmetic variable narrow such that {`L=U`}, then the variable is unified with the bound's value. Any Prolog goal involving an arithmetic operation that narrows an interval such that {`L>U`} will fail. Possible values for bounds include {`+-oo`} as well as any numeric value supported by the underlying Prolog system (SWI-Prolog  supports integers, rational numbers, and floating point numbers).
 
 One of the ways intervals can be created in CLP(BNR) is by using the `::/2` predicate. (In some previous versions, a single `:` was used, but SWI-Prolog has reserved this for module qualification, as in `mod_name:pred_name`.) `::` is defined as a Prolog infix operator and specifies a relation between a term (usually a logic variable) and its domain (in CLP terminology). The domain consists of the lower and upper bound, and a type; so far we have been discussing type `real`. The bounds may be left unspecified, in which case default values are substituted. Some examples:
 eg
 	?- X::real(-1,1).
-	X = _42514::real(-1,1).
+	X::real(-1,1).
 
 	?- X::real.
-	X = _87610::real(-1.0e+154,1.0e+154).
-
+	X::real(-1.0e+16,1.0e+16).
+	
 	?- X::real(-1.1,1.1).
-	X = _42576::real(-1.1000000000000003,1.1000000000000003).
+	X::real(-1.1000000000000003,1.1000000000000003).
+	
+	?- X::real(-11r10,11r10).
+	﻿X::real(-1.1,1.1).
 
 	?- X::real(-inf,inf).
-	X = _42540::real(-1.0Inf,1.0Inf).
+	﻿X::real(-1.0Inf,1.0Inf).
 
 	?- X::real(0.0,U).
-	X = _87684::real(-2.2250738585072014e-308,1.0e+154).
+	﻿X::real(0.0,1.0e+16).
 
 	?- X::real(-pi/2,pi/2).
-	X = _42596::real(-1.570796326794897,1.570796326794897).
+	X = ﻿X::real(-1.570796326794897,1.570796326794897).
 
 	?- X::real(-1/2,1/2).
-	X = _42500::real(-1/2,1/2).
+	X = ﻿X::real(-0.5,0.5).
 	
-	?- [X,Y]::real(-1 rdiv 2,1 rdiv 2).
-	X = _8362::real(-1/2,1/2),
-	Y = _8520::real(-1/2,1/2).
+	﻿?- [X,Y]::real(-1r2,1r2), write([X,Y]).
+	﻿[_179276{real(-0.5,0.5)},_179348{real(-0.5,0.5)}]
+	X::real(-0.5, 0.5),
+	Y::real(-0.5, 0.5).
 These simple examples illustrate a number of points:
 1..
-	+ Bounds can be integer, rational, or floating point values. The magnitude of default values for {`L`} and {`U`} is approximately the square root of the largest 64-bit floating point value. This is fairly generous but also allows for limited arithmetic operations without causing overflows (i.e., to {`oo`}). For completeness, intervals with infinite bounds are supported (see the fourth example). But because just about any operation involving an infinity generates another infinity, these intervals can be difficult to narrow (see below). Therefore infinite bounds must be explicitly specified.
+	+ Bounds can be integer, rational, or floating point values. The magnitude of default values for {`L`} and {`U`} is {`+-1.0e16`}. This is fairly generous but also allows for limited arithmetic operations without causing overflows (i.e., to {`oo`}). For completeness, intervals with infinite bounds are supported (see the fourth example). But because just about any operation involving an infinity generates another infinity, these intervals can be difficult to narrow (see below). Therefore infinite bounds must be explicitly specified.
 	+ Floating point bounds values are rounded outward (towards {`-oo`} for lower bound and {`+oo`} for upper bound). This is done because the syntactic value and the resulting internal value may not be equivalent. By rounding outwards, the resulting interval is guaranteed to contain the syntactic value. Since integer and rational values are "precise", no outward rounding is required.
-	+ A rational value can be optionally defined using integer fraction syntax, e.g., `1/2`, `11/10`, when using `::/2` (and in constraints, as we shall see later); this is not generally supported in SWI-Prolog.
-	+ Bounds can be (grounded) arithmetic expressions. If the evaluated expression yields a floating point result, it will be outward rounded.
+	+ A rational value can be optionally defined using integer fraction syntax, e.g., `1r2`, `11r10`, when using `::/2` (and in constraints, as we shall see later). These values are considered precise whereas floating point numbers are imprecise and rounded outwards to ensure soundness.
+	+ Bounds can be (grounded) arithmetic expressions. If the evaluated expression yields a floating point result, it will be outward rounded. (Since there is no guarantee of the preciseness of a floating point result, it is a user responsibility to ensure that this is sufficient. As of version 8.2.0 of SWI-Prolog, IEEE rounding modes are supported in arithmetic evaluation.) 
 	+ Multiple intervals with the same domain can be "declared" using a list.
-	+ The top level query output for arithmetic variables reflects the defining format using the `::` operator. (Output formats using standard Prolog term I/O are discussed below.) Internal variables, e.g., `_42494`, are output in the default format for the environment.
+	+ Attributed variables in answers involving intervals are presented in a simplified format to enhance readability. Any top level interval variables are presented as `Var::Type(L,U)` consistent with SWI-Prolog practice of displaying goals and any rational bounds are presented as (approximate) floating point values. (Actual rational values are exposed when using "verbose" mode described below). Subnormal floats will be output as zero. Narrow `real` intervals are output in pseudo-ellipsis format (see examples below).
 
-`::/2` can also be used to query the domain of an interval:
+`::/2` can also be used to query the domain of an interval and it can be used to explicitly narrow an existing interval as long as the result is not empty::
 eg
 	?- X::real(-1.0,1.0),X::Dom.
-	X = _43660::real(-1.0000000000000002,1.0000000000000002),
-	Dom = real(-1.0000000000000002, 1.0000000000000002).
+	﻿Dom = real(-1.0000000000000002, 1.0000000000000002),
+	X::real(-1.0000000000000002, 1.0000000000000002).
 
-	?- X::real(0,1),X::real(L,U).
-	X = _6322::real(0,1),
-	L = 0,
-	U = 1.
-And it can be used to explicitly narrow an existing interval as long as the result is not empty:
-eg
 	?- X::real(1,10), X::real(5,100).
-	X = _6250::real(5,10).
+	X::real(5,10).
 
 	?- X::real(1,10), X::real(15,100).
 	false.
 Note that the result of the narrowing is the intersection of the previous and new domains.
 
-As an external module, CLP(BNR) has limited control over the output format of interval terms. The built-in `write` and `print` predicates will output the interval domain with the SWI-Prolog attribute variable format using curly brackets:
-eg
-	?- X::real(0,1),write(X).
-	_8352{real(0,1)}
-	X = _8352::real(0,1).
-
-	?- X::real(0,1),print(X).
-	_8336{real(0,1)}
-	X = _8336::real(0,1).
-
-But for consistency with `::/2` syntax, it's preferable that the CLP(BNR) defintions of `user:portray` or `print_interval` be used. They are equivalent predicates which output intervals in `::` format. (In previous versions of CLP(BNR), `print_interval` output interval bounds as a two element list.)
-eg
-	?- X::real(0,1),portray(X),nl,print_interval(X).
-	_8514::real(0,1)
-	_8514::real(0,1)
-	X = _8514::real(0,1).
-
-	?- X::real(0,1),portray(f(X)),nl,print_interval([X]).
-	f(_8544::real(0,1))
-	[_8544::real(0,1)]
-	X = _8544::real(0,1).
-Note: `print_interval` is somewhat safer because `user:portray` can be overridden by other application code.
-
-Intervals can be unified with numeric values if the value is contained in the interval's range:
+Intervals can be unified with numeric values if the value is contained in the interval's range and two intervals can be unified if the intersection of their ranges is non-empty:
 eg
 	?- [X,Y,Z]::real, X=0, Y=42.42, Z is pi.
 	X = 0,
@@ -139,10 +116,11 @@ eg
 	?- X::real(L,0), X=fred.
 	false.
 
-Two intervals can be unified if the intersection of their ranges is non-empty:
-eg
-	?- X::real(-10,10), Y::real(0,100), X=Y.
-	X = Y, Y = _19160::real(0,10).
+	﻿?- X::real(-10,10), Y::real(0,100), writeln([X,Y]), X=Y, write([X,Y]).
+	[_686232{real(-10,10)},_686304{real(0,100)}]
+	[_686232{real(0,10)},_686232{real(0,10)}]
+	X = Y,
+	Y::real(0,10).
 
 	?- X::real(-10,10), Y::real(50,100), X=Y.
 	false.
@@ -153,30 +131,30 @@ eg
 
 The previous section described how to create real intervals from logic variables and the semantics of unification within Prolog. But intervals only become useful when we can define relationships between them. These relationships, or constraints, are defined using the Prolog predicate `{}`, defined as an "outfix" operator (used as brackets).
 
-A constraint defines a realtionship that must hold, i.e., evaluate to *true*, or `1` (as per the usual convention in Boolean algebra). For expressions of just real numbers, this confines us to equality (infix operator `==`) and inequality (infix operators `=<` and `>=`).
+A constraint defines a relationship that must hold, i.e., evaluate to *true*. For expressions of `real` intervals, this confines us to equality (infix operator `==`) and inequality (infix operators `=<` and `>=`). Constraints that are not *true* fail (in Prolog).
 
-aside> Aside: Since real values are represented by closed ranges defined by numbers which can be implmented as a computer data type (floating point, integer, or rational), the other inequalities (`<`, `>`, and `<>`) are incomplete, and therefore should, in general, be avoided. For example, the constraint {`X<Y`} means that any real values less than the (representable) lower bound of {`Y`} will be included in {`X`}. And since the (representable) upper bound of {`X`} must be less than the lower bound of {`Y`}, there are real values between the two that aren't in either {`X`} or {`Y`}. Any solutions in this "twilight zone" will never be found, hence the incompleteness of `<` (and by analogy `>` and `<>`) on real intervals.
+aside> Aside: Since real values are represented by closed ranges defined by numbers which can be implemented as a computer data type (floating point, integer, or rational), the other inequalities (`<`, `>`, and `<>`) are incomplete, and therefore should, in general, be avoided. For example, the constraint {`X<Y`} means that any real values less than the (representable) lower bound of {`Y`} will be included in {`X`}. And since the (representable) upper bound of {`X`} must be less than the lower bound of {`Y`}, there are real values between the two that aren't in either {`X`} or {`Y`}. Any solutions in this "twilight zone" will never be found, hence the incompleteness of `<` (and by analogy `>` and `<>`) on `real` intervals.
 
-The left and right hand sides of the (in)equality can be any arithmetic expression using intervals and numbers (constants). (A complete list of supported functions is in the [Appendix].) By convention, CLP(BNR) uses the same operators and semantics as the underlying Prolog arithmetic. for example:
+The left and right hand sides of the (in)equality can be any arithmetic expression using intervals and numbers (constants). (A complete list of supported functions is in the [Appendix TBD].) By convention, CLP(BNR) uses the same operators and semantics as the underlying Prolog arithmetic. for example:
 eg
-	?- X::real, {X**2==3}.
-	X = _4926::real(-1.732050807568878,1.732050807568878).
+	?- {X**2==3}.
+	﻿X::real(-1.7320508075688776,1.7320508075688776).
 While `X` is initially unbounded, the constraint has narrowed the range to include the two possible values; one positive and one negative. For comparison, here's the standard Prolog caculation of {`sqrt(3)`}:
 eg
 	?- X is sqrt(3).
 	X = 1.7320508075688772.
-First note that the arithmetic `sqrt` function only calculates the positive root, and any consideration of negative roots, if needed, must be built into the higher level applcation. Also notice that the interval bounds above are slightly larger in magnitude than the floating point `sqrt(3)` but the final interval includes that value (as well as its negative). Since floating point arithmetic is imprecise, the result of any floating point calculation on interval bounds has to be rounded outward to ensure that "real" answer is included in the bounds of the interval. Outward rounding is not always required. In some cases arithmetic operations are only applied to "precise" bounds (integers and rationals) so the result is precise. Other relations, e.g., `abs`, `min`, and `max`, only require comparisons and sign changes, so the calculation of new bounds doesn't require floating point arithmetic and no outward rounding is necessary.
+First note that the arithmetic `sqrt` function is defined to only calculate the positive root, and any consideration of negative roots, if needed, must be built into the higher level applcation. Also notice that the interval bounds above are slightly larger in magnitude than the floating point `sqrt(3)` but the final interval includes that value (as well as its negative). Since floating point arithmetic is imprecise, the result of any floating point calculation on interval bounds has to be rounded outward to ensure that "real" answer is included in the bounds of the interval. Outward rounding is not always required. In some cases arithmetic operations are only applied to "precise" bounds (integers and rationals) so the result is precise. Other relations, e.g., `abs`, `min`, and `max`, only require comparisons and sign changes, so the calculation of new bounds doesn't require floating point arithmetic and no outward rounding is necessary.
 
 If we add another constraint:
 eg
-	?- X::real, {X**2==3}, {X>=0}.
-	X = _76::real(1.7320508075688767,1.732050807568878).
-we see that the interval has almost narrowed to a point solution (the positive `sqrt(3)`), although we can never quite get there due to the limits of floating point precision.
+	?- {X**2==3}, {X>=0}.
+	X:: 1.732050807568877... .
+we see that the interval has almost narrowed to a point solution (the positive `sqrt(3)`), although we can never quite get there due to the limits of floating point precision. This example also demonstrates the alternative top level output format for `real` intervals that are narrow enough to share leading digits between the `L` and `U` values; common digits are output followed by `...` (defined as a postfix operator).
 
-For convenience, multiple constraints can be written in a single pair of `{}` using commas as separators. This is interpreted as a conjunction consistent with conventional Prolog use of '`,`' in clause bodies and top level queries. Also note that the order in which the constraints are written doesn't matter and, in this case, the `::` declaration can even be omitted because it can be inferred from directly from the constraint:
+For convenience, multiple constraints can be written in a single pair of `{}` using commas as separators. This is interpreted as a conjunction consistent with conventional Prolog use of '`,`' in clause bodies and top level queries. Also note that the order in which the constraints are written doesn't matter:
 eg
 	?- {X>=0, X**2==3}.
-	X = _1444::real(1.7320508075688767,1.732050807568878).
+	﻿X:: 1.732050807568877... .
 
 In some cases, variables can even be narrowed to a point value resulting in unification with the logic variable:
 eg
@@ -186,12 +164,12 @@ eg
 An example involving two intervals:
 eg
 	?- Y::real(1,3), {X**2==Y}.
-	Y = _80::real(1,3),
-	X = _172::real(-1.732050807568878,1.732050807568878).
+	﻿Y::real(1,3),
+	X::real(-1.7320508075688776,1.7320508075688776).
 
 	?- {X**2==Y, X=<0}, Y::real(1,3).
-	X = _2858::real(-1.732050807568878,-1),
-	Y = _3090::real(1,3).
+	﻿X::real(-1.7320508075688776,-1),
+	Y::real(1,3).
 In the first case, `X` contains values (between `-1` and `1`) which are not possible solutions. But `X` is the smallest interval that contains all the solutions and allows for rounding error. In the second case, `X` narrows to include all the possible negative values, but the only "impossible" values in the range are close to the lower bound due to rounding errors. Note the order of the declaration and the constraint isn't important; as in other CLP systems, it looks like the logical properties of pure Prolog are starting to apply to arithmetic again.
 
 Failure occurs whenever the constraints don't hold:
@@ -203,19 +181,19 @@ eg
 	X = -2,
 	Y = -8.
 
-This raises the issue of what these "answers" mean. First, the failure of a properly formulated question indicates that no solution is possible. However, when dealing with infinite numbers of real numbers, we can't have "completeness" in the sense that we will not usually be able to give exact solutions to problems, nor even be able to tell automatically whether a solution exists or not in the final interval domains. However, it will be correct in the sense that if the initial domains of the variables contained a solution, then so do the final (narrowed) domains. And, if an interval narrows to a point value (and unifies with the arithmetic variable), then a solution has been found, but the use of floating point arithmetic usually prevents this from happening.
+This raises the issue of what these "answers" mean. First, the failure of a properly formulated question indicates that no solution is possible. However, when dealing with infinite numbers of real numbers, we can't have "completeness" in the sense that we will not usually be able to give exact solutions to problems, nor even be able to tell automatically whether a solution exists or not in the final interval domains. However, it will be correct in the sense that if the initial domains of the variables contained a solution, then so do the final (narrowed) domains. And, if an interval narrows to a point value (and unifies with the arithmetic variable), then an exact solution has been found, but the use of floating point arithmetic all but guarentees this never happens.
 
-In abstract terms, this all sounds a bit unsettling but practically interval answers are still useful. For most problems of interest, solutions are known to exist, perhaps because non-existence would violate some law of physics, so it's usually just a matter of ensuring that the initial domains are wide enough to include solutions of interest. And because correctness is guaranteed, the effects of rounding errors in floating point arithmetic is explicit. As an added bonus, the effects of "fuzzy" input data can be taken into consideration when defining the initial domains.
+In abstract terms, this all sounds a bit unsettling but interval answers are still practically useful. For most problems of interest, solutions are known to exist, perhaps because non-existence would violate some law of physics, so it's usually just a matter of ensuring that the initial domains are wide enough to include solutions of interest. And because correctness is guaranteed, the effects of rounding errors in floating point arithmetic is explicit. As an added bonus, the effects of "fuzzy" input data can be taken into consideration when defining the initial domains.
 
 Two more examples, one involving two linear equations and the other a pair of non-linear equations:
 eg
 	?- [X,Y]::real, {1==X+2*Y, Y-3*X==0}.
-	X = _120::real(0.14285714285714268,0.14285714285714302),
-	Y = _212::real(0.42857142857142827,0.4285714285714289).
+	﻿X:: 0.1428571428571428...,
+	Y:: 0.428571428571428... .
 
 	?- [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}.
-	X = _50::real(0.6498889466656952,0.6498889466656975),
-	Y = _72::real(0.7600291816777495,0.7600291816777524).
+	﻿X:: 0.64988894666569...,
+	Y:: 0.76002918167775... .
 The answers for both examples have very narrow ranges but point solutions are impossible due to the limited precision of the underlying floating point arithmetic.
 
 Now consider the following example of two non-linear equations: {`x^2+y^2=2`} and {`y-x^2=0`} (a circle and a parabola):
@@ -223,52 +201,55 @@ Now consider the following example of two non-linear equations: {`x^2+y^2=2`} an
 To find the intersection of these two curves:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}.
-	X = _180::real(-1.1892071150027215,1.1892071150027215),
-	Y = _300::real(0.7653668647301785,1.4142135623730954).
+	﻿X::real(-1.1892071150027212,1.1892071150027212),
+	Y::real(0.765366864730179,1.4142135623730951).
 This actually has two solutions: `X = -1, Y = 1` and `X = 1, Y = 1`, but the intervals haven't been narrowed to reflect this, as indicated by the green box defined by the "calculated" ranges of `X` and `Y`. One reason is that there are two solutions, so the best one could hope for is that `X` would narrow to `real(-1,1)` and `Y` would be unified with `1`. The second reason is that narrowing is done through iteration, one constraint at a time. From the circle equation, the maximum value of `Y` is {`sqrt(2)`}. Given this, and using the parabola equation, the range of `X` can be narrowed to (approximately) `(-1.189,1.189)`. Applying this to the circle equation, the range of `Y` can be further narrowed to `(0.765,1.414)`. But at this point further iteration doesn't change anything; increasing the lower bound of `Y` to the parabola doesn't narrow `X`. The constraint network has reached a stable state short of an optimal result.
 
 The way to break this "stalemate" is by adding additional constraints. Note what happens when `X` is constrained to be positive:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0, X>=0}.
-	X = _166::real(0.9999999999999989,1.000000000000001),
-	Y = _286::real(0.9999999999999984,1.0000000000000016).
+	X:: 1.00000000000000...,
+	Y:: 1.00000000000000... .
 By eliminating the solution at `X= -1`, the local constraint propagation was able to find the remaining solution very quickly. Prolog backtracking can be used to generate both solutions:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, ({X=<0};{X>=0}).
-	X = _172::real(-1.000000000000001,-0.9999999999999989),
-	Y = _292::real(0.9999999999999984,1.0000000000000016)
-	X = _166::real(0.9999999999999989,1.000000000000001),
-	Y = _286::real(0.9999999999999984,1.0000000000000016).
-
+	﻿X:: -1.00000000000000...,
+	Y:: 1.00000000000000... ;
+	X:: 1.00000000000000...,
+	Y:: 1.00000000000000... .
 In this particular case, it's apparent why constraining `Y` would not have such a beneficial effect. Whatever additional constraint is placed on `Y`, a new stable state is quickly achieved (in the same way as the original iteration) albeit in a smaller box. And there will always be a box (of width 2) because there are two solutions which must be in the box. In general, not even that much may be obvious, so how does one a) pick an interval to constrain, and b) decide what constraint to apply?.
 
-To address this problem, CLP(BNR) provides `solve/1`. This predicate takes an interval and performs a nondeterministic bifurcating search to find solutions. Solving for `Y`:
+To alleviate this problem, CLP(BNR) provides `solve/1`. This predicate takes an interval and performs a nondeterministic bifurcating search to find solutions. Solving for `Y`:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, solve(Y).
-	X = _166::real(-1.000000017868724,1.000000017868724),
-	Y = _286::real(0.9999999821312753,1.0000000357374477) 
+	﻿X::real(-1.000000017868724,1.000000017868724),
+	Y:: 1.0000000... ;
 	false.
 `Y` can't get much narrower (`solve` has a default precision of approximately 6 digits) and `X` has now been narrowed as much as it can while still containing both solutions. Alternatively, solving for `X`:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, solve(X).
-	X = _166::real(-1.000000000000001,-0.9999999999999989),
-	Y = _286::real(0.9999999999999984,1.0000000000000016) 
-	X = _166::real(0.9999999999999989,1.000000000000001),
-	Y = _286::real(0.9999999999999984,1.0000000000000016).
-On backtracking, this produces the two solutions. Note that local propagation has produced much smaller ranges than that produced by `solve` itself.
+	﻿X:: -1.00000000000000...,
+	Y:: 1.00000000000000... ;
+	X:: 1.00000000000000...,
+	Y:: 1.00000000000000... .
+On backtracking, this produces the two solutions. Note that local propagation has produced much smaller ranges (more than 6 digits) than that produced by `solve` itself.
 
 If it's unclear which variable to choose to solve for, `solve/1` can take a list of variables. This performs a breadth first search on all the members of the list:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, solve([X,Y]).
-	X = _172::real(-1.000000000000001,-0.9999999999999989),
-	Y = _292::real(0.9999999999999984,1.0000000000000016) 
-	X = _172::real(0.9999999999999989,1.000000000000001),
-	Y = _292::real(0.9999999999999984,1.0000000000000016).
+	﻿X:: -1.00000000000000...,
+	Y:: 1.00000000000000... ;
+	X:: 1.00000000000000...,
+	Y:: 1.00000000000000... .
 
 	?- {X**2+Y**2==2, Y-X**2==0}, findall(['X '=X,'Y '=Y],solve([X,Y]),L).
-	X = _220::real(-1.1892071150027215,1.1892071150027215),
-	Y = _340::real(0.7653668647301785,1.4142135623730954),
-	L = [[X =_1240::real(-1.000000000000001,-0.9999999999999989),Y =_1444::real(0.9999999999999984,1.0000000000000016)],[X =_824::real(0.9999999999999989,1.000000000000001),Y =_1028::real(0.9999999999999984,1.0000000000000016)]].
+	﻿L = [[X =_75972, Y =_75984], [X =_76002, Y =_76014]],
+	X::real(-1.1892071150027212, 1.1892071150027212),
+	Y::real(0.765366864730179, 1.4142135623730951),
+	_75972:: -1.00000000000000...,
+	_75984:: 1.00000000000000...,
+	_76002:: 1.00000000000000...,
+	_76014:: 1.00000000000000... .
 Note that in the second example `X` and `Y` are just the values after imposing the constraint (see above); backtracking in `findall` has removed all the final bindings of `X` and `Y`, but their values have been captured in `L`.
 
 But there is another reason why intervals fail to "optimally" narrow; the so-called *dependency problem*. This is the overestimation of the result of an interval function when the same variable occurs more than once. Simply put, given intervals `X` and `Y` with the same range, the interval primitives can't distinguish between `{Z==X-X}`, where one might normally expect `Z` to be `0`, and `{Z==X-Y}`. This isn't an issue in conventional arithmetic where only single valued variables are used but is significant when the "operands" are ranges (i.e., sets of reals). In general, overestimation will occur unless the extension of a normal function into intervals only contains single occurences of each of its variables. (This was recognized as an issue in the Moore's original interval arithmetic work (1966).)
@@ -284,58 +265,89 @@ This constraint could be actually written four ways:
 The last form is the only one with a single occurence of `X` and yields the best result. In CLP(BNR), symbolic preprocessing of constraints will partially optimize so all of the first three variants will be mapped to the third variant (shown in the green box on the graph):
 eg
 	?- X::real(-1,1),{Y1==X*(X+1), Y2==X*X+X, Y3==X**2+X, Y4==(X+1/2)**2 - 1/4}.
-	X = _114::real(-1,1),
-	Y1 = _160::real(-1,2),
-	Y2 = _388::real(-1,2),
-	Y3 = _616::real(-1,2),
-	Y4 = _856::real(-1/4,2).
+	﻿X = X::real(-1,1),
+	Y1 = Y1::real(-1,2),
+	Y2 = Y2::real(-1,2),
+	Y3 = Y3::real(-1,2),
+	Y4 = Y4::real(-0.25,2).
 For quadratics like this example, one can do additional preprocessing to find the single occurrence variant (4.), but that's not always possible for an aribitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
 
-`solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile (all times on a 2009 2.26GHz Mac Pro):
+`solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 104,964,586 inferences, 29.755 CPU in 30.020 seconds (99% CPU, 3527610 Lips)
-	X = _66::real(-1,1),
-	Y = _88::real(-0.25000012394440474,2).
+	% 16,930,175 inferences, 4.572 CPU in 4.598 seconds (99% CPU, 3703281 Lips)
+	X::real(-1, 1),
+	Y::real(-0.2500011568168373, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
 
 Another example using `solve/1` to find the roots of a 256 degree polynomial:
 eg
 	?- {0 == 35*X**256 - 14*X**17 + X}, solve(X).
-	X = _198::real(-0.8479436608273155,-0.847943660827315) 
-	X = _198::real(-3.7734745463875133e-308,3.1151034019100843e-307) 
-	X = _198::real(0.847943660827315,0.8479436608273155) 
-	X = _198::real(0.9958424942004978,0.9958424942004983).
+	﻿X:: -0.847943660827315... ;
+	X:: ﻿0.00000000000000000... ;
+	X:: 0.847943660827315... ;
+	X:: 0.995842494200498... ;
+	false.
 
 This is all very general, and very declarative, and is done without the application of any numerical methods or deep understanding of the underlying machinery. But this comes at a computational price. For any particular problem space, e.g., systems of linear equations, it may well be that there are more efficient ways of arriving at the same solutions. Luckily numerical methods that apply to normal floating point arithmetic can also be applied to intervals of reals and, because of the underlying correctness of the arithmetic, you can actually have some confidence in the answers.
 
 A final point on the unification of two intervals: when this occurs, the resulting interval has the intersection of the two ranges (as described above) AND its constraints are the union of the constraints from the two original intervals.
 
+"Verbose" mode is enabled by setting the `clpBNR_verbose` prolog environment flag to `true` (default `false)`. When this is done all interval bounds are transparently output (no float conversion or ellipsis postfix format) and the constraint network is presented in top level answers. This can result in a significant amount of detail which may not be generally useful:
+eg
+	﻿?- set_prolog_flag(clpBNR_verbose,false).
+	true.
+	
+	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	X:: ﻿0.00000000000000000...,
+	S::real(-5.0050000000000034, 5.0050000000000034),
+	Z::real(-0.5, 0.5),
+	Y:: 10.01000000000000... .
+	
+	?- set_prolog_flag(clpBNR_verbose,true).
+	true.
+	
+	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	X::real(-5.0e-324, 5.0e-324),
+	{X==_40340},
+	_40340::real(-5.0e-324, 5.0e-324),
+	_40380::real(-5.0050000000000034, 5.0050000000000034),
+	{_40380==X+_40422},
+	S::real(-5.0050000000000034, 5.0050000000000034),
+	{S==_40380},
+	_40422::real(-5.005000000000003, 5.005000000000003),
+	{_40422==Z*Y},
+	Z::real(-1r2, 1r2),
+	Y::real(10.009999999999998, 10.010000000000002),
+	{Y==_40608},
+	_40608::real(10.009999999999998, 10.010000000000002).
+This flag also affects the formatting of intervals in calls to `write`. 
+
 <#TableOfContents>
 
 #### Intervals with Infinite Bounds
 
-For completeness, it is possible to explicitly declare intervals with non-finite bounds (as shown above). But infinite bounds can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created automatically to construct complicated constraints from the defined set of primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example (already discussed) that omits any bounds specifications:
+For completeness, it is possible to explicitly declare intervals with non-finite bounds (as shown above). But infinite bounds can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created internally to construct complicated constraints from the defined set of primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example that omits any bounds specifications:
 eg
 	?- {1==X+2*Y, Y-3*X==0}.
-	X = _88532::real(-1.0Inf,1.0Inf),
-	Y = _89178::real(-1.0Inf,1.0Inf).
+	﻿X::real(-1.0Inf,1.0Inf),
+	Y::real(-1.0Inf,1.0Inf).
 No narrowing is possible because the arithmetic on infinite bounds just generates more infinities. This can lead to the appearance of non-termination or even undefined value exceptions due to arithmetic using infinite operands, e.g., {`0*oo`}. But, as we've already seen, declaring `X` and `Y` to be finite generally resolves this issue:
 eg
 	?- [X,Y]::real, {1==X+2*Y, Y-3*X==0}.
-	X = _173336::real(0.14285714285714268,0.14285714285714302),
-	Y = _173436::real(0.42857142857142827,0.4285714285714289).
+	X:: 0.1428571428571428...,
+	Y:: 0.428571428571428... .
 
 Another way of generating infinities is through arithmetic operations whose result is defined to be infinity, or by overflowing the supported 64-bit floating point range:
 eg
-?- X::real,{Y==X/Z},Z=0.
-	X = _4882::real(-1.0e+154,1.0e+154),
-	Y = _5522::real(-1.0Inf,1.0Inf),
-	Z = 0.
+	?- X::real,{Y==X/Z},Z=0.
+	﻿Z = 0,
+	X::real(-1.0e+16, 1.0e+16),
+	Y::real(-1.0Inf, 1.0Inf).
 
-	?- X::real,{Y==X**3}.
-	X = _178786::real(-1.0e+154,1.0e+154),
-	Y = _179302::real(-1.0Inf,1.0Inf).
+	﻿?- X::real,{Y==X**25}.
+	X::real(-1.0e+16,1.0e+16),
+	Y::real(-1.0Inf,1.0Inf).
 
 Often infinities will disappear due to intersection with finite intervals. But it's always a good practice to write declarations and constraints that prevent them from occurring in the first place.
 
@@ -343,72 +355,73 @@ Often infinities will disappear due to intersection with finite intervals. But i
 
 #### Applying Intervals to the Integer Domain
 
-Many of the problems to which CLP has been applied come from Operations Research. These types of problems require the use of efficient constraint solvers over finite domains, especially on bounded integers. Since integers are technically a subset of reals, much of what was described in the previous two sections can also be applied to integer based problems. However knowing that the arithmetic variables in question are integers can have some significant advantages. Narrowing becomes more efficient because it is known that no solutions can occur between integer values. Enumeration of values becomes feasible since there are no longer an infinite number of possible values between the lower and upper bound of an interval. Finally, the inequalities `<`, `>`, and `<>` become complete since there are no longer any "twilight zones" between integer intervals that can contain possible solutions.
+Many of the problems to which CLP has been applied come from Operations Research and some of these problems require the use of efficient constraint solvers over finite domains, especially on bounded integers. Since integers are technically a subset of reals, much of what was described in the previous two sections can also be applied to integer based problems. However knowing that the arithmetic variables in question are integers can have some significant advantages. Narrowing becomes more efficient because it is known that no solutions can occur between integer values. Enumeration of values becomes feasible since there are no longer an infinite number of possible values between the lower and upper bound of an interval. Finally, the inequalities `<`, `>`, and `<>` become complete since there are no longer any "twilight zones" between integer intervals that can contain possible solutions.
 
 For these reasons, the domain type `integer` is supported to specify arithmetic variables that can only be integers. In operational terms, this means that whenever an `integer` interval bound is set to a non-integer value, it is rounded "inward" to the closest integer value. Some examples:
 eg
 	?- N::integer(-1,1).
-	N = _2208::integer(-1,1).
+	﻿N::integer(-1,1).
 
-	?- N::integer(-1.5,3/2).
-	N = _2246::integer(-1,1).
+	?- N::integer(-1.5,3r2).
+	﻿N::integer(-1,1).
 
 	?- N::integer.
-	N = _2156::integer(-72057594037927936,72057594037927935).
+	﻿N::integer(-72057594037927936,72057594037927935).
 
 	?- N::integer(pi/2,_).
-	N = _2208::integer(2,72057594037927935).
+	﻿N::integer(2,72057594037927935).
 
 	?- N::integer(0,123456789012345678901234567890123456789012345678901234567890).
-	N = _2238::integer(0,123456789012345678901234567890123456789012345678901234567890).
+	﻿N::integer(0,123456789012345678901234567890123456789012345678901234567890).
 
 	?- N::integer(0,inf).
-	N = _181354::integer(0,1.0Inf).
+	﻿N::integer(0,1.0Inf).
 
 As above, these examples illustrate a number of points:
 1..
 	+ Any bounds value which is not an integer will be rounded "inward" (see above), i.e., the interval is narrowed.
 	+ The numeric type of the bounds constants is independant of the domain type (`integer`). However, the resulting interval will only have bounds with integer values.
-	+ The default value of the lower/upper bound for `integer` intervals in "unbounded" integer Prolog environments (as defined by the Prolog environment flag `bounded`) is `min_tagged_integer`/`max_tagged_integer` (again, as defined by Prolog environment flags). In "bounded" environments, the default values are defined by the flags `min_integer` and `min_integer`. (Most instances of SWI-Prolog have `bounded`=`false`).
+	+ The default value of the lower/upper bound for `integer` intervals in "unbounded" integer Prolog environments (as defined by the Prolog environment flag `bounded`) is `min_tagged_integer`/`max_tagged_integer` (again, as defined by Prolog environment flags).
 	+ In unbounded environments, the magnitude of the bounds is unlimited so no overflows occur. The floating point constants for the infinities (`inf` or `-inf`) can be used to accomodate infinite integer bounds.
 	+ As for `real`'s, the bounds can be (ground) expressions, but any resulting non-integer will be rounded inwards.
-	+ The same output representation as for reals is used, substituting `integer` for `real`.
+	+ The same output representation as for `real`'s is used, substituting `integer` for `real`. However, there is no simplified "ellipsis" format for `integer`'s.
 
 It is permissible to "retype" a `real` to an `integer`, since that is a narrowing operation, but an `integer` cannot be retyped to a `real`. (In this case, order matters.) As before, failure will occur if the new range does not intersect with the current range.
 eg
 	?- N::real,N::integer(0,10).
-	N = _2276::integer(0,10).
+	﻿N::integer(0,10).
 
 	?- X::integer,X::real(0,10).
-	X = _2258::integer(0,10).
+	﻿X::integer(0,10).
 
 	?- N::real(_,0), N::integer(1,10).
 	false.
 In each case, the order of the goals is irrelevant. From this, you can also infer what will happen when two intervals with different domain types are unified:
 eg
 	?- N::integer, X::real(0,10), X=N.
-	N = X, X = _3562::integer(0,10).
+	﻿N = X,
+	X = X::integer(0,10).
 
 Constraints are defined as for reals:
 eg
 	?- [M,N]::integer(0,8), {M==3*N}.
-	M = _3542::integer(0,6),
-	N = _3736::integer(0,2).
+	M::integer(0,6),
+	N::integer(0,2).
 
 	?- [M,N]::integer(0,8), {M==3*N, M>=3}.
-	M = _3568::integer(3,6),
-	N = _3762::integer(1,2).
+	﻿M::integer(3,6),
+	N::integer(1,2).
 
 	?- [M,N]::integer(0,8), {M==3*N, M>3}.
 	M = 6,
 	N = 2.
-Note (as in the third example) that the inequalities that were unsound (incomplete) over reals can safely be used in the `integer` domain. 
+Note (as in the third example) that the inequalities that were unsound (incomplete) over `real`'s can safely be used in the `integer` domain. 
 
 "Not equals" will be enforced only when the value becomes one of the bounds of the range and it can be eliminated.
 eg
 	?- [M,N]::integer(0,8), {M==3*N, M<>3}.
-	M = _3582::integer(0,6),
-	N = _3776::integer(0,2).
+	﻿M::integer(0,6),
+	N::integer(0,2).
 
 	?- [M,N]::integer(0,8), {M==3*N, M<>3}, {M>0}.
 	M = 6,
@@ -417,12 +430,12 @@ eg
 Analogous to `solve/1` for reals, `enumerate/1` can be used to search for distinct solutions (in fact `solve` will default to `enumerate` for integer domains that are small enough):
 eg
 	?- [M,N]::integer(0,8), {M==3*N, M<>3}, enumerate(M).
-	M = N, N = 0 
+	﻿M = N, N = 0 ;
 	M = 6,
 	N = 2.
 
 	?- [M,N]::integer(0,8), {M==3*N, M<>3}, solve(M).
-	M = N, N = 0 
+	﻿M = N, N = 0 ;
 	M = 6,
 	N = 2.
 
@@ -432,36 +445,35 @@ Since it is generally difficult to infer a domain type from a constraint which c
 
 #### Boolean Algebra with Intervals
 
-Boolean algebra has been fundamental in the development of digital circuits and is used in propositional calculus, set theory, and statistics. It is supported in most modern programming languages. While variables in expressions in numeric algebras denote numbers, variables in boolean algebra denote the truth values, *false* and *true*. These values can be, and usually are, represented by the binary digits `0` and `1`. So a boolean in CLP(BNR) has the domain `integer(0,1)`. For convenience and clarity, the domain type `boolean` can be used:
+Boolean algebra has been fundamental in the development of digital circuits and is used in propositional calculus, set theory, and statistics. It is supported in most modern programming languages. While variables in expressions in numeric algebras denote numbers, variables in boolean algebra denote the truth values, *false* and *true*. These values can be, and usually are, represented by the binary digits `0` and `1`. So a `boolean` in CLP(BNR) has the domain `integer(0,1)`. For convenience and clarity, the domain type `boolean` can be used:
 eg
 	?- B::boolean.
-	B = _3332::integer(0,1).
-Note that the range is unnecessary, and in fact, the declaration will fail if it's present.
+	﻿B::boolean.
+Note that the range is implied by the type.
 
-Although the basic boolean operations of conjunction, disjunction, and negation can be defined in terms of arithmetic operations, for clarity the infix operators `and` and `or`, and prefix operator `~` (respectively) are defined.  For added convenience, `nand`, `nor`, `xor`, and `->` (boolean implication) are also defined as infix operators. When these operators are used, the domain of any operands in constraints can be inferred as `boolean` or `integer(0,1)`, so an explicit declaration using `::` is usually not necessary.
+Although the basic boolean operations of conjunction, disjunction, and negation can be defined in terms of arithmetic operations, for clarity the infix operators `and` and `or`, and prefix operator `~` (respectively) are defined.  For added convenience, `nand`, `nor`, `xor`, and `->` (boolean implication) are also defined as infix operators. When these operators are used, the domain of any operands in constraints can be inferred as `boolean` or `integer(0,1)`, so an explicit declaration using `::` is usually not necessary. Boolean expressions also evaluate to *true* (1) or *false* (0) and so can be used directly as constraints (*false* implies failure).
 eg
 	?- {A or B}.
-	A = _3636::integer(0,1),
-	B = _3836::integer(0,1).
+	﻿A::boolean,
+	B::boolean.
 
 	?- {A and B}.
-	A = B, B = 1.
+	﻿A = B, B = 1.
 
 	?- {~(A nand B)}.
-	A = B, B = 1.
+	﻿A = B, B = 1.
 
 	?- {A nor B}.
-	A = B, B = 0.
+	﻿A = B, B = 0.
 	
 	?- {B and (C or ~D)}.
-	B = 1,
-	C = _4392::integer(0,1),
-	D = _4828::integer(0,1).
+	﻿B = 1,
+	C::boolean,
+	D::boolean.
 	
 	?- {B and (C or ~D)} ,C=0.
-	B = 1,
+	﻿B = 1,
 	C = D, D = 0.
-Note that these examples do not require an explicit (in)equality like the previous arithmetic domains, since any constraint must always be *true*, i.e., `1`.
 
 `enumerate/1` or `solve/1` can be used to output truth tables:
 eg
@@ -477,57 +489,62 @@ eg
 	~ (1 xor 1)==1
 	false.
 
-Use of of intervals with other domain types in boolean expressions will narrow them to the boolean domain (by inference), which may not always be the intent and, usually, it's a bug:
+Use of intervals with other domain types in boolean expressions will narrow them to the boolean domain (by inference), which may not always be the intent and, usually, it's a bug:
 eg
 	?- [X,Y]::real,{X or (Y+42)}.
-	X = _28884::integer(0,1),
-	Y = _29026::real(-42,-41).
+	X::boolean,
+	Y::real(-42,-41).
 However, it's often useful to combine boolean and numeric constraints as we'll see later.
 
 <#TableOfContents>
 
 #### Controlling Constraint Propogation
 
-This topic requires a little understanding of what's happening "under the covers". A constraint expression is broken down into a set of primitive narrowing operations like `add`, `mul`, `le`, etc., that share intervals, i.e., constrained logic variables. When a primitive operation results in the narrowing of one of its argument intervals, any operations that share that interval must be "scheduled" so that the constraint network stays consistent and sound. Any narrowing may result in an empty range, which means the constraint network is inconsistent, causing backtracking and the "undoing" of the operation.
+This topic requires a little understanding of what's happening "under the covers". A constraint expression is broken down into a set of primitive narrowing operations like `add`, `mul`, `le`, etc., that share intervals, i.e., constrained logic variables. When a primitive operation results in the narrowing of one of its argument intervals, any operations that share that interval must be "scheduled" so that the constraint network stays consistent and sound. Any narrowing may result in an empty range, which means the constraint network is inconsistent, causing backtracking and the "undoing" of the operation. And since we're mainly interested in finite solutions, intervals are not allowed to narrow to the infinities as point values.
 
 This propogation can take a while to "settle"; one constraint triggering the re-evaluation of another which (directly or indirectly) may cause the original to execute again. Only when no changes in interval ranges occur will the propogation terminate (fixed point achieved), and that can take a while with 64-bit floating point values. To avoid the appearance of non-termination (a steady state network will eventually always be achieved), an internal limit is place on the amount of work that is done for any new constraint added to the network. Once this limit is exceeded, only "significant" changes will be propogated until a steady state is achieved. Note that result of this limiting will always be sound, i.e., if an answer exists, it will be present in the interval set. However, the set may not be as narrow as if the propogation was allowed to continue unchecked.
 
-The work limit is a represented by a count of primitive operations that are executed bfore the limiting mechansim is enabled, and is user controllable using the Prolog environment flag `clpBNR_iteration_limit`; the default value is `10,000` which should be adequate for most purposes.
+The work limit is a represented by a count of primitive operations that are executed bfore the limiting mechansim is enabled, and is user controllable using the Prolog environment flag `clpBNR_iteration_limit`; the default value should be adequate for most purposes.
 
 It's usually not possible to predict which problems are affected by this "throttling" mechanism, but here's a simple example:
 eg
 	?- X::real,{X**2-2*X+1==0}.
-	X = _60::real(0.999203058873612,1.0008048450318359).
+	X:: 1.00... .
 This is a simple quadratic with a single root at `X=1`:
 [simple_quad]
-As the interval `X` narrows towards the solution, the amount of narrowing achieved with each step decreases, so it can take a long time to reach the precision limit of the floating point representation. In this case, the throttling mechanism was enabled after reaching approximately 4 digits of precision. This can be seen using the `clpStatistic/1` predicate:
+As the interval `X` narrows towards the solution, the amount of narrowing achieved with each step decreases, so it can take a long time to reach the precision limit of the floating point representation. In this case, the throttling mechanism was enabled after reaching approximately 3 digits of precision. This can be seen using the `clpStatistic/1` predicate:
 eg
 	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
-	X = _21622::real(0.999203058873612,1.0008048450318359),
-	T = 0.2799999999999727,
-	I = 10002/10000.
-Propogation was terminated in `0.28` seconds after `10,002` primitive operations (limit is `10,000`). A higher threshold is can be set:
+	﻿T = 0.046844999999962056,
+	I = 3001/3000,
+	X:: 1.00... .
+Propogation was terminated in `0.0455` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
 eg
-	?- set_prolog_flag(clpBNR_iteration_limit,100000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
-	X = _90::real(0.9999200380415186,1.0000800555866574),
-	T = 3.25,
-	I = 100002/100000.
-A tenfold increase in the limit achieved another digit of precision but took over ten times longer. This will not always be the case, but illustrates the general effect of changing the value of this flag. It's there if you need it, but in most cases just leaving the flag set to the default value should suffice.
+	?- set_prolog_flag(clpBNR_iteration_limit,30000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
+	﻿T = 0.4550299999999652,
+	I = 30001/30000,
+	X:: 1.000... .
+A tenfold increase in the limit achieved another digit of precision but about ten times longer. This will not always be the case, but illustrates the general effect of changing the value of this flag. It's there if you need it, but in most cases just leaving the flag set to the default value should suffice.
 
 ```aside>
-Aside: `clpStatistics/0`, which resets the statistics values, and `clpStatistic/1` and `clpStatistics/1` support operational measurements of CLP(BNR) applications. A further example illustrating all the available mesurements:
+Aside: `clpStatistics/0`, which resets the statistics values, and `clpStatistic/1` and `clpStatistics/1` support operational measurements of CLP(BNR) applications. A further example illustrating all the available measurements:
 eg
 	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistics(SS).
-	X = _1686::real(0.999203058873612,1.0008048450318359),
-	SS = [userTime(0.2700000000000955),gcTime(0),globalStack(23672440/33550320),trailStack(3908296/8386552),localStack(1752/8376184),
-	inferences(1079004),narrowingOps(10009),narrowingFails(0),max_iterations(10002/10000)].
+	﻿SS = [userTime(0.04785000000003947), gcTime(0.003), globalStack(397792/524256), trailStack(112184/133096), localStack(2432/118648), inferences(178222), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
+	X:: 1.00... .
+`clpBNR` specific measurements include:
+*..
+	- `narrowingOps` : number of primitive narrowing operations that were executed
+	- `narrowingFails` : number of narrowing operations thay failed (constraint was violated)
+	- `node_count` : size of the constraint network
+	- `max_iterations` : high water mark of iteration count/`clpBNR_iteration_limit`
 ```
 
 <#TableOfContents>
 
 #### Summary
 
-By sharing the same fundamental framework based on numeric intervals, CLP(BNR) enables the mixing of arithmetic and boolean types in constraints. The implementation primarily consists of just two key predicates, `::/2` (used as an infix operator) for creating intervals (logic variables constrained to be numeric values) and `{}/1` (used as an outfix operator) to apply constraints to intervals. In many cases explicit creation isn't necessary as constraints in CLP(BNR) imply the existence of intervals.
+By sharing the same fundamental framework based on numeric intervals, CLP(BNR) enables the mixing of arithmetic and boolean types in constraints. The implementation primarily consists of just two key predicates, `::/2` (used as an infix operator) for creating intervals (logic variables constrained to be numeric values) and `{}/1` (used as an outfix operator) to apply constraints to intervals.
 
 Given sufficient constraints, it's possible to narrow an interval to a small range determined by the precision of the underlying arithmetic system, and, in some cases, to a single point value (which is then just unified with the original logic variable). Additional utility predicates like `solve/1` and `enumerate/1` can be used to search for multiple solutions or force narrowing in cases where the internal constraint propogation is too weak or dependency issues are present.
 
@@ -539,5 +556,4 @@ Given sufficient constraints, it's possible to narrow an interval to a small ran
 	[circle-parabola] <- image images/circle-parabola.png width=25% height=25% style="margin-left:200px"
 	[dependency]      <- image images/dependency.png width=25% height=25% style="margin-left:200px"
 	[simple_quad]     <- image images/simple_quad width=25% height=25% style="margin-left:200px"
-	[markup language] <- link https://en.wikipedia.org/wiki/Markup_language
 	[data type]       <- link https://en.wikipedia.org/wiki/Data_type

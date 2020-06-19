@@ -6,7 +6,7 @@ The conventional standard arithmetic which has been added to Prolog uses the pri
 eg
 	Var is Expression
 	Expression Op Expression
-where Expression denotes a valid and fully instantiated arithmetic expression. Therefore any logic variables in expression must be instantiated before these goals are evaluated; otherwise failure or exceptions are raised. Since most applications need to do some arthmetic, this is one of the main reasons why they do not enjoy the same properties of the small teaching examples.
+where `Expression` denotes a valid and fully instantiated arithmetic expression. Therefore any logic variables in expression must be instantiated before these goals are evaluated; otherwise failure or exceptions are raised. Since most applications need to do some arthmetic, this is one of the main reasons why they do not enjoy the same properties of the small teaching examples.
 
 Constraints, supported in CLP sytems (like CLP(FD), CLP(Z), CLP(R), and CLP(BNR)), avoid early failure (or errors) by delaying arithmetic evaluation until the conditions are sufficient to do so. When this occurs, the logic variables in the "question" will be bound to specific numeric values in the "answer". But in some cases, this may never happen, so the answer just indicates the set of possible values the variable might have. In the continuous domain of reals supported by CLP(BNR) this is just the closed interval defined by an upper and lower bound. And where floating point values are mandated, a variable can never be bound to a precise value due to the inaccuracy in the underlying floating point representations and operations. While cumbersome this is necessary for reasons of correctness. (One would hope that a single floating point value would at least be in an acceptable range of possible answers, but for most computer arithmetic implementations even that isn't a certainty.)
 
@@ -83,7 +83,7 @@ eg
 	Xs = [_6258,_6264,_6270,_6276],
 	N = 5 .
 Here's a CLP(BNR) constraint based version (but an equivalent version could be just as easily constructed using CLP(FD) or a similar finite domain constraint system):
-eg
+.pl
 	list_length([],0).         % length of empty list is 0.
 	list_length([X|Xs],N):-    % length of non-empy list [X|Xs] is N if ...
 		[N,N1]::integer(0,_),  %   list lengths are non-negative and finite integers, and
@@ -95,11 +95,11 @@ eg
 	N = 4.
 
 	?- list_length(X,4). 
-	X = [_4244,_5754,_7264,_8774] 
+	X = [_4244,_5754,_7264,_8774] ; 
 	false.
 
 	?- list_length([X|Xs],4). 
-	Xs = [_48,_60,_72] 
+	Xs = [_48,_60,_72] ;
 	false.
 
 	?- list_length([_,_],4). 
@@ -110,101 +110,110 @@ eg
 
 	?- list_length([X|Xs],N). 
 	Xs = [],
-	N = 1 
+	N = 1 ;
 	Xs = [_390],
-	N = 2 
+	N = 2 ;
 	Xs = [_390,_3884],
-	N = 3 
+	N = 3 ;
 	Xs = [_348,_676,_1048],
-	N = 4 
+	N = 4 ;
 	Xs = [_294,_480,_792,_1208],
 	N = 5 .
 So what we've ended up with is a simple implementation that's semantically equivalent to the system predicate (modulo error handling) but is orders of magnitude worse in performance. Why did we bother? So we can do things like taming the infinite backtracker :
 eg
 	?- N::integer(5,7), list_length(L,N). 
 	N = 5,
-	L = [_110,_314,_518,_1504,_3864] 
+	L = [_110,_314,_518,_1504,_3864] ;
 	N = 6,
-	L = [_110,_314,_518,_1504,_3864,_6224] 
+	L = [_110,_314,_518,_1504,_3864,_6224] ;
 	N = 7,
-	L = [_92,_296,_500,_704,_908,_1112,_1524] 
+	L = [_92,_296,_500,_704,_908,_1112,_1524] ;
 	false.
-The point of this exercise was not to invent a better version of `length/2`. The built-in version is very efficient and generally works the way you want. But if code complexity and readability are issues, which is usually the case for Prolog users, constraints restore the ability to write programs dependant on arithmetic in a very "logical" way.
+The point of this exercise was not to invent a better version of `length/2`. The built-in version is very efficient and generally works the way you want. But if code complexity and readability are issues, which is usually the case for Prolog users, constraints restore the ability to write programs that are dependent on arithmetic in a very "logical" way.
 
 <#TableOfContents>
 
 #### Example 2, Summing a List
 
 Consider a predicate to sum a list of numeric quantities. Using standard arithmetic, the simple and obvious solution is:
-eg
+.pl
 	sum([],0).
 	sum([X|Xs], Sum):- sum(Xs,S), Sum is X+S.
 Note that we have to calculate `S` before performing the addition because the right hand side expression must be grounded. This version also has the drawback that it is not tail-recursive, consuming more stack storage, so it's not a great solution for long lists. A tail-recursive version introduces an auxiliary predicate and an accumulator variable:
-eg
+.pl
 	sum(List,Sum) :- sum1(List,0,Sum).
 	sum1([],Sum,Sum).
 	sum1([X|Xs],S,Sum) :- S1 is S+X, sum1(Xs,S1,Sum).
 
 A constraint based version which is tail-recursive without needing the auxiliary predicate can be written because the order of the goals in the second clause can be reversed:
-eg
+.pl
 	sum([],S) :- {S==0}.
 	sum([X|Xs],Sum) :- {Sum == X+S}, sum(Xs,S).
 This version also permits S to be a numeric expression, e.g., `sum(L,2+Y)`, but if that is not a concern `sum/2` can be more simply expressed as:
-eg
+.pl
 	sum([],0).
 	sum([X|Xs],Sum) :- {Sum == X+S}, sum(Xs,S).
-So this does what the simple standard version does in a space efficient manner and it can sum mixed lists since CLP(BNR) supports integers and rationals (also natively expressed in SWI-Prolog as `M rdiv N`) as a subset of reals,:
+So this does what the simple standard version does in a space efficient manner and it can sum mixed lists since CLP(BNR) supports integers and rationals as a subset of reals,:
 eg
 	?- sum([1,2,3],S).
 	S = 6.
 
 	?- sum([1,2/3,3],S).
-	S = 14 rdiv 3.
+	S = 14r3.
 
 	?- sum([1.1,2.2,3],S).
-	S = _49982::real(6.299999999999996,6.300000000000004).
+	S = ﻿S:: 6.30000000000000... .
 
 	?- sum([1.1,22/10,3],S).
-	S = _1365698::real(6.299999999999997,6.300000000000002).
-
-	?- sum([1.1,22 rdiv 10,3],S).
-	S = _296::real(6.299999999999997,6.300000000000002).
+	S = ﻿S:: 6.30000000000000... .
 Note the "fuzzing" due to the presence of floating point constants.
 
 Since the logical properties of `sum/2` have been restored, it can be used in many different ways. In the most general case in generates all lists of all sums (manually terminated after three cases):
 eg
 	?- sum(L,S).
-	L = [],
-	S = 0 
-	L = [_33202::real(-1.0Inf,1.0Inf)],
-	S = _32562::real(-1.0Inf,1.0Inf) 
-	L = [_33202::real(-1.0Inf,1.0Inf),_36658::real(-1.0Inf,1.0Inf)],
-	S = _32562::real(-1.0Inf,1.0Inf) 
-	L = [_33202::real(-1.0Inf,1.0Inf),_36658::real(-1.0Inf,1.0Inf),_40114::real(-1.0Inf,1.0Inf)],
-	S = _32562::real(-1.0Inf,1.0Inf) .
-As with other predicates of this nature, e.g., `list/2`, the potential for non-termination exists and must be managed.
+	﻿L = [],
+	S = 0 ;
+	L = [_20508],
+	_20508::real(-1.0Inf, 1.0Inf),
+	S::real(-1.0Inf, 1.0Inf) ;
+	L = [_23324, _23330],
+	_23324::real(-1.0Inf, 1.0Inf),
+	S::real(-1.0Inf, 1.0Inf),
+	_23330::real(-1.0Inf, 1.0Inf) ;
+	L = [_26508, _26514, _26520],
+	_26508::real(-1.0Inf, 1.0Inf),
+	S::real(-1.0Inf, 1.0Inf),
+	_26514::real(-1.0Inf, 1.0Inf),
+	_26520::real(-1.0Inf, 1.0Inf) .
+As with other predicates of this nature, e.g., `list_length/2`, the potential for non-termination exists and must be managed.
 eg
 	?- length(L,3), L::integer(0,10), sum(L,S).
-	L = [_47026::integer(0,10),_47158::integer(0,10),_47290::integer(0,10)],
-	S = _47842::real(0,30).
+	﻿L = [_1480, _1486, _1492],
+	_1480::integer(0, 10),
+	S::real(0, 30),
+	_1486::integer(0, 10),
+	_1492::integer(0, 10).
 Because CLP(BNR) only constrains numbers, order is important, i.e., the list length must be defined before `sum/2` is executed. The order can be changed provided the potential non-determinism is managed, e.g., by using cut (`!`):
 eg
 	?- sum(L,S), length(L,3), L::integer(0,10), !.
-	L = [_1128242::integer(0,10),_1131698::integer(0,10),_1135154::integer(0,10)],
-	S = _1127602::real(0,30).
+	﻿L = [_7824, _7830, _7836],
+	_7824::integer(0, 10),
+	S::real(0, 30),
+	_7830::integer(0, 10),
+	_7836::integer(0, 10).
 Other possible queries:
 eg
 	?- sum(L,10), L=[1,V,3], !.
-	L = [1,6,3],
+	L = [1, 6, 3],
 	V = 6.
 
 	?- S::integer(0,10), sum(L,S), L=[1,V,3], !.
-	S = _94::integer(0,10),
-	L = [1,_430::real(-4,6),3],
-	V = _430::real(-4,6).
+	﻿L = [1, V, 3],
+	S::integer(0, 10),
+	V::real(-4, 6).
 
 Another useful technique is to avoid doing arithmetic at all; just symbolically create the sum result and then constrain it. Or not, because it works equally well with standard Prolog arithmetic or another arithmetic CLP system. A symbolic version of `sum/2`:
-eg
+.pl
 	sym_sum([],0).
 	sym_sum([X|Xs], X+S) :-  sym_sum(Xs,S).
 And some examples:
@@ -213,73 +222,70 @@ eg
 	S = 1+(2+(3+0)),
 	Sum = 6.
 	
-	?- sym_sum([1,2,3],S), Sum #= S.
-	S = 1+(2+(3+0)),
-	Sum = 6.
-	
 	?- sym_sum([1,2,3],S),{Sum == S}.
 	S = 1+(2+(3+0)),
 	Sum = 6.
 	
 	?- Sum::integer(0,10), sym_sum([1,V,3],S), {Sum == S}.
-	Sum = _944::integer(0,10),
-	V = _2004::real(-4,6),
-	S = 1+(_2004::real(-4,6)+(3+0)).
+	﻿﻿S = 1+(V+(3+0)),
+	Sum::integer(0, 10),
+	V::real(-4, 6).
 	
 	?- sym_sum([1,V-3,3],S), {Sum == S}, Sum::integer(0,10).
-	V = _10210::real(-1,9),
-	S = 1+(_10210::real(-1,9)-3+(3+0)),
-	Sum = _9564::integer(0,10).
+	﻿S = 1+(V-3+(3+0)),
+	V::real(-1, 9),
+	Sum::integer(0, 10).
 A possible downside, from a pure logic programming perspective, is that the expression (`S` in the examples) must be instantiated before the constraint. Otherwise, `sym_sum` will try to unify an interval with the expression which fails. (Intervals can only be unified with numeric values and other intervals.)
 
-This pattern of working symbolically and only afterwards converting to constraints enables the same predicate to be used with different arithmetic systems. It can be helpful during development because the expressions may be more readable before the logic variables are constrained.
+This pattern of working symbolically and only afterwards converting to constraints enables the same predicate to be used with different arithmetic systems, e.g., CLP(FD). It can be helpful during development because the expressions may be more readable before the logic variables are constrained.
 
-Counting booleans{#id cardinality} is an important use of integer constraints and since `boolean` variables are implemented as numeric intervals (`integer(0,1)`), `sym_sum/2` can be used to define a cardinality predicate for a list of boolean variables:
+Counting booleans{#id cardinality} is an important use of integer constraints and since `boolean` variables are implemented as numeric intervals (`integer(0,1)`), `sym_sum/2` can be used to define a cardinality predicate which constrains the members of a list of boolean variables:
 eg
 	cardinality(Blist, L, H) :- sym_sum(Blist, Sum), C::integer(L,H), {C is Sum}.
 
-For example for a list of booleans, `Bs`, of length `N`:
+For a list of booleans, `Bs`, of length `N`:
 eg
-	cardinality(Bs, 1, 1)		% exactly one B is true (1)
-	cardinality(Bs, M, M)		% exactly M B's are true
-	cardinality(Bs, M, N)		% at least M B's are true
-	cardinality(Bs, 0, M)		% at most M B's are true
-	cardinality(Bs, N, N)		% all B's are true
+	cardinality(Bs, 1, 1)		% true if exactly one B is true (1)
+	cardinality(Bs, M, M)		% true if exactly M B's are true
+	cardinality(Bs, M, N)		% true if at least M B's are true
+	cardinality(Bs, 0, M)		% true if at most M B's are true
+	cardinality(Bs, N, N)		% true if all B's are true
+Possible uses of this predicate are described elsewhere in this document.
 
 <#TableOfContents>
 
 #### Example 3, N Factorial
 
 Nothing new; just another example:
-eg
-	n_factorial(0, 1).                    % !0 is 1.
-	n_factorial(N, F) :-                  % !N is N*!(N-1)
-			[N,F,F1]::integer(1,inf),     %    all values are positive integers, and
-			{N1 == N-1, F == N*F1},       %    N1 is N-1, F is N*F1, and
-			n_factorial(N1, F1).          %    F1 is !N1.
+.pl
+	n_factorial(0, 1).                % !0 is 1.
+	n_factorial(N, F) :-              % !N is N*!(N-1)
+		[N,F,F1]::integer(1,inf),     %    all values are positive integers, and
+		{N1 == N-1, F == N*F1},       %    N1 is N-1, F is N*F1, and
+		n_factorial(N1, F1).          %    F1 is !N1.
 and examples of usage:
 eg
 	?- n_factorial(10,F).
-	F = 3628800 
+	F = 3628800 ;
 	false.
 	
 	?- n_factorial(N,3628800).
-	N = 10 
+	N = 10 ;
 	false.
 	
 	?- n_factorial(N,F).
 	N = 0,
-	F = 1 
-	N = F, F = 1 
-	N = F, F = 2 
+	F = 1 ;
+	N = F, F = 1 ;
+	N = F, F = 2 ;
 	N = 3,
-	F = 6 
+	F = 6 ;
 	N = 4,
-	F = 24 
+	F = 24 ;
 	N = 5,
-	F = 120 
+	F = 120 ;
 	N = 6,
-	F = 720 
+	F = 720 ;
 	N = 7,
 	F = 5040 .
 	
@@ -306,7 +312,7 @@ Recall that `{X<Y}` are incomplete over real intervals (as is `>` and `<>`) and 
 The double negation:
 eg
 	not(not({C}))
-indicates that the constraint `C` is possibly consistent, but does not actually impose the constraint. Success here does not actually guarantee consistency, because the underlying mechanism is incomplete, as discussed in a previous section.
+indicates that the constraint `C` is possibly consistent, but does not actually impose the constraint. Success here does not actually guarantee consistency, because the underlying mechanism is incomplete, as discussed previously.
 
 <#TableOfContents>
 
