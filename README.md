@@ -160,10 +160,10 @@ If you do not want to download this entire repo, a package can be installed usin
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      ?0.9.0?
+	Installed version:      0.9.0
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.0zip" (?26,826? bytes) Y/n? 
+	Install "clpBNR-0.9.0zip" (34,710 bytes) Y/n? 
 	
 	﻿?- use_module(library(clpBNR)).
 	
