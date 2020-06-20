@@ -173,6 +173,7 @@ If you do not want to download this entire repo, a package can be installed usin
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
 
 The `clpBNR` module declaration is:
+
 	:- module(clpBNR,          % SWI module declaration
 		[
 		op(700, xfx, ::),
