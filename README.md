@@ -49,7 +49,7 @@ In the last example, the constraint causes the bounds to contract almost to a si
 Sound constraints over real intervals (since interval ranges are closed) include `==`, `=<`, and `>=`, while `<>`, `<` and `>` are provided for `integer`'s. A fairly complete set of standard arithmetic operators (`+`, `-`, `*`, `/`, `**`), boolean operators (`and`, `or`, `xor`, `nand`, `nor`) and common functions (`exp`, `log`, `sqrt`, `abs`, `min`, `max` and standard trig and inverse trig functions) provided as interval relations. Note that these are relations so `{X==exp(Y)}` is the same as `{log(X)==Y}`. A few more examples:
 
 	?- {X==cos(X)}.
-﻿	X:: 0.73908513321516... .
+	X:: 0.73908513321516... .
 
 	?- {X>=0,Y>=0, tan(X)==Y, X**2 + Y**2 == 5}.
 	﻿X:: 1.096668128705471...,
@@ -173,6 +173,7 @@ If you do not want to download this entire repo, a package can be installed usin
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
 
 The `clpBNR` module declaration is:
+
 	:- module(clpBNR,          % SWI module declaration
 		[
 		op(700, xfx, ::),

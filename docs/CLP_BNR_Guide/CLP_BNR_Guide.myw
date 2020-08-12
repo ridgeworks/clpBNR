@@ -2,7 +2,7 @@
 title>	A Guide to CLP(BNR)
 centreblock>
 	**Constraint Logic Programming over Booleans, Integers and Reals**
-	**Version 0.9, April 2020**
+	**Version 0.9.1, August 2020**
 
 The word "constraint" is used in a variety of contexts from everyday life to physics, mathematics, and other sciences with much the same intuitive meaning, even when the formalization is different. A bead on a wire, a weight on a string, a beaker open to the atmosphere, a space mission limited by onboard fuel, a desert ecology limited by the lack of water are all examples of constrained systems.
 
@@ -47,11 +47,10 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	title> ..       <- <h1 class=_centre>
 	centreblock> .. <- <div class=_centre>
 	aside> ..       <- <aside class=my_aside>
-	// math> ..        <- <math class=my_math display=block> asciimath
+	math> ..        <- <math class=my_math display=block> asciimath
 	
 	.pl ..          <-  pl
 	@import pkgs/highlight.mmk
-	// pl :: (content) => `<pre class=pl>${markit('text',content)}</pre>` 
 	pl :: (content) => `<pre class=pl>${hljs.highlight("prolog",content).value}</pre>`
 
 	@css
@@ -59,3 +58,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 		div.eg, div.demo {margin: 4pt 0;}
 		aside.my_aside {font-size:smaller; position:relative; margin-left:30px; margin-right:50px}
 		pre.pl {padding-left:10pt}
+		
+		table.my_array { border-collapse:collapse; }
+		table.my_array tr td { background:whitesmoke; padding: 4px 16px; font-size:smaller }
+		table.my_array tr:nth-child(1) td { background:lightgray; font-weight: bold }

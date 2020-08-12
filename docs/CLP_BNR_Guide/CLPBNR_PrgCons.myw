@@ -49,7 +49,7 @@ eg
 		throw(error(type_error(integer, Length), context(length/2, _))).
 
 	true.
-To be fair, part of the complexity is due to performance optimization (use of foreign language primitives to avoid recursion in Prolog) and part is due to the tendancy of standard Prolog to generate errors under "exceptional" conditions, rather than treat them as a "failure of logic". But the key observation is that it has to be separated into two main cases: `Length` as a variable or `Length` as an integer. The various ways it can be used:
+To be fair, part of the complexity is due to performance optimization (use of foreign language primitives to avoid recursion in Prolog) and part is due to the tendency of standard Prolog to generate errors under "exceptional" conditions, rather than treat them as a "failure of logic". But the key observation is that it has to be separated into two main cases: `Length` as a variable or `Length` as an integer. The various ways it can be used:
 eg
 	?- length( [1,2,3,4], N).
 	N = 4.
@@ -144,7 +144,6 @@ Note that we have to calculate `S` before performing the addition because the ri
 	sum(List,Sum) :- sum1(List,0,Sum).
 	sum1([],Sum,Sum).
 	sum1([X|Xs],S,Sum) :- S1 is S+X, sum1(Xs,S1,Sum).
-
 A constraint based version which is tail-recursive without needing the auxiliary predicate can be written because the order of the goals in the second clause can be reversed:
 .pl
 	sum([],S) :- {S==0}.
@@ -168,7 +167,7 @@ eg
 	S = ﻿S:: 6.30000000000000... .
 Note the "fuzzing" due to the presence of floating point constants.
 
-Since the logical properties of `sum/2` have been restored, it can be used in many different ways. In the most general case in generates all lists of all sums (manually terminated after three cases):
+Since the logical properties of `sum/2` have been restored, it can be used in many different ways. In the most general case it generates all lists of all sums (manually terminated after three cases):
 eg
 	?- sum(L,S).
 	﻿L = [],
@@ -211,7 +210,6 @@ eg
 	﻿L = [1, V, 3],
 	S::integer(0, 10),
 	V::real(-4, 6).
-
 Another useful technique is to avoid doing arithmetic at all; just symbolically create the sum result and then constrain it. Or not, because it works equally well with standard Prolog arithmetic or another arithmetic CLP system. A symbolic version of `sum/2`:
 .pl
 	sym_sum([],0).
@@ -242,7 +240,6 @@ This pattern of working symbolically and only afterwards converting to constrain
 Counting booleans{#id cardinality} is an important use of integer constraints and since `boolean` variables are implemented as numeric intervals (`integer(0,1)`), `sym_sum/2` can be used to define a cardinality predicate which constrains the members of a list of boolean variables:
 eg
 	cardinality(Blist, L, H) :- sym_sum(Blist, Sum), C::integer(L,H), {C is Sum}.
-
 For a list of booleans, `Bs`, of length `N`:
 eg
 	cardinality(Bs, 1, 1)		% true if exactly one B is true (1)

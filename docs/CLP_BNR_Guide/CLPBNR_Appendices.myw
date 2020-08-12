@@ -1,7 +1,16 @@
 ### Appendices
 
-#### Appendix 1 - `linear.pl` Source
+#### Appendix 1 - `findroots.pl` Source
+@include supplemental/findroots.pl
+
+#### Appendix 2 - `linear.pl` Source
 @include supplemental/linear.pl
+
+#### Appendix 3 - `local_optima.pl` Source
+@include supplemental/local_optima.pl
+
+#### Appendix 4 - `integrateV.pl` Source
+@include supplemental/integrateV.pl
 
 &
 	//@import pkgs/highlight.mmk

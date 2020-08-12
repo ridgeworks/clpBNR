@@ -21,7 +21,6 @@ An implementation of transitive closure using Prolog lists is fairly straight fo
 		union(O, In, In1), !,   % add O to In
 		clos(Rs, In1, Out).     % and repeat
 	clos(Rs, Out, Out).         % quit
-
 Here the binary relation is assumed to be of the form `I -> O`. As an example, here's a list of functional dependancies of a hypothetical database whose attributes are labelled `a` to `k`.
 .pl
 	fdList([
@@ -37,7 +36,7 @@ Here the binary relation is assumed to be of the form `I -> O`. As an example, h
 	]).
 This says the value of attribute `a` directly determines the values of attributes `b`, `e`, `f`, and `g`. The collective values of attributes `a`, `c`, `d`, and `i` determine the value of attribute `h`, etc.
 
-With this defintion of *R*, `closure/3` can be used to ask "What is the set of attrributes that can uniquely (directly or indirectly) be determind from the value of `a`?". (the binding of `FDs` has been omitted for clarity.)
+With this defintion of *R*, `closure/3` can be used to ask "What is the set of attributes that can uniquely (directly or indirectly) be determind from the value of `a`?". (the binding of `FDs` has been omitted for clarity.)
 eg
 	?- fdList(FDs), closure([a], FDs, O).
 	O = [a,b,e,f,g].
@@ -54,7 +53,6 @@ eg
 
 	?- fdList(FDs), closure([a,c,d,i], FDs, O).
 	O = [a,b,c,d,e,f,g,h,i,j,k].
-
 Implementing transitive closure using constraints requires a different pespective. The general pattern for dealing with this class of combinatoric problems is:
 1..
 	* Set up the data structures and the declarations for the principle variables. 
@@ -74,7 +72,6 @@ where `A` is the boolean variable associated with `a`, `B` with `b`, and so on. 
 aside> Aside: The somewhat unnatural use of parentheses in the `{}` constraint expression is necessitated by the ruse of the '`->`' operator which has lower binding precedence than '`,`' in most standard Prologs.
 
 The enumeration step (3) just requires that the boolean variable associated with each input `label` is set to `1`; the constraint network will do the rest by propagating 1's to each of the "reachable" labels. Then the output list is just the list of `label`'s whose `Boolean`'s are 1. This constraint based solution looks like:
-
 .pl
 	closureCI(In, Rs, Out) :-
 		extract_labels(Rs, [], Labels),  % extract labels from Rs and associate booleans
@@ -119,7 +116,6 @@ The enumeration step (3) just requires that the boolean variable associated with
 		get_names_(FDs,Out).
 	get_names_([N=1|FDs],[N|Out]) :-      % true
 		get_names_(FDs,Out).
-
 Using the same `fdList` data (top-level outut for `FDs` omitted for clarity):
 eg
 	?- fdList(FDs), closureCI([a], FDs, O).
@@ -141,7 +137,6 @@ eg
 	?- fdList(FDs), closureCI([a,c,d,i], FDs, O).
 	FDs = ....
 	﻿O = [a, b, c, d, e, f, g, h, i, j, k].
-
 But notice that the amount of code has increased, in part because the initial Prolog version was able to take advantage of the predicates `subset/2` and `union/3` in the `lists` utility package. The constraint version doesn't need these, but instead constraints have to be constructed from the data (steps 1 and 2); a step which was unnecessary in the original version. And it also needs to build a suitable output form (step 4) from the constraint data structure (list of `label=Boolean`'s).
 
 Some of this code also depends on the format of the original data, i.e., `fdList/1`. It's worth noting that it's not much more difficult to hand build the constraints rather than use the original data (note that there is no need to declare the constrained variables as `boolean` since that's implied by the operators in the constraint expressions):
@@ -162,7 +157,6 @@ eg
 	?- fdConstraints(Cs), set_bools_([c,d,f],Cs), get_names_(Cs,O).
 	﻿Cs = [a=1, b=1, c=1, d=1, e=1, f=1, g=1, h=0, i=0, j=1, k=1],
 	O = [a, b, c, d, e, f, g, j, k].
-
 So the bulk of the work has shifted to the construction of the constraint network. But, for the most part, this code is deterministic and relatively easy to write, test, and debug. A simple test procedure is just to specify one or more correct answers which, of course, must satisfy the constraints.
 
 There is also a potential significant upside on performance if constraints are used. Boolean satisfiability is the paradigm NP-complete problem: in the worst case one may need to explore `2**N` branches if there are `N` boolean variables to enumerate. The effect of constraints is to reduce this to `2**M` where `M<N`, at the cost of value propagation in the constraint network. But every constraint that forces a variable (thereby avoiding one choice) halves the overall cost.
@@ -171,8 +165,7 @@ There is also a potential significant upside on performance if constraints are u
 
 #### Structural Analysis of Petri nets
 
-[Petri nets] are widely used to model discrete control systems, transaction systems, and communications protocols. A Petri net consists of a net together with a marking which represents the state of the net. The net is a bipartite graph consisting of places and transitions connected by directed arcs. Arcs connect places to transitions and transitions to places. A marking is a distribution of tokens over the places. Any transition may have input places (where the arc is directed from the place to the transition) and output places (arc from transition to place). A transition can fire if all of its input
-places have at least one token; firing a transaction removes a token from each input and puts a token into each output place. In general the evolution of the state is non-deterministic as there may be many transitions that can fire for any given marking.
+[Petri nets] are widely used to model discrete control systems, transaction systems, and communications protocols. A Petri net consists of a net together with a marking which represents the state of the net. The net is a bipartite graph consisting of places and transitions connected by directed arcs. Arcs connect places to transitions and transitions to places. A marking is a distribution of tokens over the places. Any transition may have input places (where the arc is directed from the place to the transition) and output places (arc from transition to place). A transition can fire if all of its input places have at least one token; firing a transaction removes a token from each input and puts a token into each output place. In general the evolution of the state is non-deterministic as there may be many transitions that can fire for any given marking.
 
 Structural analysis studies properties that depend only on the topology of the network independent of marking. Of particular
 importance are structural properties that determine behavioural possibilities, e.g., deadlock. One such property is a *siphon* A Petri net (and hence the process it is modelling) is deadlock free if none of the siphons in the net can be emptied of tokens. Thus, a sub-problem of the structural analysis of a Petri net is to identify all the siphons.
@@ -318,7 +311,6 @@ Leading 0's are not allowed so the constraints are defined by:
 	
 	distinct([],_).
 	distinct([X|Xs],Y):- {X<>Y}, distinct(Xs,Y).
-
 The constraints by themselves are insufficient to produce a solution:
 eg
 	?- sendmoremoney([S,E,N,D,M,O,R,Y]).
@@ -365,17 +357,15 @@ eg
 	R = 8,
 	Y = 2 ; 
 	false.
-
 `solve/1` is a general purpose predicate that can be used for both `real` and `integer` (including `boolean`) intervals. (If the number of intervals and their domain sizes  are small, `enumerate/1` may be slightly more efficient.) `solve` is an effective method of searching for point solutions as it avoids splitting intervals on solutions. Splitting on a solution is undesirable in that it can result in multiple answers for the same solution. (Other applications discussed below are better addressed by `splitsolve/1` which does a general bifurcating search.) 
 
-The implmentation of `<>` in CLP(BNR) is not particularly effective since domains cannot be a set of disjoint ranges as in some other finite domain constraint systems. Problems that fit into this problem space and where efficiency is a concern, would be better solved by a different CLP package.
+The implementation of `<>` in CLP(BNR) is not particularly effective since a domain cannot be a set of disjoint ranges as in some other finite domain constraint systems. Problems that fit into this problem space and where efficiency is a concern, would be better solved by a different CLP package.
 
 <#TableOfContents>
 
 #### Magic Series
 
-A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, M1, ... Mn]` such that `T` contains `M0` occurences of `0`, `M1` occurences of `M1`, ... , and `Mn` occurences of `Mn`. The first problem is to define what `M` occurences of a member of a list means in terms of constraints. One possibilty is to use the cardinality concept to count boolean variables which indicate whether the corresponding item is an occuence or not:
-
+A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, M1, ... Mn]` such that `T` contains `M0` occurrences of `0`, `M1` occurrences of `M1`, ... , and `Mn` occurrences of `Mn`. The first problem is to define what `M` occurences of a member of a list means in terms of constraints. One possibilty is to use the cardinality concept to count boolean variables which indicate whether the corresponding item is an occuence or not:
 .pl
 	occurrences(X,List,N):- 
 		N::integer(0,_),           % number of occurences is positive
@@ -686,7 +676,7 @@ This example is interesting for a number of reasons:
 1..
 	- It exploits a mixture of boolean and integer constraints (see `bin/3`).
 	- It demonstrates again the value of redundant constraints (first two versions).
-	- Different design approaches can have radically different performance chracteristics (no real surprise there), again use `clpStatistics`, in addition to Prolog's built-in tools (debuggers and profilers) for analysis.
+	- Different design approaches can have radically different performance characteristics (no real surprise there), again use `clpStatistics`, in addition to Prolog's built-in tools (debuggers and profilers) for analysis.
 
 <#TableOfContents>
 
@@ -798,11 +788,11 @@ To facilitate experimentation, two additional rules to define the clock characte
 	% 8286 Data Transceiver
 	timing(d1,rD1,[0,35]).    % TIVOV (Input to Output Delay)
 	timing(d2,rD2,[0,35]).    % TIVOV (Input to Output Delay)
-Note that the `l2` event (end of address latch enable) is specified in the datasheet by three separate timing relationships relative to `l1`, `a1`, and `c1`. These will just be treated as three independant constraints (`l2` is event type `lin`) resulting in the narrowest possible event time for `l2` (see below).
+Note that the `l2` event (end of address latch enable) is specified in the datasheet by three separate timing relationships relative to `l1`, `a1`, and `c1`. These will just be treated as three independent constraints (`l2` is event type `lin`) resulting in the narrowest possible event time for `l2` (see below).
 
 This example just has two hazards to consider: address/control for loading the address latch and data available to the 8086 CPU.
 
-aside> Aside: some published papers use the term "produced timing" for `timing/3` constraints and "required timing" for hazards. One might be tempted to also treat hazards as constraints. While this may be possible, it's difficult to diagnose problems since failure could be caused by either inconsistent `timing` defintions (rare) or unsatisfied requirements (the common case). Hence, the approach described here separates *definition* and *verification* into two distinct steps.
+aside> Aside: some published papers use the term "produced timing" for `timing/3` constraints and "required timing" for hazards. One might be tempted to also treat hazards as constraints. While this may be possible, it's difficult to diagnose problems since failure could be caused by either inconsistent `timing` definitions (rare) or unsatisfied requirements (the common case). Hence, the approach described here separates *definition* and *verification* into two distinct steps.
 
 The process of timing analysis requires that the network be defined, which will include checking that the `timing` rules are consistent. The second step validates the circuit by checking the hazard conditions.
 
@@ -845,9 +835,9 @@ The pocess of defining the network involves creating the `Net` list and setting 
 		MinMax =.. [Type,Delta,More],
 		min_max([TL],Type,Delta,Net),  % argument 1
 		min_max(TLs,Type,More,Net).    % argument 2
-Constraints on `lin` event times are simply `{TEv == ParTime+Delta}` where `Delta` is an interval defined by the value in `timing` rules. Constraints on `min/max` events are the `min/max` of all parents `Delta` constraints. (Since `min/max` is arity two, a nested chain of `min/max` expressions must be constructred if there are more than two parent events.)
+Constraints on `lin` event times are simply `{TEv == ParTime+Delta}` where `Delta` is an interval defined by the value in `timing` rules. Constraints on `min/max` events are the `min/max` of all parents `Delta` constraints. (Since `min/max` is arity two, a nested chain of `min/max` expressions must be constructed if there are more than two parent events.)
 
-To confirm that all the requirements are met, the `verify` step (Step 3) checks that no `hazard` violation has occurred. A violation is detected when the event time window intersects with interval time defined by the setup and hold specifications in the `hazard` defintion. For this example, a violation will be reported to the Prolog console.
+To confirm that all the requirements are met, the `verify` step (Step 3) checks that no `hazard` violation has occurred. A violation is detected when the event time window intersects with interval time defined by the setup and hold specifications in the `hazard` definition. For this example, a violation will be reported to the Prolog console.
 .pl
 	verify(Net) :-  % for each hazard, check setup and hold times
 		forall(hazard(Ev,Setup,Hold), verify_(Net,Ev,Setup,Hold)).
@@ -875,7 +865,7 @@ Note that Prolog negation (`\+`) is used in checking the hazard timing, i.e., su
 
 Analysing the timing operation of a nominal circuit (5 Mhz. clock, 0 wait states):
 eg
-	?- events(Es),define_network(Es,Net),verify(Net),nl,﻿print_interval('Net'=Net),nl,nl.
+	?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
 	﻿verify_FAIL(event(ce,600),setup(rD1,integer(210,630)+30),hold(rD2,integer(610,885)-10))
 	
 	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(max,d1,integer(210,595)),ev(min,d2,integer(610,850)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(610,885))]
@@ -975,15 +965,14 @@ eg
 Formulas exist for solving equations of low degree, so this may hardly seem to be worth the trouble, but this same technique works for pretty much any polynomial:
 eg
 	?- X::real,{17*X**256+35*X**17-99*X == 0},solve(X).
-	﻿X:: 0.0... ;
+	﻿X:: 0.﻿0000000000000000... ;
 	X:: 1.00502789289401... .
 
 	?- X::real,{35*X**256-14*X**17+X == 0},solve(X).
 	﻿X:: -0.847943660827315... ;
-	X:: 0.0... ;
+	X:: 0.﻿0000000000000000... ;
 	X:: 0.847943660827315... ;
 	X:: 0.995842494200498... .
-
 A fourth degree polynomial equation with two real roots:
 eg
 	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
@@ -1012,13 +1001,12 @@ eg
 But it is data dependant; sometimes both mechanisms togther are insufficent, as in this polynomial equation with roots at 0, 3, 4, and 5:
 eg
 	﻿?- set_prolog_flag(clpBNR_default_precision,7),X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X).
-	X:: 0.0... ;
+	X:: 0.﻿0000000000000000... ;
 	X:: 3.00000000... ;
 	X:: 4.0000000... ;
 	X:: 4.00000000... ;
 	X:: 5.00000000... ;
 	false.
-
 The underlying cause of the generation of false positives is the multiple occurence of `X` in the constraint set (the *dependency* problem discussed previously) which limits the narrowing possible via fixed point iteration. In addition, the shape of the polynomial in the vicinity of the X axis may mean a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0. And to make matters worse, it can take a considerable amount of work to generate these false positives.
 
 The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parobala. `solve` (and `absolve`) can spend a lot of time in the vicinity of the solution (in this case, {`x=1`}) trying to disprove solutions in small intervals of `X`:
@@ -1085,7 +1073,7 @@ eg
 	X = 1.
 
 By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints ([Algorithmic Power from Declarative Use of Redundant Constraints]). The [Mean value theorem] states that if {`f`} is a continuous function on a closed interval and differentiable over the interval:
-.am  f(x) = f(x_0) + f'(xi)(x-x_0) " where " (x_0<=xi<=x)or(x<=xi<=x_0)
+math>  f(x) = f(x_0) + f'(xi)(x-x_0) " where " (x_0<=xi<=x)or(x<=xi<=x_0)
 Roots are values of {`x`} when {`f(x)=0`} (zero crossings). This equation yields three constraints: the Taylor expansion equation and the two ranges of {`xi`}. An algorithm to use these constraints involves selecting an advantageous value of {`x_0`} and using it to split the {`x`} interval. Applying the constraints, where {`f(x)=0`} will succeed if there is a zero crossing (a root) within either (or both) of the sub-intervals. Then the process can be recursively applied to the sub-intervals until an error threshold is reached (like `solve`).
 
 Here's one implementation:
@@ -1120,7 +1108,6 @@ Here's one implementation:
 		% Taylor expansion constraints
 		{0 == FX0 + (X-pt(X0)) * DXi},
 		({X =< Xi, Xi =< pt(X0)} ; {pt(X0) =< Xi, Xi =< X}).
-
 The Taylor expansion constraints (end of the first clause of `apply_taylor_/4`) are almost copied directly from the original equation, and the termination condition (width of `X` less than `Eps`) is fairly obvious, but what are all those `copy_term`s about? The polynomial expression, `P` (as a function of `X`), is provided as an input argument but it has to be used multiple times, each with a different value of `X`. For example, the primary constraint must equate {`f(x)`} to 0, while each recursive call to `taylor_/4` evaluates {`f(x_0)`} with {`x_0`} calculated from the current bounds of `X`. Each such evaluation requires a new copy of `P` and argument `X`; hence the `copy_term`s.
 
 aside>
@@ -1130,7 +1117,7 @@ The derivative expression (generated by `partial_derivative/2`) also requires mu
 
 A final point: note the use of `pt(X0)` rather than just `X0`. This bypasses the "fuzz" normally applied to floating point values in constraint definitions. In this case you just need a single value in the range of `X` so no fuzzing is preferable. (The implementation of `solve` also uses `pt(N)`.)
 
-The question is what does this added complexity buy over the simple `solve` technique described earlier. Clearly there are additional (redundant) constraints which must be enforced, and since almost all of the computation is fixed point iteration, there is some cost to do do this. When the simple `solve` technique works and converges well, it is more efficient. But for the more difficult cases where convergance is poor and/or false positives are produced, `findroots` has a distinct advantage. Corresponding examples from above:
+The question is what does this added complexity buy over the simple `solve` technique described earlier. Clearly there are additional (redundant) constraints which must be enforced, and since almost all of the computation is fixed point iteration, there is some cost to do do this. When the simple `solve` technique works and converges well, it is more efficient. But for the more difficult cases where convergence is poor and/or false positives are produced, `findroots` has a distinct advantage. Corresponding examples from above:
 eg
 	?- X::real,findroots(X**2-4*X+3,X).
 	﻿X:: 1.000000000000000... ;
@@ -1142,17 +1129,17 @@ eg
 	false.
 
 	?- X::real,findroots(17*X**256+35*X**17-99*X,X).
-	﻿X:: 0.0... ;
+	﻿X:: 0.﻿0000000000000000... ;
 	X:: 1.00502789289401... .
 
 	?- X::real,findroots(35*X**256-14*X**17+X,X).
 	﻿X:: -0.847943660827315... ;
-	X:: 0.0... ;
+	X:: 0.﻿0000000000000000... ;
 	X:: 0.847943660827315... ;
 	X:: 0.995842494200498... .
 
 	?- X::real,findroots(X**4-12*X**3+47*X**2-60*X,X).
-	﻿X:: 0.0... ;
+	﻿X:: 0.﻿0000000000000000... ;
 	X:: 3.0000000000000... ;
 	X:: 4.00000000... ;
 	X:: 5.0000000000... ;
@@ -1160,7 +1147,7 @@ eg
 
 	?- X::real,findroots(X**2-2*X+1,X).
 	﻿X:: 1.0000000... ;
-	X:: 1.000000011177171... ;
+	X:: 1.000000010771556... ;
 	false.
 Even `findroots` has difficulty eliminating values in the near vicinity of the precise solution although it does a much better job than `solve`.
 
@@ -1182,7 +1169,7 @@ Comparing `solve` and `findroots` in terms of narrowing operations performed (sh
 
 When `solve` works reasonably well (arguably the first four examples), `findroots` is no worse than a factor of two less efficient. However, `findroots` in worst case scenarios can considerably outperform `solve` (almost a factor of 200 in the "pathological" last example) and does a better job at eliminating false positives (and the time to calculate them) due to precision limits. (Multiple roots at one value are usually problematical; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
 
-This section described two ways of finding the roots of any polynomial. The first just defines a constraint based using poloynomial and then searches for solutions over the variable range. It is very general but can be slow and produce many false positives depending on the nature of the polynomial in the vicinity of the "`x-axis`". The second method uses the fact that polynomials can be differentiated so that a Taylor expansion equivalent can be defined to accelerate the fixed point convergance. Note that these techniques also work for extended polynomials where the coefficients need not be integers and the powers are not limited to positive integers.
+This section described two ways of finding the roots of any polynomial. The first just defines a constraint based using poloynomial and then searches for solutions over the variable range. It is very general but can be slow and produce many false positives depending on the nature of the polynomial in the vicinity of the "`x-axis`". The second method uses the fact that polynomials can be differentiated so that a Taylor expansion equivalent can be defined to accelerate the fixed point convergence. Note that these techniques also work for extended polynomials where the coefficients need not be integers and the powers are not limited to positive integers.
 eg
 	﻿?- X::real,findroots(X**4-X**3-3*X**5r2+5.1*X-2,X).
 	﻿X:: 0.52022398295616... ;
@@ -1272,7 +1259,7 @@ However consider {`I_s`}. From the equations, it is not obvious that it cannot b
 .pl
 	simpleCircuit(Vs) :-
 		simpleCircuitDef(Vs,EQs),  % EQs is list of constraint equations in Vs
-		Vs::real,                  % decalre so intervals are finite
+		Vs::real,                  % declare so intervals are finite
 		{EQs}.                     % activate constraints
 
 	simpleCircuitDef([Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],
@@ -1312,7 +1299,7 @@ eg
 	I6:: 0.2962385...,
 	I7:: 0.8282986... ;
 	false.
-Using `solve` finds the solution in a few seconds, but there is an arguably missing constraint. We are probably not interested in the case where `Is` is negative, i.e., current flows from the prositive terminal of the voltage source to the negative. Adding this contraint reduces the execution time by over a factor of three:
+Using `solve` finds the solution in a few seconds, but there is an arguably missing constraint. We are probably not interested in the case where `Is` is negative, i.e., current flows from the positive terminal of the voltage source to the negative. Adding this constraint reduces the execution time by over a factor of three:
 eg
 	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
 	﻿% 14,300,256 inferences, 3.461 CPU in 3.477 seconds (100% CPU, 4131337 Lips)
@@ -1341,7 +1328,7 @@ eg
 	I4:: 0.532060...,
 	I6:: 0.296238...,
 	I7:: 0.828298... .
-This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for soluitons for negative `Is`.
+This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for solutions for negative `Is`.
 
 ##### Under and Overdetermined Systems
 The examples above are nicely behaved but what happens if the system of equations is under or overdetermined? In case of the latter, incompatible additional constraints should result in failure:
@@ -1360,7 +1347,7 @@ In general, `solve` can take a long time to determine that little or no narrowin
 ##### Using Gaussian Elimination
 As the examples above show, the general technique using `solve` (when necessary) with `{}` constraints can be used to solve systems of linear equations. Futhermore, there's nothing in this approach that is specific to linear systems. Non-linear equations and even inequalties can be specified without changing the basic strategy. That's not to say that this approach is the most efficient. When it is known that the problem is a linear system, standard numerical methods, e.g., Gaussian elimination, can be used with interval constraints to find solutions much faster than using `solve` (which, after all, is a pretty blunt instrument). Furthermore, these techniques can be used without undue concerns for accuracy; the mathematical correctness of the underlying arithmetic and the use of intervals contain any rounding errors in the answers.
 
-To demonstrate this, assume that there is a predicate `rewrite_linear(EQs,LinearEQs,OtherEQs)` which takes a list of constraints, `EQs` and separates them into two lists: `LinearEQs` which contain the linear equations (standard defintion) and `OtherEQs`. Furthermore conventional Gaussian elimination has been used to rewrite the original linear equations into an upper triangular form. (See the Appendix 1 for the souce of `rewrite_linear/3` which is too large to include here.) A few examples:
+To demonstrate this, assume that there is a predicate `rewrite_linear(EQs,LinearEQs,OtherEQs)` which takes a list of constraints, `EQs` and separates them into two lists: `LinearEQs` which contain the linear equations (standard defintion) and `OtherEQs`. Furthermore conventional Gaussian elimination has been used to rewrite the original linear equations into an upper triangular form. (See the [Appendix 2] for the souce of `rewrite_linear/3` which is too large to include here.) A few examples:
 eg
 	?- rewrite_linear([2*X+4*Y+6*Z==22,3*X+8*Y+5*Z==27,-X+Y+2*Z==2],Cs,Os).
 	Cs = [X+2*Y+3*Z==11,Y-2*Z== -3,Z==2].
@@ -1387,7 +1374,7 @@ eg
 	Os = [3*4==12].
 For a complete set of linear equations (at least `N` equations in `N` unknowns, the constraint system does little more than back substitution and evaluation to produce the solution.
 
-The simple, slow convergant case from above:
+The simple, slow convergent case from above:
 eg
 	?- rewrite_linear([X+Y==1,X-Y==1],Cs,Os).
 	Cs = [X+Y==1,Y==0],
@@ -1397,7 +1384,6 @@ eg
 	X = 1,
 	Y = 0,
 	Cs = [1+0==1, 0==0].
-
 Note that, in all these examples, the solutions are exact because floating point values introduced in splitting intervals (with `solve`) have been avoided.
 
 Finally here is the "problematic" simple circuit example which now generates the solution in a few milliseconds without the use of `solve`:
@@ -1454,6 +1440,10 @@ The use of Gaussian elimination has a dramatic effect on performance; in the cas
 
 <#TableOfContents>
 
+@include CLPBNR_UC_globalopt.myw
+
+@include CLPBNR_UC_integrate.myw
+
 &
 	[transitive closure] <- link https://en.wikipedia.org/wiki/Transitive_closure
 	\\ [Boolean satisfiability problem] <- link https://en.wikipedia.org/wiki/Boolean_satisfiability_problem
@@ -1478,3 +1468,4 @@ The use of Gaussian elimination has a dramatic effect on performance; in the cas
 	[SYSTEMS OF LINEAR EQUATIONS AND MATRICES] <- link https://docplayer.net/21711942-The-linear-equations-in-two-variables-studied-in.html
 	[SimpleCircuit] <- image images/SimpleCircuit.png  width=50% height=50% style="margin-left:200px"
 	[Towards Practical Interval Constraint Solving in Logic Programming] <- link https://pdfs.semanticscholar.org/1dca/e2a910184c4b2f9d770f054168150c6d0bde.pdf
+	[Appendix 2] <- link #toc4Appendix_2_-__linear.pl__Source

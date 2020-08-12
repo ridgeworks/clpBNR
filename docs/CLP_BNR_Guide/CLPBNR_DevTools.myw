@@ -1,6 +1,6 @@
 ###  Development Tools for CLP(BNR)
 
-The version of CLP(BNR) as a SWI-Prolog package is entirely implemented in Prolog, so all the standard Prolog development tools (debugger, profiler, etc.) ca be used with CLP(BNR) applications. However, the details of the execution of interval narrowing can be overwhelming - many millions of narrowing operations may be required in what may seem to be simple programs. To help with this problem `clpBNR` has been added as a [`debug` topic]. Enabling this topic will generate a trace of constraint additions and narrowing operation failures on the console:
+The version of CLP(BNR) as a SWI-Prolog package is entirely implemented in Prolog, so all the standard Prolog development tools (debugger, profiler, etc.) can be used with CLP(BNR) applications. However, the details of the execution of interval narrowing can be overwhelming - many millions of narrowing operations may be required in what may seem to be simple programs. To help with this problem `clpBNR` has been added as a [`debug` topic]. Enabling this topic will generate a trace of constraint additions and narrowing operation failures on the console:
 eg
 	?- debug(clpBNR).
 	true.
@@ -52,7 +52,7 @@ eg
 	Y = Y:: 0.428571428571428... .
 `watch/2` will also take a list of intervals the first argument, and the second argument can be be one of `none`, `log`, or `trace` actions. Action `trace` outputs the standard log message and then invokes the debugger.
 
-Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true` can also be helpful in some situations.
+Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when the constraints on intervals are useful. For the most part, these shpuld be captured in the `% Add ...` debug output.
 
 <#TableOfContents>
 

@@ -29,8 +29,6 @@ normal_form(E1==E2, E1-E2).
 
 % convert exression to a list of +/- terms
 exp_terms(V, Terms/[V|NewT], Terms/NewT) :- var(V),!.
-exp_terms(N, Terms/[N|NewT], Terms/NewT) :- (number(N) ; rational(N)) ,!.
-exp_terms(N/M, Terms/[N rdiv M|NewT], Terms/NewT) :- rational(N),rational(M), !.
 exp_terms(A+B, Terms, NewTerms) :- !,
 	exp_terms(A, Terms, ATerms),
 	exp_terms(B, ATerms, NewTerms).
@@ -40,28 +38,12 @@ exp_terms(A-B, Terms, NewTerms) :- !,
 exp_terms(-A, Terms/NAts, Terms/NewT) :- !,
 	exp_terms(A, P/P, Ats/NewT),
 	negate_terms(Ats/NewT, NAts/NewT).
-exp_terms(Exp, Terms/[RExp|NewT], Terms/NewT) :-  % none of the above
-	rationalize_t(Exp,RExp), !.
+exp_terms(Exp, Terms/[Exp|NewT], Terms/NewT).
+
 
 negate_terms(T/Tail, T/Tail) :- T==Tail, !.
 negate_terms([A|As]/Tail, [-A|NAs]/Tail) :-
 	negate_terms(As/Tail, NAs/Tail).
-
-rationalize_t(V,V) :- var(V), !.
-rationalize_t(N,N) :- number(N).
-rationalize_t(R,R) :- rational(R).
-rationalize_t(M/N,M rdiv N) :- integer(M), integer(N).
-rationalize_t(A*B,RA*RB) :-
-	rationalize_t(A,RA),
-	rationalize_t(B,RB).
-rationalize_t(A/N,RA*(1 rdiv N)) :-
-	integer(N), !,
-	rationalize_t(A,RA).
-rationalize_t(A/B,RA/RB) :-
-	rationalize_t(A,RA),
-	rationalize_t(B,RB).
-rationalize_t(F,F):-
-	compound(F).
 	
 build_A_B([],Terms,[],B) :-
 	eval_terms(Terms,0,B1),
@@ -88,12 +70,12 @@ eval_terms([T|Terms],0,B) :-            % collecting ground terms
 	eval_terms(Terms,0,N2),
 	B is N1+N2.
 	
-% evaluate - note only */- and unary - allowed.
+% evaluate - note only */ and unary - allowed.
 eval_exp(T,1) :- var(T), !.  % single occurance of var, substitute 1
 eval_exp(-A,E) :- !, eval_exp(A,Ae), E is -Ae.
 eval_exp(A*B,E) :- !, eval_exp(A,Ae), eval_exp(B,Be), E is Ae*Be.
-eval_exp(A/B,E) :- rational(A), rational(B), !, E is A rdiv B.
-eval_exp(A/B,E) :- !, eval_exp(A,Ae), eval_exp(B,Be), E is Ae*Be.
+%%%eval_exp(A/B,E) :- rational(A), rational(B), !, E is A rdiv B.
+eval_exp(A/B,E) :- !, eval_exp(A,Ae), eval_exp(B,Be), E is Ae/Be.
 eval_exp(T,E) :- ground(T), !, E is T.
 
 

@@ -1,0 +1,431 @@
+#### Numerical Solution of Differential Equations
+
+Many of the laws of physics (mechanics, thermodynamics, electromagnetics, ..) are expressed in the form of differential equations. Solving a differential equation is the process of mapping it to an equivalent equation which does not contain derivatives, which typically involves integration and the introduction of new constants. In many real world problems this cannot be done in an "exact" manner so numerical methods are employed to find solutions. This section will cover solving initial boundary problems involving "ordinary differential equations", i.e., those problems involving a single independent variable, based the concepts and implementation described in [Application of Relational Interval Arithmetic to Ordinary Differential Equations].
+
+##### Basic Integration using Euler Approximation
+
+To keep things simple, consider only a single first order differential equation of the form:
+math> dy/dx = f(x,y)
+By integration, this can be expressed as:
+math> y = c + int_x f(x,y) dx
+If {`x_1<=x<=x_2`}, by specifying a boundary condition, i.e., the value of {`y`} at {`x_1`} or {`x_2`}, the value of {`c`} can be determined. This leaves the integration which approximates the the integral value over the range of {`x`} of interest. But depending on the function, this approximation can result in a large error, particularly when the range of {`x`} is large, so typically the range is divided into a number of sub-ranges steps with an integration approximation for each step. If the approximation is good the accumulated error is usually (not always) within acceptable limits. Using conventional arithmetic, this is sometimes difficult to verify, but interval arithmetic will express the possible error explicitly in the answer.
+
+A general CLP(BNR) framework for tackling the initial value problem looks like:
+.pl
+	integrate(DFxy,X,Initial,Final,Ydomain) :-
+		current_prolog_flag(clpBNR_default_precision,Ctrl),
+		integrate(DFxy,X,Initial,Final,Ydomain,Ctrl).
+	
+	integrate(DFxy,X,Initial,Final,Ydomain,Ctrl) :-
+		integrate(DFxy,X,Initial,Final,Ydomain,Ctrl,_).
+	
+	integrate(d(Y)=Fxy,X,(Xi,Yi),(Xf,Yf),Ydomain,Ctrl,Out) :-
+		integer(Ctrl), Ctrl>0,           % Ctrl must be positive integer
+		maplist(eval_bv,[Xi,Yi,Xf,Yf],[X0,Y0,X1,Y1]),  % evaluate any boundary values
+		lambda_for_(Fxy,X,Y,FxyL),       % Lambda for Fxy
+		[Y0,Y1]::Ydomain,                % initial and final Y 
+		integrate_(Ctrl,FxyL,(X0,Y0),(X1,Y1),Ydomain,Out/[(X1,Y1)]).
+	
+	eval_bv(Val,Val) :- var(Val), !.     % don't evaluate variables
+	eval_bv(Exp,Val) :- Val is Exp.
+	
+	% Create Lambda expression for Fxy
+	lambda_for_(Fxy,X,Y,Args>>true) :-
+		term_variables(Fxy,FVs),
+		(is_list(Y) -> Parms=[X|Y] ; Parms=[X,Y]),  % flatten if Y is a list
+		exclude(var_member_(Parms),FVs,EVs),        % EVs = free variables
+		lambda_args_(EVs,[X,Y,Fxy],Args).
+	
+	var_member_([L|_], E) :- L==E, !.
+	var_member_([_|Ls],E) :- var_member_(Ls,E).
+	
+	lambda_args_(EVs,Ps,{EV}/Ps) :- comma_op_(EVs,EV), !.
+	lambda_args_(_,Ps,Ps).
+	
+	comma_op_([X],X) :- !.
+	comma_op_([X|Xs],(X,Y)) :- comma_op_(Xs,Y).
+	
+	% integration loop
+	integrate_(0, FxyL, Initial, Final, Ydomain, [Initial|Ps]/Ps) :- !,
+		% integration step
+		step(FxyL, Initial, Final, Ydomain).
+	
+	integrate_(Ctrl, FxyL, Initial, Final, Ydomain, L/E) :-
+		% create interpolation point and integrate two halves
+		interpolate_(Initial, Final, Ydomain, Middle),
+		Cn is Ctrl - 1,
+		integrate_(Cn, FxyL, Initial, Middle, Ydomain, L/M),
+		integrate_(Cn, FxyL, Middle,  Final,  Ydomain, M/E).
+	
+	interpolate_((X0,_Y0), (X1,_Y1), Ydomain, (XM,YM)) :-
+		XM is (X0 + X1)/2,               % XM is midpoint of (X0,X1)
+		YM :: Ydomain.                   % corresponding YM
+Note that the `step/4` predicate has yet to be defined. 
+
+The arguments to the `integrate` predicate are:
+* `DFxy` specifies the differential equation in the form `d(Y)=Fxy` where `Y` is the dependent variable being differentiated and `Fxy` is the function definition. (Note: it gets converted to the lambda form supported by [`library(yall)`].)
+* `X` is the independent variable
+* `Initial` is the initial condition expressed as an `X,Y` pair, i.e., ``(Xi,Yi)``
+* `Final` is the final condition expressed as an `X,Y` pair, i.e., ``(Xf,Yf)`` where `Xf>Xi`.
+* `Ydomain` is the range of the dependent variable over the `X` range of interest, expressed as a CLP(BNR) domain.
+* `Ctrl` determines the the number of subdivisions of the independent variable `X` and must be a positive integer (default is prolog flag `clpBNR_default_precision`; `#subdivisions = 2**Ctrl` .) 
+* `Out`, if present, will be the resulting list of `X,Y` pairs generated over the range of `X`.
+
+Some examples using the differential equation {`dy//dx = -2xy`} :
+eg
+	﻿?- integrate(d(Y)= -2*X*Y, X, (0,1), (1,Yf), real(0.0,1.0)).
+	Yf:: 0.368... .
+	
+	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,1/e), real(0.0,1.0)).
+	Yi:: 1.00... .
+	
+	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,1/e), real(0.0,1.0), 3, Out).
+	Out = [(0, Yi),  (1r8, _234042),  (1r4, _234066),  (3r8, _234090),  (1r2, _234114),  (5r8, _234138),  (3r4, _234162),  (7r8, _234186),  (1, 0.36787944117144233)],
+	Yi:: 1.0...,
+	_234042:: 0.9...,
+	_234066:: 0.9...,
+	_234090:: 0.8...,
+	_234114:: 0.7...,
+	_234138:: 0.6...,
+	_234162:: 0.5...,
+	_234186:: 0.46... .
+
+The first example specifies an initial condition `Yi=1` and generates the final value `Yf=0.368...`. As the second example shows, it will also calculate `Yi` from `Yf` (as an arithmetic expression). The third example just shows the intervening results for a larger step size (`Ctrl=3`), along with a less precise answer.
+
+With the basic framework established, the definition of the `step/4` predicate remains. Research in numerical methods for integration has yielded many algorthms for the approxiamtion step (Euler (various), Adams-Bashforth, Runge-Kutta, etc.) with varying performance with respect to accuracy, stability (convergence), and efficiency depending on the problem at hand. For simplicity, we'll start with a simple Euler method. 
+
+The `step` predicate takes the differential equation (expressed in `yall` lambda format), the `X,Y` pairs representing the values at the boundaries of the step, and `Ydomain`. The Euler method assumes the slope is the simple interval extension of {`f`} replacing the {`x`} and {`y`} with the `X` and `Y` intervals over the step range. The interval slope is then used to constrain the endpoint `Y` values (which will be "attached" to other step endpoints. An Euler based step predicate using intervals:
+.pl
+	step_euler(FxyL, (X0,Y0), (X1,Y1), Ydomain) :-
+		Dx is X1 - X0,         % assumed (X1>X0)
+		DX :: real(0,Dx),      % range for estimate
+		X01:: real(X0,X1),     % range of X in step
+		Y01:: Ydomain,         % range of Y in interval X01
+		call(FxyL,X01,Y01,F),  % approx. f' over X01
+		{ F01 <= F,
+		  Y01 - Y0 == DX*F01,  % "forward predictor"
+		   Y1 - Y0 == Dx*F01   % extrapolation
+		}.
+`F01` defines the range of possible slopes between `X0` and `X1` to narrow the range of `Y0`. The `<=` inclusion interval primitive is used so that any narrowing of `Y01` cannot flow back to `X01` (the independent variable step) through `F01`. `Y1` is then bounded by extrapolating the `F01` to the end of the step.
+
+Earlier examples using this `step_euler` predicate (in place of undefined `step`)`:
+eg
+	﻿?- integrate(d(Y)= -2*X*Y, X, (0,1), (1,Yf), real(0,1)).
+	Yf::real(0.3327219220508979, 0.4031699018370416).
+	
+	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,0.36788), real(0,1.0)).
+	Yi:: 1.0... .
+Note the loss of accuracy from the previous (undisclosed) method. Euler is a low order method so the uncertaintly is large and only improves slowly with smaller step sizes. An improved step algorithm is the subject of the next section.
+
+##### Trapezoidal Approximation
+
+Where the Euler approximation assumes the slope over the interval is constant using the slope of function at the beginning, the trapezoidal method uses the average of the slope at the the beginning and the end. And, without going into the details of the underlying math (see [Application of Relational Interval Arithmetic to Ordinary Differential Equations]), an error term using the total derivative of {`f(x,y)`}. The latter is symbolically computed using `partial_derivative/3` which is part of the `clpBNR` package:
+.pl
+	% construct Lambda for derivative function of Fxy from Lambda of Fxy
+	total_derivative_((_Free/Ps>>G),DxyL) :- !,
+		total_derivative_((Ps>>G),DxyL).
+	total_derivative_(([X,Y,Fxy]>>_),DxyL) :-
+		partial_derivative(Fxy,X,DFDX),  % clpBNR built-in
+		partial_derivative(Fxy,Y,DFDY),
+		lambda_for_(DFDX+DFDY*Fxy,X,Y,DxyL).
+Since this new `lambda` is required in the `step` predicate, it must be carried as an argument through the upper layers (`interpolate/4` is not affected):
+.pl
+	integrate(d(Y)=Fxy,X,(Xi,Yi),(Xf,Yf),Ydomain,Ctrl,Out) :-
+		integer(Ctrl), Ctrl>0,           % Ctrl must be positive integer
+		maplist(eval_bv,[Xi,Yi,Xf,Yf],[X0,Y0,X1,Y1]),
+		lambda_for_(Fxy,X,Y,FxyL),       % Lambda for Fxy
+		total_derivative_(FxyL,DxyL),      % Lambda for Dxy (slope of Fxy)
+		[Y0,Y1]::Ydomain,                % initial and final Y 
+		integrate_(Ctrl,FxyL,DxyL,(X0,Y0),(X1,Y1),Ydomain,Out/[(X1,Y1)]).
+	
+	%  ... setup code seen previously ...
+	
+	integrate_(0, FxyL, DxyL, Initial, Final, Ydomain, [Initial|Ps]/Ps) :- !,
+		% integration step
+		step_trap(FxyL, DxyL, Initial, Final, Ydomain).
+	
+	integrate_(Ctrl, FxyL, DxyL, Initial, Final, Ydomain, L/E) :-
+		% create interpolation point and integrate two halves
+		interpolate_(Initial, Final, Ydomain, Middle),
+		Cn is Ctrl - 1,
+		integrate_(Cn, FxyL, DxyL, Initial, Middle, Ydomain, L/M),
+		integrate_(Cn, FxyL, DxyL, Middle,  Final,  Ydomain, M/E).
+Finally, the approximation step (note the error terms `DR*DX` and `DR*Dx`):
+.pl
+	step_trap(FxyL, DxyL, (X0,Y0), (X1,Y1), Ydomain) :-
+		Dx is X1 - X0,         % assumed (X1>X0)
+		DX :: real(0,Dx),      % range for estimate
+		X01:: real(X0,X1),     % range of X in step
+		Y01:: Ydomain,         % range of Y in interval X01
+		call(FxyL,X0,Y0,F0),   % F0 = slope at X0
+		call(FxyL,X1,Y1,F1),   % F1 = slope at X1
+		call(DxyL,X01,Y01,D),  % approx. f' over X01
+		{ FM <= (F0 + F1)/2,   % FM = average slope using step endpoints
+		  R <= D, 8*DR + R ==  RP, RP == R,
+		  Y01 - Y0 == DX*(FM + DR*DX),
+		  Y1  - Y0 == Dx*(FM + DR*Dx)
+		}.
+For comparison consider {`dy//dx=y`} where {`y(0)=0`}, then {`y(1)=e`}. First using the Euler approximation:
+eg
+	﻿?- integrate(d(Y)=Y, X, (0,1), (1,Yf), real),{Yerr==Yf-e}.
+	Yf:: 2.7...,
+	Yerr::real(-0.02093687589396387, 0.021545353028185943).
+and with the Trapezoidal approximation with the same step size:
+eg
+	﻿?- integrate(d(Y)=Y, X, (0,1), (1,Yf), real),{Yerr==Yf-e}.
+	Yf:: 2.718...,
+	Yerr::real(-2.782077432517127e-5, 0.00013843312105699113).
+The accuracy is considerably improved, although it took about 5 times longer due to the additional constraints. (As discussed below, the tradeoff between accuracy and compute time can also be controlled via the `Ctrl` parameter.)
+
+##### Paratrooper Example
+
+"A falling paratrooper (and his parachute) weigh 200 lb. The parachute causes an opposing force to act on the paratrooper due to air resistance which is proportional to his velocity. If the downward velocity when the parachute opens is 40 ft./sec., and the air resistance is 80 lb. when the velocity is 20 ft./sec., find the paratrooper's downward velocity at 1 sec., 5 sec. and 10 sec. after the parachute opens."
+ 
+(This example and others in this section are taken from [Applied Differential Equations, 2nd Ed., M.R. Spiegel].)
+
+From Netwon's Second Law of Motion ({`F=ma`}), the motion of the paratrooper can be described as:
+
+math>	W/g*(dv)/dt = W-beta*v
+Isolating the derivative:
+math>	(dv)/dt = g-beta*v*g/W
+
+With {`g=32 ft.//sec.^2, beta=80//20=4, W=200 lb.`}:
+eg
+	﻿?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (1,Vf), real(0,_)).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf:: 44.727... .
+	
+	?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (5,Vf), real(0,_)).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf:: 49.6... .
+	
+	?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_)).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf::real(45.579849803232136, 54.387096077205705).
+The first result (at 1 sec.) looks quite good - 5 digits of accuracy. But it's down to three digits at 5 sec., and the result is quite wide at 10 sec. (For comparison, the exact solution is given by `﻿V is 50-10*exp(-0.64*T)` for a terminal velocity of 50 ft./sec.) One possible explanation is the weak convergance of the fixed point iteration seen previously. In this case there is no possibility of multiple solutions so `absolve`, which deterministically "nibbles" way at the bounds of an interval, is preferred and seems to do a decent job:
+eg
+	﻿?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_)),absolve(Vf).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf::real(49.708246494157244, 50.22933313132091).
+Another possibility is that we're observing symptoms of instability where the cumulative effect of approximation errors is severely impacting the accuracy of the result. Instability will be discussed more below, but one cause is a large step size . (The step size between the `T=1` and `T=10` query has increased by a factor of 10.) To compensate for this use the `Ctrl` parameter:
+eg
+	﻿?- G= 32, B=4, W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_), 10).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf:: 49.9... .
+With a sufficiently small step size, the use of `absolve` is unnecessary. ``Ctrl` can also be used to improve the accuracy for the 5 sec. case:
+eg
+	﻿?- G= 32, B=4, W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (5,Vf), real(0,_), 10).
+	G = 32,
+	B = 4,
+	W = 200,
+	Vf:: 49.592... .
+Of course there's a tradeoff between a smaller step size and compute time. But the interesting thing here is that the range of the interval result provides explicit feedback on the stability of the algorithm for the particular problem at hand. Standard floating point arithmetic provides just a single value so the presence of instability is guesswork, whereas interval arithmetic has built-in error analysis. Note that `absolve` can compensate for weak convergence but will not affect any error accumulation inherent in the algorithm.
+ 
+##### Brine Tank Example
+
+"A tank is filled with 10 gal. of brine in which is dissolved 5 lb. of salt. Brine containing 3 lb. of salt per gal. enters the tank at 2 gal./min. and the well stirred mixture leaves at the same rate. How much salt is present after 10 min.? After 30 min.?"
+ 
+If {`A`} is the amount of salt in the tank, {`dA//dt`} is the rate of change of this amount of salt, which is equal to the difference between the rate that salt enters and leaves: {`dA//dt = 2*3 - 2*(A//10)`} or `d(A)=6-A/5`. Initial condition: `A(0)=5`, so after 10 minutes:
+eg
+	?- integrate(d(A)=6-A/5,T,(0,5),(10,Af),real(0,50)).
+	Af:: 26.6... .
+	
+	?- integrate(d(A)=6-A/5,T,(0,5),(30,Af),real(0,50)).
+	Af::real(23.58515983031275, 36.29144672957917).
+At 30 minutes the answer is unacceptably wide so increase the number of steps using the `Ctrl` parameter:
+eg
+	﻿?- integrate(d(A)=6-A/5,T,(0,5),(30,Af),real(0,50),10).
+	Af:: 29.9... .
+By analysis, equilibrium is reached when the rate of change of {`A`} is 0, i.e.,{`dA//dt=0`}. Solving for {`A`} yields an equilibrium value of 30 lb., which is in agreement with the computed result. (`absolve` using the default step size produces a slightly wider answer, but is much better than the original.) 
+
+##### Instability
+
+Any of the common numerical methods for solving initial-value problems require a step approximation to the true values. The errors associated with each computation comes from the truncation of formulas and, to a lesser degree, round-off errors. Unfortunately these errors accumulate from step to step, but the use of interval arithmetic provides explicit evidence of instability in the ranges of the outputs.
+
+This simple implementation provides a couple of "levers" for controlling instability. Reducing the step size by increasing the value of `Ctrl` is the primary mechanism and the effects have been demonstrated in the examples above. But smaller step sizes increases the compute time and storage requirements. Hopefully the reduction of the error at each step compensates for the increased opportunity for error by adding more steps.
+
+Another "lever" which is sometimes effective, and can reduce compute time as well, is to reduce the domain size of the independent variable (`Ydomain`). This is a general technique which improves performance in any problem domain.
+
+As a last resort, alternative `step` implementations based on conventional numerical methods might be adapted to interval arithmetic.
+
+##### Fuzzy Data
+
+In addition to the dependent and independent variables, there may be other interval variables representing fuzzy data which may be contained in the differential equation. For example, the flow in the brine tank example may vary by 5% from the nominal value. This can be modelled by an interval `F` with a domain of `real(1.9,2.1)`, so after 10 sec.:
+eg
+	﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
+	F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(22.047161468912186, 31.391469601742028).
+This result is considerably wider than the original seen previously, but is it due to the fuzzy flow value or is something else going on? Since all values are positive, the rate of change of `A` is positive and monotonically increases with `F`, so evaluating at the boundaries should provide accurate (withing the limits of the integration algorithm) values of `Af`:
+eg
+	﻿?- {F==1.9},integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
+	F:: 1.900000000000000...,
+	Af:: 26.2... .
+	
+	?- {F==2.1},integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
+	F:: 2.10000000000000...,
+	Af:: 26.9... .
+Before trying anything else, see if `absolve` helps to address any weak convergence issues:
+eg
+	﻿﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)), absolve(Af).
+	F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(25.69728183329884, 27.44933960820444).
+That actually helped quite a bit, but still not as narrow as it could be. 
+
+Decreasing the step size (increasing `Ctrl`):
+eg
+	﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50),9), absolve(Af).
+	F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(24.869257146716613, 28.138508668976122).
+actually made it worse, so it's probably not an instability issue. 
+
+The problem is that any uncertainty in one of "constants" is propagated from each integration step to the next, amplified by the approximation error. The end result is correct in that it contains the "real" value, but it may seem more conservative than need be. That's the product of the interaction between input fuzzy data and approximation errors caused by the integration algorithm. Weak convergence may further exacerbate the problem but, to some extent, that can be mitigated through the use of `absolve`.
+
+##### Systems of Differential Equations
+
+A useful extension of this "single independent variable, single dependent variable" implementation is to add support for muliple dependent variables as defined by multiple differential equations sharing a single dependent variable, i.e., a set of ordinary differential equations. This requires replacing the single equation with a list of such equations, the `Y` in `Initial` and `Final` values with a list of `Y`'s, and the domain with a list of domains. The core clause of the new predicate (replacing `integrate/5`):
+.pl
+	integrateV(DFxys,X,(Xi,Yis),(Xf,Yfs),Ydomains,Ctrl,Out) :-
+		integer(Ctrl), Ctrl>0,           % Ctrl must be positive integer
+		maplist(eval_bv,[Xi|Yis],[X0|Y0s]),
+		maplist(eval_bv,[Xf|Yfs],[X1|Y1s]),
+		maplist(dependent_var,DFxys,Ys),        % list of Y values in Fxy order
+		maplist(fXY_lambda(X,Ys),DFxys,FxyLs),  % corresponding list of Fxy lambdas
+		maplist(total_derivative_,FxyLs,Ys,DFxyLs),  % corresponding list of F derivative lambdas
+		maplist(::,Y0s,Ydomains),               % initial and ...
+		maplist(::,Y1s,Ydomains),               % final Ys
+		!,
+		integrateV_(Ctrl,FxyLs,DFxyLs,(X0,Y0s),(X1,Y1s),Ydomains,Out/[(X1,Y1s)]).
+where variables with names ending in `s` are lists. The ordering of the dependent variables in the list is determined by the order of the differential equations as shown in the following examples. Replacing single values with lists (i.e., vectors) permeates through the implementation, but the basics are the same so the rest of the implementation will not be included here. (It is listed in [Appendix 4].)
+
+Supporting systems of simultaneous permits solving of more complicated first order and higher order systems as shown in the following examples.
+
+##### Cannon Example
+
+"A shell is fired from a cannon which has a muzzle velocity of 160 ft./sec. and is inclined at an angle of 60˚ to the horizontal. Determine the position and velocity of the shell after it is in flight for 2 and 4 sec."
+
+From Newton's second law, {`dv_x//dt = 0`} and {`dv_y//dt = -g`}. Also {`dx//dt = v_x`} and {`dy//dt = v_y`}. Initial conditions are {`x(0)=0, y(0)=0, v_x(0) = 160 cos(pi//3), v_y(0) = 160 sin(pi//3)`} so:
+eg
+	﻿?- G=32, Vx0 is 160*cos(pi/3), Vy0 is 160*sin(pi/3),
+	integrateV([d(Vx)=0, d(Vy)= -G, d(X)=Vx, d(Y)=Vy], T, (0,[Vx0,Vy0,0,0]), (2,[Vxf,Vyf,Xf,Yf]), [real,real,real,real]),
+	{Vf is sqrt(Vxf**2+Vyf**2)}.
+	G = 32,
+	Vx0 = 80.00000000000001,
+	Vy0 = 138.56406460551017,
+	Vxf:: 80.0000000000000...,
+	Xf:: 160.00000000000...,
+	Yf:: 213.12812921102...,
+	Vyf:: 74.5640646055101...,
+	Vf:: 109.360869283737... .
+	
+	?- G=32, Vx0 is 160*cos(pi/3), Vy0 is 160*sin(pi/3),
+	integrateV([d(Vx)=0, d(Vy)= -G, d(X)=Vx, d(Y)=Vy], T, (0,[Vx0,Vy0,0,0]), (4,[Vxf,Vyf,Xf,Yf]), [real,real,real,real]),
+	{Vf is sqrt(Vxf**2+Vyf**2)}.
+	G = 32,
+	Vx0 = 80.00000000000001,
+	Vy0 = 138.56406460551017,
+	Vxf:: 80.0000000000000...,
+	Xf:: 320.00000000000...,
+	Yf:: 298.25625842204...,
+	Vyf:: 10.5640646055101...,
+	Vf:: 80.6944822214592... .
+Note that the order of the independent values in `Initial` and `Final` are determined by the order of the differential equations, i.e., `[Vx,Vy,X,Y]`. After 4 sec., the shell is travelling a litte over 80 ft./sec. and is almost 300 ft. high and 320 ft. down range.
+
+This example uses multiple differential equations to model `X` and `Y` directions but also hints at how to model higher order equations (`d(Vx)` is the second derivative of `X`).
+
+##### Higher Order Differential Equations
+
+The *n*-th order differential equation in the independent variable {`y`} and the independent {`x`} can be written in functional form:
+
+math> F(x,y,y^1,y^2,...,y^(n-1),y^(n)) = 0
+
+where the superscripts denote differentiation with respect to {`x`}. The necessary initial condition is that at {`x=x_0`} the values for {`y`} and its first {`n-1`} derivatives are assigned. A helpful convention for naming Prolog variables is to use `Yn` for the {`n`}th derivative of `Y`. To illustrate this, the paratrooper example can be extended to produce the displacement as well as the velocity (`X` and `X1` respectively):
+eg
+	﻿?- G= 32, B=4, W=200,
+	integrateV([d(X1)=G-G*B*X1/W, d(X)=X1], T, (0,[40,0]), (1,[X1f,Xf]), [real(0,_),real(0,_)]).
+	G = 32,
+	B = 4,
+	W = 200,
+	X1f:: 44.727...,
+	Xf:: 42.6139... .
+	
+	?- G= 32, B=4, W=200,
+	integrateV([d(X1)=G-G*B*X1/W, d(X)=X1], T, (0,[40,0]), (5,[X1f,Xf]), [real(0,_),real(0,_)]).
+	G = 32,
+	B = 4,
+	W = 200,
+	X1f:: 49.6...,
+	Xf::real(234.9549618806109, 235.06800774575368).
+	
+	?- G= 32, B=4, W=200,
+	integrateV([d(X1)=G-G*B*X1/W, d(X)=X1], T, (0,[40,0]), (10,[X1f,Xf]), [real(0,_),real(0,_)], 10).
+	G = 32,
+	B = 4,
+	W = 200,
+	X1f:: 49.9...,
+	Xf:: 484.4... .
+
+##### Vibrating Mass Example
+
+"The displacement {`x`} of a vibrating mass from it's equilibrium position is given by the differential equation {`(d^2x)/(dt^2)+3*dx/dt+5*x = cos 2*t`} where {`x=0`} and {`dx//dt=4`} when {`t=0`}. Find {`x`} and {`dx//dt`} at {`t=3`}."
+eg
+	﻿?- integrateV([d(X1)=cos(2*T)-3*X1-5*X, d(X)=X1], T, (0,[4,0]), (0.3,[X1f,Xf]), [real,real]).
+	X1f:: 1.310...,
+	Xf:: 0.7657... .
+
+##### Rocket Example
+
+"A rocket has a mass of 25,000 kg. of which 20,000 kg. is fuel. The rocket's exhaust velocity is 400 m./sec. (relative to the rocket) requiring a loss of 1000 kg. of fuel per sec. The rocket starts on the ground and travels vertically upward with the only external force being gravity. Find the velocity and height of the rocket after 15, 20, and 30 sec."
+
+Rockets work through Newton's second law of motion, i.e., the time rate of change in momentum is equal to the force acting on the object. This is expressed by the differential equation {`F=M*(dV)/dt - e_v*(dM)/dt`}. where {`M`} is the mass of the rocket(and fuel) and  {`V`} and {`e_v`} are the velocities of the rocket and expelled gas respectively. For an initial mass of {`M_0`} and an burn rate of {`b`}, the mass of the rocket as a function of time is {`M_0-b*t`} so:
+
+math> (M_0-b*t)*(dV)/dt - b*e_v = 0
+
+Re-writing and adding the force of gravity produces:
+
+math> (dV)/dt = -g+(b*e_v)/(M_0-b*t)
+
+Using the data in the example and `Tf=15`:
+eg
+	﻿?- G=9.8, M0=25000, B=1000, Ev=400,
+	integrateV([d(X1)= -G+(B*Ev)/(M0-B*T), d(X)=X1], T, (0,[0,0]), (15,[X1f,Xf]), [real,real]).
+	G = 9.8,
+	M0 = 25000,
+	B = 1000,
+	Ev = 400,
+	X1f:: 219.5...,
+	Xf::real(1232.4139630647717, 1232.6117640383343).
+So after 15 sec. the rocket is travelling at 220 m./sec. at a height of 1232 m. The same query form could be used for 20 sec. but note that at 20 sec. the fuel is exhausted. So a different equation applies for `T>20`; one involving just the force of gravity. The final values for `T=20` can be used as the initial values to calculate the velocity and height at `T=30`:
+eg
+	﻿?- G=9.8, M0=25000, B=1000, Ev=400,
+	integrateV([d(X1)= -G+(B*Ev)/(M0-B*T), d(X)=X1], T, (0,[0,0]), (20,[V20,H20]), [real,real]),
+	integrateV([d(X1)= -G, d(X)=X1], T, (20,[V20,H20]), (30,[V30,H30]), [real,real]).
+	G = 9.8,
+	M0 = 25000,
+	B = 1000,
+	Ev = 400,
+	V20::real(447.7126142866083, 448.0876142866106),
+	H20::real(2821.436298365495, 2822.6875587684135),
+	V30::real(349.71261428660466, 350.0876142866106),
+	H30::real(6808.56244123154, 6813.563701634558).
+When the fuel is expended at 20 sec., the rocket has reached a (peak) velocity of 448 m./sec and continues to coast reaching a height of approximately 6810 m. after 30 sec.
+
+##### Summary
+
+This topic just covers a small but useful subclass of science and engineering problems involving differential equations, namely initial (or final) value problems using ordinary differential equations. And the examples just cover a few of the many possible applications in mechanics, heat flow, electrical circuits, optics, radioactivity, chemistry, etc. It's not uncommon that the equations that arise are incapable of exact (analytical) treatment and numerical methods are required. A particular advantage of using intervals in this domain is automatic error analysis which provides explict evidence of algorithm instability which may not be so obvious using conventional floating point methods.
+
+<#TableOfContents>
+&
+	[Application of Relational Interval Arithmetic to Ordinary Differential Equations] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/ODEsOlder.pdf
+	[Applied Differential Equations, 2nd Ed., M.R. Spiegel] <- link https://www.scribd.com/document/357337779/Murray-R-Spiegel-Applied-Differential-Equations-Prentice-Hall-Inc-1967
+	[`library(yall)`] <- link https://www.swi-prolog.org/pldoc/man?section=yall
+	[Appendix 4] <- link #toc4Appendix_4_-__integrateV.pl__Source

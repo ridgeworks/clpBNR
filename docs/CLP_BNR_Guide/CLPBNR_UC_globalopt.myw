@@ -1,0 +1,419 @@
+#### Global Optimization
+
+An important class of problems in engineering design and operations research is the optimal allocation of "resources", usually referred to as global optimization. Specifically it aims to find the maximum or minimum value of a function of one or more variables and to find the values of the variables where this optima is reached. Techniques for solving *local* optimization problems, i.e., solutions in the neighbourhood of a given point, have been well-researched but techniques for global optimization seem to be less well developed. One of the reasons for this is the difficulty of representing global information, but intervals can be used to address this issue. The evaluation of a function of intervals using interval arithmetic is an interval containing all the values of the function given the interval values of the arguments. Then using search techniques similar to solving for the roots of equations, a minimum/maximum value of the function, along with it's *minimizers* (the values of the arguments producing the minimum/maximum) can be found. 
+
+Such searches can be computationally expensive, so it is often advantageous to combine it with local optimization techniques. These take the form of additional (redundant) constraints which can accelerate the searching process. In addition many global optimization problems include additional problem constraints which put further conditions on the set of solutions, so the combination of Constraint Logic Programming and Relational Interval Arithmetic seems to be a good fit for tackling this class of problems.
+
+Material in this section draws heavily on two sources: for theory, see [New Computer Methods for Global Optimization] (Ratschek and Rokne, 2007). The examples are largely from [Schaum's Outlines, Operations Research] (Bronson and Naadimuthu,1997).
+
+##### Unconstrained Optimization
+
+CLP(BNR) provides a pair of general purpose predicates for tackling global optimization problems: `global_minimum` and `global_maximum`. The simplest form of these predicates finds the global min/max (the second argument, `Z`, in the examples below) for the objective function specified by the first argument. From "Shaum's" (example 10.1):
+eg
+	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
+	X:: 7.8...,
+	Z:: 61.6850... .
+The predicates provided use the Moore-Skelboe algorithm (see Ratschek&Rokne) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). They do not provide the *minimisers* - indeed there may be more than one minimiser value. In the example above some narrowing of `X` has occurred but, in general, one of the solve predicates can be used to separate and sharpen minimizer values. Since there really aren't any "point solutions" to the objective function (unlike like finding roots of an equation discussed earlier), `splitsolve` is usually better suited to this problem.
+eg
+	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z), splitsolve(X).
+	X:: 7.84954...,
+	Z:: 61.6850... .
+And, as we saw earlier, there may be answers for the same solution due to precision limits on the splitting process:
+eg
+	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z),splitsolve(X).
+	X:: 7.84954...,
+	Z:: 61.6850... ;
+	X:: 7.84962...,
+	Z:: 61.6850... ;
+	X:: 7.8496...,
+	Z:: 61.6850... ;
+	X:: 7.84966...,
+	Z:: 61.6850... .
+`global_minimum` and `global_maximum` take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
+eg
+	﻿?- X::real(0,20),global_maximum(X*(5*pi-X),Z,3).
+	X::real(7.715468219981181, 7.992506304532757),
+	Z:: 61.7... .
+These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
+eg
+	﻿?- [X1,X2,X3]::real,global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
+	X1:: 2.500...,
+	Z::real(-1.8040366808093222e-7, 0),
+	X3:: 0.400...,
+	X2:: 3.000... .
+
+	﻿?- [X1,X2]::integer(-100,100),global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
+	X1 = 2,
+	X2 = 3,
+	Z:: 10.07577656955144... .
+
+	﻿?- [X1,X2]::integer(-100,100),global_minimum((1-X1)**2+100*(X2-X1**2)**2,Z).
+	X1 = X2, X2 = 1,
+	Z = 0.
+
+##### Constrained Optimization
+
+Moving to CLP usually involves a paradigm shift from "generate and test" to to "apply test, then generate". This facilitates solving constrained optimization problems; just apply the constraints before calling the global optimization predicate. Some examples from "Shaum's" (chapter 12):
+eg
+	﻿?- {X**2+Y**2==1},global_minimum(X+Y,Z).
+	X:: -0.70...,
+	Y:: -0.70...,
+	Z:: -1.41421... .
+	
+	﻿?- {X**2+Y**2==1},global_minimum(X+Y,Z),splitsolve([X,Y]).
+	X:: -0.707107...,
+	Y:: -0.70710...,
+	Z:: -1.41421... .
+
+	﻿?- [X1,X2,X3]::real(0,2*pi), {-X1*X2**3+X1**2*X3**2==5}, global_maximum(sin(X1*X2+X3),Z),splitsolve([X1,X2,X3]).
+	X1:: 1.49526...,
+	X2:: 0.049725...,
+	Z:: 0.99999951...,
+	X3:: 1.49546... .
+	
+	﻿?- [X1,X2,X3]::integer,{X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z),splitsolve([X1,X2,X3]).
+	X1 = 1,
+	X2 = -27,
+	X3 = 19,
+	Z = -1091.
+	
+	﻿?- [X1,X2]::real(_,_),{X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z),splitsolve([X1,X2]).
+	X1:: 0.333333...,
+	X2:: 1.666666...,
+	Z:: 2.249340... .
+
+	﻿?- [X1,X2]::real(0,_),{X1+2*X2=<3,8*X1+5*X2>=10}, global_minimum((X1-2)**2+(X2-2)**2,Z),splitsolve([X1,X2]).
+	X1:: 1.3992345...,
+	X2:: 0.8003827...,
+	Z:: 1.800000... .
+Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later. First a few Shaum's examples more grounded in the real world.
+ 
+##### The Furniture Maker
+"A furniture maker has 6 units of wood and 28 h of free time, in which he will make decorative screens. Two models have sold well in the past, so he will restrict himself to those two. He estimates that model I requires 2 units of wood and 7 h of time, while model II requires 1 unit of wood and 8 h of time.  The prices of the models are $120 and $80 respectively. How many screens of each model should the furniture maker assemble if he wishes to maximize his sales revenue?"
+
+This integer problem can be easily expressed in CLP(BNR):
+eg
+	﻿?- [M_1,M_2]::integer(0,_), {2*M_1+M_2=<6, 7*M_1+8*M_2=<28}, global_maximum(120*M_1+80*M_2, Revenue).
+	M_1 = 3,
+	M_2 = 0,
+	Revenue = 360.
+Maximum revenue of $360 can be achieved by building 3 model I screens and no model II's.
+
+##### "Universal Mines Inc."
+"Universal Mines Inc. operates three mines in West Virginia. The ore from each mine is separated into two grades before it is shipped; the daily production capacities of the mines, as well as their daily operating costs, are as follows:"
+.tsv
+	 		High-grade Ore, tons/day	Low-grade Ore, tons/day	Operating Cost, $1000/day
+	Mine I			4							4						20
+	Mine II			6							4						22
+	Mine III		1							6						18
+"Universal has committed itself to deliver 54 tons of high-grade ore and 65 tons of low-grade ore by the end of the week. It also has labor contracts that guarantee employees in each mine a full day’s pay for each day or fraction of a day the mine is open. Determine the number of days each mine should be operated during the upcoming week if Universal Mines is to fulfill its commitment at minimum total cost."
+ 
+"Hidden constraints: No mine may operate a negative number of days and no mine may operate more than 7 days in a week. In view of the labor contracts, Universal Mines has nothing to gain in operating a mine for part of a day."
+
+The hidden constraints bound the days for each mine to `integer(0,7)`:
+eg
+	﻿?- [M_Idays,M_IIdays,M_IIIdays]::integer(0,7), Cost::integer(0,_),
+	{4*M_Idays+6*M_IIdays+M_IIIdays >= 54, 4*M_Idays+4*M_IIdays+6*M_IIIdays >= 65}, 
+	global_minimum(20*M_Idays+22*M_IIdays+18*M_IIIdays, Cost), splitsolve([M_Idays,M_IIdays,M_IIIdays]).
+	M_Idays = 2,
+	M_IIdays = 7,
+	M_IIIdays = 5,
+	Cost = 284 ;
+	false.
+Minimum cost (single solution) to achieve target production is $284,000 running Mine I for 2 days, Mine II for 7 days, and Mine 3 for 5 days.
+
+##### The Investor
+"An individual has $4000 to invest and three opportunities available to him. Each opportunity requires deposits in $1000 amounts; the investor may allocate all the money to just one opportunity or split the money between them. The expected returns are tabulated as follows:"
+.tsv
+	Dollars Invested:		0	1000	2000	3000	4000
+	Return Opportunity 1	0	2000	5000	6000	7000
+	Return Opportunity 2	0	1000	3000	6000	7000
+	Return Opportunity 3	0	1000	4000	5000	8000
+"How much money should be invested in each opportunity to obtain the greatest total return?"
+
+The returns are not simple functions of dollars invested, but can be expressed by boolean expressions to separate the various cases:
+eg
+	﻿?- [Op1,Op2,Op3]::integer(0,4), {Op1+Op2+Op3 =< 4},
+	global_maximum((Op1==1)*2 + (Op1>1)*(Op1+3) +
+	 (Op2==1) + (Op2==2)*3 + (Op2>2)*(Op2+3) +
+	 (Op3==1) + (Op3==2)*4 + (Op3==3)*5 +(Op3==4)*8, Return), splitsolve([Op1,Op2,Op3]).
+	Op1 = Op3, Op3 = 2,
+	Op2 = 0,
+	Return = 9 ;
+	false.
+The maximum return can be be realized by investing $2000 in each of opportunity 1 and opportunity 3.
+
+##### "Aztec Refining Company"
+"The Aztec Refining Company produces two types of unleaded gasoline, regular and premium, which it sells to its chain of service stations for $12 and $14 per barrel, respectively. Both types are blended from Aztec’s inventory of refined domestic oil and refined foreign oil, and must meet the following specifications:"
+.tsv
+	 	Maximum Vapor Pressure	Minimum Octane Rating	Maximum Demand, bbl/wk	Minimum Deliveries, bbl/wk
+	Regular		23						88						100000					50000
+	Premium		15						98						20000					5000
+"The characteristics of the refined oils in inventory are as follows:"
+.tsv
+	 	Vapor Pressure	Octane Rating	Inventory, bbl	Cost, $/bbl
+	Domestic	25			87				40000			8
+	Foreign		15			98				60000			15
+"What quantities of the two oils should Aztec blend into the two gasolines in order to maximize weekly profit?"
+
+If:
+>	`RegDom` = barrels of domestic blended into regular
+	`RegFor` = barrels of foreign blended into regular
+	`PremDom` = barrels of domestic blended into premium
+	`PremFor` = barrels of foreign blended into premium
+then `Profit` is revenue from sales of regular and premium gas minus the cost of of foreign and domestics oil used it the production:
+>	`Profit = 12*(RegDom+RegFor) + 14*(PremDom+PremFor) - 8*(RegDom+PremDom) - 15*(RegFor+PremFor)`
+	`       = 4*RegDom - 3*RegFor + 6*PremDom - PremFor`
+Additional constraints are imposed by the demand and available inventory:
+>	`RegDom+RegFor =< 100000` (maximum demand for regular)
+	`RegDom+RegFor >= 50000` (minimum regular required)
+	`PremDom+PremFor =< 20000` (maximum demand for premium)
+	`PremDom+PremFor >= 5000` (minimum premium required)
+	`RegDom+PremDom =< 40000` (domestic)
+	`RegFor+PremFor =< 60000` (foreign)
+And finally, the constituents of a blend contribute to the overall octane rating according to their percentages by weight; likewise for the vapor pressure:
+>	`10*RegFor-RegDom >= 0` (regular octane constraint: ((87xRegDom)+(98xRegFor))/(RegDom+RegFor) >= 88 )
+	`5*PremFor-6*PremDom >= 0` (premium octane constraint)
+	`2*RegDom-8*RegFor =< 0` (regular vapor pressure constraint: ((25xRegDom)+(15xRegFor))/(RegDom+RegFor) =< 23 )
+	`2*PremDom-8*PremFor =< 0` (premium vapor pressure constraint)
+Just calculating the maximum profit to 3 decimal places still takes several seconds:
+eg
+	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{
+	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	},
+	global_maximum(OF,Profit,3), 
+	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom::real(13735.04638671875, 40000),
+	RegFor::real(10000, 45019.938151041664),
+	PremFor::real(0, 20000),
+	PremDom::real(0, 16666.666666666668),
+	Profit::real(124940.185546875, 125059.814453125),
+	Premium::real(0, 36666.666666666664),
+	Domestic::real(13735.04638671875, 56666.666666666664),
+	Foreign::real(10000, 65019.938151041664),
+	Regular::real(23735.04638671875, 85019.93815104167).
+The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated using one of the solve predicates, in this case `splitsolve`:
+eg
+	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{
+	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	},
+	global_maximum(OF,Profit,3), splitsolve([RegDom,RegFor,PremDom,PremFor]),
+	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37712.62...,
+	RegFor:: 12287.3...,
+	PremFor:: 2737.95...,
+	PremDom:: 2281.62...,
+	Profit:: 124940.2...,
+	Premium:: 5019.5...,
+	Domestic:: 39994.2...,
+	Foreign:: 15025.3...,
+	Regular:: 50000.0... .
+There are very many possible answers given the wide domain of `Profit` and, due to order of the search used by `splitsolve`, a solution at the low end of the profit range is generated: produce 50,000 barrels of regular and ~5020 barrels of premium gas using ~39994 barrels of domestic and ~15025 barrels of foreign oil.
+
+This is quite close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximum` at the expense of longer calculation time:
+eg
+	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{
+	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	},
+	global_maximum(OF,Profit,4), splitsolve([RegDom,RegFor,PremDom,PremFor]),
+	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37725.9...,
+	RegFor:: 12274.0...,
+	PremFor:: 2728.2...,
+	PremDom:: 2273.5...,
+	Profit::real(124994.65942382812, 124994.77394263764),
+	Premium:: 5001.8...,
+	Domestic:: 39999.5...,
+	Foreign:: 15002.3...,
+	Regular:: 50000.0... 
+But this is a fair amount of additional work for not much gain. A different approach to generating better results in less time is discussed next.
+
+##### Redundant Constraints using Local Optimization 
+ 
+Earlier sections described using common numerical techniques to rewrite or create redundant constraints to improve answers and reduce execution times. These techniques can be applied because the underlying arithmetic system is mathematically sound so there can be confidence in the answers produced - rounding errors may result in "wider" answers but should never produce wrong answers.
+
+If the assumption can be made that global optima are also local optima, and the objective function and constraints have certain properties, additional constraints can be defined which generally result in better answers in less time. (This isn't always the case since additional time is required to check the additional constraints which may not always result in a pruning of the search space.) For unconstrained optimization, this takes the form of constraining the gradient to be zero at the local optima. For constrained optimizations involving equalities and inequalities, techniques involving Lagrangian functions and [Karush–Kuhn–Tucker] conditions can be used. These will not be described in detail in this document, but information can be readily found in any text on solving local optimization problems.
+ 
+The local optimization technique described requires that the objective function and all constraints must be continuously differentiable over the range of all variables of interest. This precludes functions such as `max` and `abs`. In general, functions of `integer` intervals cannot be used because local optima are not necessarily found at integral values.
+
+Applying additional constraints defined by the existence of local optima can be implemented as:
+.pl
+	% Unconstrained optimization (just the objective function)
+	local_optima(ObjF) :-
+		local_optima(_,ObjF,[]).
+	
+	% Constrained optimization - have to specify whether searching for a `min` or `max`		
+	local_optima(MinMax,ObjF,Constraints) :-
+		local_optima(MinMax,ObjF,Constraints,Cs),  % generate constraints
+		{Cs}.                                      % then apply
+	
+	local_optima(MinMax,ObjF,Constraints,[Constraints,GCs,LCs]) :-
+		lagrangian_(Constraints,MinMax,ObjF,LObjF,LCs), 
+		term_variables(Constraints+ObjF,Vs),
+		gradient_constraints_(Vs,GCs,LObjF).
+	
+	gradient_constraints_([],[],_Exp).
+	gradient_constraints_([X|Xs],[C|Cs],Exp) :-
+		partial_derivative(Exp,X,D),     % clpBNR:partial_derivative/3
+		(number(D) -> C=[] ; C=(D==0)),  % no constraint if PD is a constant
+		gradient_constraints_(Xs,Cs,Exp).
+		
+	% for each constraint add to Lagrangian expression with auxiliary KKT constraints
+	lagrangian_([],_,L,L,[]).
+	lagrangian_([C|Cs],MinMax,Exp,L,[LC|LCs]) :-
+		constrain_(C,CExp, LC), % generate langrange term with multiplier
+		lexp(MinMax,Exp,CExp,LExp), !,
+		lagrangian_(Cs,MinMax,LExp,L,LCs).
+			
+	lexp(min,Exp,CExp,Exp+CExp).
+	lexp(max,Exp,CExp,Exp-CExp).
+	
+	constrain_(LHS == RHS, M*(LHS-RHS), []) :-
+		M::real.                          % finite multiplier only
+	constrain_(LHS =< RHS, MGx,     MGx==0) :-
+		MGx = M*(LHS-RHS), M::real(0,_).  % positive multiplier and KKT non-negativity condition
+	constrain_(LHS >= RHS, Exp,         LC) :-
+		constrain_(RHS =< LHS, Exp, LC).  % >= convert to =<
+Simple example of unconstrained optimization with and without local optima constraints:
+eg
+	 ﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
+	 X:: 7.8...,
+	 Z:: 61.6850... .
+	 
+	 ?- X::real(0,20), global_maximum(X*(5*pi-X),Z),splitsolve(X).
+	 X:: 7.84954...,
+	 Z:: 61.6850... .
+	
+	﻿?- X::real(0,20), OF=X*(5*pi-X), local_optima(OF), global_maximum(OF,Z).
+	OF = X*(5*pi-X),
+	X:: 7.85398163397448...,
+	Z:: 61.685027506808... .
+Note that the additional constraints produce a much sharper answer in much less time (orders of magnitude for this simple example). And the search finds the single solution without requiring the use of solve to find the minimizer.
+
+The call to `local_optima` typically replaces the `{ ... }` explicit application of the constraints. Other examples:
+eg
+	﻿?- [X1,X2]::real,OF=log(1+X1)+2*log(1+X2), local_optima(max,OF,[X1+X2=<2]),global_maximum(OF,Z).
+	OF = log(1+X1)+2*log(1+X2),
+	X1:: 0.33333333333333...,
+	X2:: 1.66666666666666...,
+	Z:: 2.24934057847523... .
+
+	﻿?- [X1,X2]::real, OF=(X1-2)**2+(X2-2)**2, local_optima(min,OF,[X1+2*X2=<3,8*X1+5*X2>=10,X1>=0,X2>=0]),global_minimum(OF,Z).
+	OF =  (X1-2)**2+(X2-2)**2,
+	X1:: 1.400000000000000...,
+	X2:: 0.800000000000000...,
+	Z:: 1.80000000000000... .
+Again much sharper answers in much less time. Note that simple bounds definitions like `X1>=0` and `X2>=0` are presented as constraints rather than bounds values in declarations (like `X1::real(0,_)`). This must be done to ensure complete application of the KKT conditions for inequalities.
+ 
+Finally, the "Aztec Refining Company" example using local optima constraints, first without using solve to find the minimizers:
+eg
+	﻿?- OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	local_optima(max,OF,[
+	RegDom>=0, RegFor>=0, PremDom>=0, PremFor>=0,
+	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	]),
+	global_maximum(OF,Profit,3), 
+	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom::real(13735.758463541666, 40000),
+	RegFor::real(10000, 45018.98871527778),
+	PremFor::real(0, 20000),
+	PremDom::real(0, 16666.666666666668),
+	Profit::real(124943.03385416667, 125056.96614583333),
+	Premium::real(0, 36666.666666666664),
+	Domestic::real(13735.758463541666, 56666.666666666664),
+	Foreign::real(10000, 65018.98871527778),
+	Regular::real(23735.758463541668, 85018.98871527778).
+This really isn't much of a difference from the original example which doesn't use `local_optima` constraints except it executes 2-3 times faster. And now solve produces much sharper values for the minimizers without resorting to tuning using the precision argument:
+eg
+	?- OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	local_optima(max,OF,[
+	RegDom>=0, RegFor>=0, PremDom>=0, PremFor>=0,
+	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	]),
+	global_maximum(OF,Profit,3),  splitsolve([RegDom,RegFor,PremDom,PremFor]), 
+	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37727.2...,
+	RegFor:: 12272.7...,
+	PremFor:: 2727.2...,
+	PremDom:: 2272.7...,
+	Profit::real(124999.88278570816, 125000.11721429184),
+	Premium:: 5000.0...,
+	Domestic:: 40000.0...,
+	Foreign:: 15000.0...,
+	Regular:: 50000.0... .
+In general, it's advantageous to use `local_optima` but this requires that a local critical point exists within the domain defined by the problem. If such is not the case the search may fail, i.e. the global optima is at a boundary. In this case, it make take an excessive amount of time to find it by exhaustive search. Or, as in some of the following relatively simple examples, stack overflows can occur.
+
+##### "Cheese Shop"
+"A cheese shop has 20 lb of a seasonal fruit mix and 60 lb of an expensive cheese with which it will make two cheese spreads, delux and regular, that are popular during Christmas week. Each pound of the delux spread consists of 0.2 lb of the fruit mix and 0.8 lb of the expensive cheese, while each pound of the regular spread consists of 0.2 lb of the fruit mix, 0.3 lb of the expensive cheese, and 0.5 lb of a filler cheese which is cheap and in plentiful supply. From past pricing policies, the shop has found that the demand for each spread depends on its price as follows:
+>	`Dd = 190 - 25*Pd`  and  `Dr = 250 - 50*Pr`
+where `D` denotes demand (in pounds), `P` denotes price (in dollars per pound), and the subscripts `d` and `r` refer to the delux and regular spreads, respectively. How many pounds of each spread should the cheese shop prepare, and what prices should it establish, if it wishes to maximize income and be left with no inventory of either spread at the end of Christmas week?"
+
+If `X` denotes the amount of each spread to be made. the objective is to maximize `Pd*Xd_Pr*Xr`. To eliminate excess inventory, production must not exceed demand, i.e., `Xd=<Dd` and `Xr=<Dr`. Fom the availability of the raw ingredients, `0.2*X1+0.2*X2=<20` and `0.8*X1+0.3*X2=<60`. The solution is given by:
+eg
+	﻿?- [Xd,Xr,Pd,Pr]::real, OF=Pd*Xd+Pr*Xr,
+	local_optima(max,OF,[0.2*Xd+0.2*Xr=<20, 0.8*Xd+0.3*Xr=<60, Xd=<190-25*Pd, Xr=<250-50*Pr,
+	 Xd>=0, Xr>=0, Pd>=0, Pr>=0
+	]),
+	global_maximum(OF,Income), splitsolve([Xd,Xr,Pd,Pr]).
+	OF = Pd*Xd+Pr*Xr,
+	Xd:: 55.0000...,
+	Xr:: 45.0000...,
+	Pr:: 4.100000...,
+	Pd:: 5.40000...,
+	Income:: 481.50000000000... .
+The maximum income of $481.50 can be realized by making (and selling) 55 pounds of deluxe spread at $5.50/pound, and 45 pounds of of regular at $4.10/pound. (This example runs over 50 times faster with local optima constraints applied.)
+
+##### Refinery Location
+"A major oil company wants to build a refinery that will be supplied from three port cities. Port B is located 300 km east and 400 km north of Port A, while Port C is 400 km east and 100 km south of Port B. Determine the location of the refinery so that the total amount of pipe required to connect the refinery to the ports is minimized."
+
+The objective is to minimize the distance between the refinery and the three ports. Assuming a coordinate system with Port A at ` (0,0) ` the objective function becomes:
+>	`sqrt(X**2+Y**2)+sqrt((X-300)**2+(Y-400)**2)+sqrt((X-700)**2+(Y-300)**2)`
+where the refinery is located at `(X,Y)`. A (redundant) constraint to minimize the search space is that the refinery must lie within the box bounded by the ports, which imposes an upper bound on X of 700, and on Y of 400. This is an unconstrained global optimization which will just use simple gradient constraints:
+eg
+	﻿?- X::real(0,700),Y::real(0,400),
+	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
+	local_optima(OF), global_minimum(OF,Pipe), splitsolve([X,Y]).
+	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
+	X:: 311.096...,
+	Y:: 369.331...,
+	Pipe:: 910.543... .
+
+##### Caveats
+
+These techniques for solving global optimization problems are very general and deceptively simple and declarative. However, one must remember that they are based on exhaustive search which can be very expensive. Appling any hidden and redundant (like `local_optima`) constraints can result in a significant improvement as will any reduction in the precision requirements. If the problem is linear, techniques described in "Solving Linear Systems" can be used to rewrite the constraints before seaching for the global optima.
+
+A second issue is that the objective function passed to global optimum predicates must contain sufficient free values (intervals) so that solutions can be fully tested. Consider the following simple change to the "Refinery Location" example:
+eg
+	﻿?- X::real(0,700),Y::real(0,400),
+	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
+	local_optima(OF), {OF==Z}, global_minimum(Z,Pipe),format("X=~w, Y=~w,\nPipe=~w",[X,Y,Z]), splitsolve([X,Y]).
+	X=_276{real(253.31280547967128,478.29843889533356)}, Y=_306{real(191.61042849566917,400)},
+	Pipe=_6942{real(692.7688936727446,692.769402336044)}
+	false.
+Here `{OF==Z}` has been applied before calling `global_minimum` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependancy problem, which is often not the case. In this example, an invalid minimum has been reached (see interim values output for `X`, `Y`, and `Pipe`) and `splitsolve` fails to find minimizers at the calculated minimium. (Recall that an narrowed interval does not guarantee a solution, only that if a solution exists, it must lie within that interval.) When there is insufficient correlation between the objective function and the set of constrained variables, a custom "branch and bound" technique is necessary.
+
+Global optimization is a hard problem and the approaches described in this section, while general, are not the only way to tackle it. Alternative searching techniques and numerical methods can be applied which can be more effective in particular problem domains. Domain specific constraints which may be hidden in the original problem statement should almost always be used to prune what can be a very large search space.
+
+<#TableOfContents>
+&
+	[New Computer Methods for Global Optimization] <- link https://pages.cpsc.ucalgary.ca/~rokne/global_book.pdf
+	[Schaum's Outlines, Operations Research] <- link https://www.amazon.com/gp/product/B00AUGCJD0/ref=dbs_a_def_rwt_bibl_vppi_i1
+	[Karush–Kuhn–Tucker] <- link https://en.wikipedia.org/wiki/Karush%E2%80%93Kuhn%E2%80%93Tucker_conditions
