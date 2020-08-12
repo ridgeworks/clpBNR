@@ -17,14 +17,14 @@ Standard practice for outputting attributed variables at the top level is to for
 To constrain an interval to integer values, type `integer` can be used in place of `real`:
 
 	?- I::integer, [J,K]::integer(-1,1).
-	﻿I::integer(-72057594037927936,72057594037927935),
+	I::integer(-72057594037927936,72057594037927935),
 	J::integer(-1,1),
 	K::integer(-1,1).
 
 Finally, a `boolean` is an `integer` constrained to have values `0` and `1` (meaning `false` and `true` respectively).
 
 	?- B::boolean.
-﻿	B::boolean.
+	B::boolean.
 
 Note that no bounds are displayed for booleans because `(0,1)` is implicit in the `boolean` type.
 
@@ -52,11 +52,11 @@ Sound constraints over real intervals (since interval ranges are closed) include
 	X:: 0.73908513321516... .
 
 	?- {X>=0,Y>=0, tan(X)==Y, X**2 + Y**2 == 5}.
-	﻿X:: 1.096668128705471...,
+	X:: 1.096668128705471...,
 	Y:: 1.94867108960995... .
 
 	?- {Z==exp(5/2)-1, Y==(cos(Z)/Z)**(1/3), X==1+log((Y+3/Z)/Z)}.
-	﻿Z:: 11.18249396070347...,
+	Z:: 11.18249396070347...,
 	Y:: 0.25518872031002...,
 	X:: -2.0616342622472... .
 
@@ -65,26 +65,26 @@ These examples did not require an explicit `::` declaration since the constraint
 It is often the case that the fixed point iteration that executes as a consequence of applying constraints is unable to generate meaningful solutions without applying additional constraints. This may be due to multiple distinct solutions within the interval range, or because the interval iteration is insufficiently "clever". For example:
 
 	?- {2==X*X}.
-﻿	X::real(-1.4142135623730951,1.4142135623730951).
+	X::real(-1.4142135623730951,1.4142135623730951).
 but 
 
 	?- {2==X*X, X>=0}.
-	﻿X:: 1.414213562373095... .
+	X:: 1.414213562373095... .
 
 In more complicated examples, it may not be obvious what the additional constraints might be. In these cases a higher level search technique can be used, e.g., enumerating integer values or applying "branch and bound" algorithms over real intervals. A general predicate called `solve/1` is provided for this purpose. Additional application specific techniques can also be implemented. Some examples:
 
 	?- {2==X*X},solve(X).
-	﻿X:: -1.414213562373095... ;
+	X:: -1.414213562373095... ;
 	X:: 1.414213562373095... .
 
 	?- X::real, {0 == 35*X**256 - 14*X**17 + X}, solve(X).
-	﻿X:: -0.847943660827315... ;
+	X:: -0.847943660827315... ;
 	X:: 0.0... ;
 	X:: 0.847943660827315... ;
 	X:: 0.995842494200498... .
 
 	?- {Y**3+X**3==2*X*Y, X**2+Y**2==1},solve([X,Y]).
-	﻿Y:: 0.39105200...,
+	Y:: 0.39105200...,
 	X:: -0.92036858... ;
 	Y:: -0.920368584...,
 	X:: 0.39105200... ;
@@ -130,19 +130,19 @@ A simple example example is the quadratic equation `{X**2-2*X+1 == 0}` which has
 The default value for the iteration limit is 3,000, and can be controlled by the Prolog flag `clpBNR_iteration_limit`. To demonstrate the effect, here's the query from the above paragraph:
 
 	?- clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	﻿SS = [userTime(0.04670699999996941), gcTime(0.003), globalStack(293320/1048544), trailStack(45776/264168), localStack(2432/118648), inferences(178237), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
+	SS = [userTime(0.04670699999996941), gcTime(0.003), globalStack(293320/1048544), trailStack(45776/264168), localStack(2432/118648), inferences(178237), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
 	X:: 1.00... .
 
 So the interval bounds have narrowed to about 3 decimal places of precision using the default value. The `clpStatistics` shows that the maximum number of iterations has exceeded the default, indicating the iteration limiter has been activated (with an additional two narrowing operations required to clear the queue. To show the effects of increasing the limit:
 
 	?- set_prolog_flag(clpBNR_iteration_limit,100000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	﻿SS = [userTime(1.5168969999999717), gcTime(0.101), globalStack(1030800/1048544), trailStack(341808/526312), localStack(2432/118648), inferences(5925487), narrowingOps(100001), narrowingFails(0), node_count(5), max_iterations(100001/100000)],
+	SS = [userTime(1.5168969999999717), gcTime(0.101), globalStack(1030800/1048544), trailStack(341808/526312), localStack(2432/118648), inferences(5925487), narrowingOps(100001), narrowingFails(0), node_count(5), max_iterations(100001/100000)],
 	X:: 1.000... .
 
 A small increase in precision has been achieved, but it still exceeded the limit and took significantly longer. Decreasing the limit has the opposite effect:
 
 	?- set_prolog_flag(clpBNR_iteration_limit,1000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	﻿SS = [userTime(0.015356999999994514), gcTime(0.001), globalStack(670376/1048544), trailStack(233712/264168), localStack(2432/118648), inferences(59737), narrowingOps(1001), narrowingFails(0), node_count(5), max_iterations(1001/1000)],
+	SS = [userTime(0.015356999999994514), gcTime(0.001), globalStack(670376/1048544), trailStack(233712/264168), localStack(2432/118648), inferences(59737), narrowingOps(1001), narrowingFails(0), node_count(5), max_iterations(1001/1000)],
 	X::real(0.9921663400256505, 1.0083828203198095).
 
 Generally, the default provides adequate precision for most problems, and in many cases, limiting isn't even activated. When the problem requires additional precision and `clpStatistics` indicates limiting has occurred, the limit can be adjusted using the Prolog flag. Keep in mind that any positive answer is conditional since it indicates that there is no contradiction detected at the level of precision used in the arithmetic operations. This is true whether or not limiting is activated.
@@ -156,16 +156,16 @@ If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/
 If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.0.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
 	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.0.zip')]).
-	﻿Verify package status (anonymously)
+	Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      ?0.9.0?
+	Installed version:      0.9.0
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.0zip" (?26,826? bytes) Y/n? 
+	Install "clpBNR-0.9.0zip" (34,710 bytes) Y/n? 
 	
-	﻿?- use_module(library(clpBNR)).
+	?- use_module(library(clpBNR)).
 	
 	*** clpBNR v0.9.0alpha ***
 	true.
