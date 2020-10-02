@@ -153,21 +153,21 @@ There is a second Prolog flag defined, `clpBNR_default_precision`, which affects
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.2 or greater is required.
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.0.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.2.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.0.zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.2.zip')]).
 	Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.0
+	Installed version:      0.9.2
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.0zip" (34,710 bytes) Y/n? 
+	Install "clpBNR-0.9.2.zip" (34,710 bytes) Y/n? 
 	
 	?- use_module(library(clpBNR)).
 	
-	*** clpBNR v0.9.0alpha ***
+	*** clpBNR v0.9.2alpha ***
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
@@ -181,6 +181,7 @@ The `clpBNR` module declaration is:
 		(::)/2,                % declare interval
 		{}/1,                  % define constraint
 		interval/1,            % filter for clpBNR constrained var
+		list/1,                % for compatibility
 		domain/2, range/2,     % for compatibility
 		delta/2,               % width (span) of an interval or numeric (also arithmetic function)
 		midpoint/2,            % midpoint of an interval (or numeric) (also arithmetic function)
@@ -200,8 +201,8 @@ The `clpBNR` module declaration is:
 		op(700, xfx, =>),      % set inclusion
 	
 		% utilities
-		list/1,                % for compatibility
 		print_interval/1, print_interval/2,      % pretty print interval with optional stream
+		small/1, small/2,      % defines small interval width based on precision value
 		solve/1, solve/2,      % solve (list of) intervals using split to find point solutions
 		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds

@@ -36,22 +36,21 @@ list(X) :- is_list(X).
 print_interval(Term) :- print_interval(current_output,Term).
 
 print_interval(Stream,Term) :-
-	mapTerm_(Term,Out), !,
+	copy_term_nat(Term,Out),     % copy of Term without attributes for output
+	term_variables(Term,TVars),
+	term_variables(Out,OVars),
+	name_vars_(TVars,OVars,0),  % name variables, intervals replaced by declarations
 	format(Stream,'~w',[Out]).
 
-mapTerm_(Int,Out) :- 
-	domain(Int,Out), !.
-mapTerm_(Comp,Out) :-  % compounds, including lists, which contain intervals
-	compound(Comp), acyclic_term(Comp), !,
-	Comp=..[F|Ins],
-	mapEach_(Ins,Outs),
-	Out=..[F|Outs].
-mapTerm_(In,In).
-
-mapEach_([],[]).
-mapEach_([In|Ins],[Out|Outs]) :-
-	mapTerm_(In,Out), !,
-	mapEach_(Ins,Outs).
+name_vars_([],[],_).
+name_vars_([TVar|TVars],[OVar|OVars],N) :-
+	(domain(TVar,Dom)
+	 -> OVar = (V::Dom)
+	  ; OVar = V
+	),
+	number_chars(N,C),atom_chars(V,['V'|C]),
+	N1 is N+1,
+	name_vars_(TVars,OVars,N1).
 
 %
 % SWIP attribute portray hook - used if write_attributes=portray
@@ -98,7 +97,8 @@ domain_goals_(false,X,[X::Dom]) :-  % Verbose=false, only QueryVars output
 domain_goals_(_,X,[]).         % catchall but normally non-query attvar, Verbose=false
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
-constraints_([node(COp,_,_,Args)|Nodes],X,[C|Cs]) :-
+constraints_([node(COp,P,_,Args)|Nodes],X,[C|Cs]) :-
+	var(P),                       % skip persistent nodes (already in value)
 	term_variables(Args,[V|_]),   % this ensures constraints only get output once
 	V==X,
 	fmap_(Op,COp,_,_,_), !,
@@ -265,6 +265,19 @@ enumerate_([X|Xs]) :-
 	enumerate_(Xs).
 
 %
+% Definition of "small" interval based on width and precision value (defaults to clpBNR_default_precision)
+%
+small(V) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	small(V,P).
+small(V,P) :- 
+	range(V,[L,H]),
+	chk_small(L,H,10**(-P)).
+	
+chk_small(L,H,Err) :- H-L < Err, !. 
+chk_small(L,H,Err) :- (H-L)/sqrt((L**2+H**2)/2) < Err.  % from CLIP?
+
+%
 %  global_minimum(Exp,Z) - Z is an interval containing one or more global minimums of Exp.
 %  global_maximum(Exp,Z) - as above but global maximums
 %
@@ -277,10 +290,10 @@ enumerate_([X|Xs]) :-
 %
 global_maximum(Exp,Z) :-
 	global_minimum(-Exp,NZ),
-	{Z== -NZ}.
+	constrain_(Z== -NZ).
 global_maximum(Exp,Z,P) :-
 	global_minimum(-Exp,NZ,P),
-	{Z== -NZ}.
+	constrain_(Z== -NZ).
 
 global_minimum(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -291,7 +304,7 @@ global_minimum(Exp,Z,P) :-
 	term_variables(Exp,Xs),                      % vars to search on
 	{Z==Exp},                                    % Steps 1. - 4.
 	ranges_([Z|Xs],[(Zl,Zh)|XVs]),               % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).     % and start iteration
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).        % and start iteration
 	
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
 	continue_MS(Zl,Zh,P,Xs,XVs,False), !,        % Step 12., check termination condition
@@ -418,15 +431,9 @@ choice_generator_(integer,X,(Xl,Xh),Xmid,_,enumerate(X)):-            % enumerat
 	Xh-Xl =< 16, !.
 choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
 
-bisect_interval_(_,X,Pt) :-
-	buildConstraint_(X=<pt(Pt),T/T,Agenda),
-	stable_(Agenda).
-bisect_interval_(real,X,Pt) :-
-	buildConstraint_(pt(Pt)=<X,T/T,Agenda),   % must use =<
-	stable_(Agenda).
-bisect_interval_(integer,X,Pt) :-
-	buildConstraint_(pt(Pt)<X,T/T,Agenda),    % can use <
-	stable_(Agenda).
+bisect_interval_(_,X,Pt) :-	constrain_(X=<pt(Pt)). 
+bisect_interval_(real,X,Pt) :- constrain_(pt(Pt)=<X).   % must use =<
+bisect_interval_(integer,X,Pt) :-constrain_(pt(Pt)<X).  % can use <
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %

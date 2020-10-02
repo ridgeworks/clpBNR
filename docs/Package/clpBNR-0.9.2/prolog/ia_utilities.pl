@@ -29,44 +29,36 @@
 list(X) :- is_list(X).
 
 %
-%  print_interval(Int), print_interval(Stream,Int)
-%	single interval value or list of intervals/numbers
-%	Normally prints as a list of two elements: [L,H]
-%	If the bounds are floats that can be represented without explicit exponent 
-%	and are are close enough to both be output as the same value of length 3 or more,
-%	then ... postfix output format is used, e.g., 12345.6789000... 
+%  print_interval(Term), print_interval(Stream,Term)
+%	prints Term to optional Stream with intervals expanded to domains
+%	uses format/3 so extended Stream options, e.g., atom(A), are supported
 %
-print_interval(Is) :- print_interval(current_output,Is).
+print_interval(Term) :- print_interval(current_output,Term).
 
-print_interval(Stream,I) :-
-	mapTerm_(I,Out), !,
-	write(Stream,Out).
+print_interval(Stream,Term) :-
+	copy_term_nat(Term,Out),     % copy of Term without attributes for output
+	term_variables(Term,TVars),
+	term_variables(Out,OVars),
+	name_vars_(TVars,OVars,0),  % name variables, intervals replaced by declarations
+	format(Stream,'~w',[Out]).
 
-mapTerm_(Int,Out) :-
-	interval_object(Int,Type,(L,H),_), !,
-	intValue_((L,H),Type,Out).
-mapTerm_(Comp,Out) :-  % compounds, including lists, which contain intervals
-	compound(Comp), acyclic_term(Comp), !,
-	Comp=..[F|Ins],
-	mapEach_(Ins,Outs),
-	Out=..[F|Outs].
-mapTerm_(In,In).
-
-mapEach_([],[]).
-mapEach_([In|Ins],[Out|Outs]) :-
-	mapTerm_(In,Out), !,
-	mapEach_(Ins,Outs).
+name_vars_([],[],_).
+name_vars_([TVar|TVars],[OVar|OVars],N) :-
+	(domain(TVar,Dom)
+	 -> OVar = (V::Dom)
+	  ; OVar = V
+	),
+	number_chars(N,C),atom_chars(V,['V'|C]),
+	N1 is N+1,
+	name_vars_(TVars,OVars,N1).
 
 %
 % SWIP attribute portray hook - used if write_attributes=portray
 %
-:-	set_prolog_flag(write_attributes, portray).
+:-	set_prolog_flag(write_attributes, portray).  % generally useful
 
 attr_portray_hook(interval(Type,Val,N,F),_Int) :-
-	(current_prolog_flag(clpBNR_verbose,true)
-	 -> interval_domain_(Type,Val,Dom)
-	 ;  intValue_(Val,Type,Dom)
-	),
+	interval_domain_(Type,Val,Dom),
 	write(Dom).
 
 %
@@ -92,20 +84,21 @@ attribute_goals(X) -->
 	},
 	Goals.
 	
-domain_goals_(false,X,[X::Dom]) :-  % Verbose=false, only QueryVars output
-	get_interval_flags_(X,Flags),
-	memberchk(queryVar,Flags), !,
-	interval_object(X, Type, Val, _),
-	intValue_(Val,Type,Dom).
-domain_goals_(true,X,[X::Dom|Cs]) :- % Verbose=true, QueryVars and constraints output
+domain_goals_(true,X,Cs) :-         % Verbose=true, QueryVars and constraints output
 	interval_object(X, Type, Val, Nodes), !,
 	interval_domain_(Type, Val, Dom), 
 	constraints_(Nodes,X,NCs),  % reverse map to list of original constraint
-	to_comma_exp_(NCs,Cs).
-domain_goals_(_,X,[]).	
+	to_comma_exp_(NCs,X::Dom,Cs).
+domain_goals_(false,X,[X::Dom]) :-  % Verbose=false, only QueryVars output
+	get_interval_flags_(X,Flags),
+	memberchk(queryVar,Flags), !,   % set by project_attributes
+	interval_object(X, Type, Val, _),
+	intValue_(Val,Type,Dom).
+domain_goals_(_,X,[]).         % catchall but normally non-query attvar, Verbose=false
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
-constraints_([node(COp,_,_,Args)|Nodes],X,[C|Cs]) :-
+constraints_([node(COp,P,_,Args)|Nodes],X,[C|Cs]) :-
+	var(P),                       % skip persistent nodes (already in value)
 	term_variables(Args,[V|_]),   % this ensures constraints only get output once
 	V==X,
 	fmap_(Op,COp,_,_,_), !,
@@ -114,13 +107,13 @@ constraints_([node(COp,_,_,Args)|Nodes],X,[C|Cs]) :-
 constraints_([_|Nodes],X,Cs) :-
 	constraints_(Nodes,X,Cs).
 		
-to_comma_exp_([],[]).
-to_comma_exp_([N|NCs],[{Cs}]) :-
-	to_comma_exp_(NCs,N,Cs).
+to_comma_exp_([],Decl,[Decl]).
+to_comma_exp_([N|NCs],Decl,[(Decl,{Cs})]) :-
+	to_comma_cexp_(NCs,N,Cs).
 	
-to_comma_exp_([],In,In).
-to_comma_exp_([C|Cs],In,Out) :-
-	to_comma_exp_(Cs,(In,C),Out).
+to_comma_cexp_([],In,In).
+to_comma_cexp_([C|Cs],In,Out) :-
+	to_comma_cexp_(Cs,(In,C),Out).
 
 %
 %  Simplified output format for interval ranges
@@ -141,23 +134,31 @@ to_comma_exp_([C|Cs],In,Out) :-
 	).
 
 intValue_((0,1),integer,boolean).                  % boolean
-intValue_((L,H),real,' 0.00000000000000000'...) :-  
+intValue_((L,H),real,Out...) :-                    % virtual zero (zero or subnormal) 
 	zero_float_(L),
-	zero_float_(H), !.
+	zero_float_(H), !,
+	format(chars(Zero),"~16f",0.0),
+	string_chars(Out,[' '|Zero]).                  % space prefix 
 intValue_((L,H),real,Out...) :-                    % two floats with minimal leading match
-	rational_fraction_(L,FL), float(FL), float_class(FL, normal), number_codes(FL,LC),
-	rational_fraction_(H,FH), float(FH), float_class(FH, normal), number_codes(FH,HC),
-	sign_codes_(LC,HC,ULC,UHC,Codes/Match),
+	float_chars_(L,LC),
+	float_chars_(H,HC),
+	sign_chars_(LC,HC,ULC,UHC,Codes/Match),
 	leading_zero(ULC,UHC,ZLC),
 	matching_(ZLC,UHC,Match,0,Dec,MLen),
 	MLen>Dec+1, !,	% minimum of one matching digit after decimal point
-	atom_codes(Out,Codes).
+	string_codes(Out,Codes).
 intValue_((L,H),Type,Dom) :-                        % default, just convert rationals
 	rational_fraction_(L,FL),
 	rational_fraction_(H,FH),
 	interval_domain_(Type, (FL,FH), Dom).
 
 zero_float_(B) :- float(B), float_class(B,C), (C=zero ; C=subnormal).
+
+float_chars_(B,Cs) :-
+	rational_fraction_(B,F),
+	float(F), float_class(F, normal),
+	format(chars(Cs),'~16f',F),  % same length after '.' (pads with trailing 0's)
+	length(Cs,Len), Len=<32.     % reverts to precise format if too long
 
 rational_fraction_(B,FB) :-
 	rational(B,_,D), D \= 1, !,  % non-integer rational
@@ -167,68 +168,60 @@ rational_fraction_(F,0.0) :-
 	float_class(F,subnormal), !.
 rational_fraction_(B,B).
 
-sign_codes_([45|LC],[45|HC],HC,LC,[32,45|T]/T) :- !.  % negate, save sign and reverse bounds
-sign_codes_(LC,HC,LC,HC,[32|T]/T).  % need a character that doesn't print: 2=STX (Start of Text)
+sign_chars_(['-'|LC],['-'|HC],HC,LC,[' ','-'|T]/T) :- !.  % negate, save sign and reverse bounds
+sign_chars_(LC,HC,LC,HC,[' '|T]/T).  % need a character that doesn't print: 2=STX (Start of Text)
 
-leading_zero([57|ULC],[49,48|_],[48,57|ULC]) :- !.
+leading_zero(['9'|ULC],['1','0'|_],['0','9'|ULC]) :- !.
 leading_zero(ULC,_,ULC).
 
-matching_([],[],[],N,Dec,N).
-matching_([C,46|LCs],[C,46|HCs],[C,46|Cs],N,Dec,Nout) :-   !, % absorbing "."
-	digit_(C),
+% Note: match should never be exact (L=H) so [] case not required
+% matching_([],[],[],N,Dec,N).
+matching_([C,'.'|LCs],[C,'.'|HCs],[C,'.'|Cs],N,Dec,Nout) :-   !, % absorbing "."
+	digit_(C,_),
 	Dec is N+1,
 	N1 is N+2,
 	matching_(LCs,HCs,Cs,N1,Dec,Nout).
-matching_([LC,46,LC1|LCs],[HC,46,HC1|HCs],[HC,46|Cs],N,Dec,Nout) :-  !,  % absorbing "."
-	digit_match_([LC,LC1,HC,HC1]),
+matching_([LC,'.',LC1|LCs],[HC,'.',HC1|HCs],[HC,'.'|Cs],N,Dec,Nout) :-  !,  % absorbing "."
+	digit_match_(LC,LC1,HC,HC1),
 	Dec is N+1,
 	N1 is N+2,
 	matching_([LC1|LCs],[HC1|HCs],Cs,N1,Dec,Nout).
-matching_([C|LCs],[C|HCs],[C|Cs],N,Dec,Nout) :- !,   % matching digit
-	digit_(C),
+matching_([C|LCs],[C|HCs],[C|Cs],N,Dec,Nout) :- !,  % matching digit
+	digit_(C,_),
 	N1 is N+1,
 	matching_(LCs,HCs,Cs,N1,Dec,Nout).
 matching_([LC,LC1|LCs],[HC,HC1|HCs],[HC|Cs],N,Dec,Nout) :- % match after rounding
-	digit_match_([LC,LC1,HC,HC1]),
+	digit_match_(LC,LC1,HC,HC1), !,
 	N1 is N+1,
 	matching_([LC1|LCs],[HC1|HCs],Cs,N1,Dec,Nout).
-matching_([],[48|HCs],[48|Cs],N,Dec,Nout) :- !,      % matching trailing 0
-	N1 is N+1,
-	matching_([],HCs,Cs,N1,Dec,Nout).
-matching_([48|LCs],[],[48|Cs],N,Dec,Nout) :- !,      % matching trailing 0
-	N1 is N+1,
-	matching_(LCs,[],Cs,N1,Dec,Nout).
-matching_(LCs,HCs,[],N,Dec,N) :-    % non-matching
-	digits_(LCs),digits_(HCs).  % remaining must be digit codes, i.e., no exponent
+matching_(LCs,HCs,[],N,Dec,N) :-                    % non-matching after '.'
+	nonvar(Dec). 
 
-digit_match_([LC,LC1,HC,HC1]) :-
-	digits_([LC,LC1,HC,HC1]),
-	HC mod "0" =:= (LC mod "0" +1) mod 10,
-	LC1 >= "5", HC1 < "5".
+digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
+	digit_(LC,L), digit_(LC1,L1), digit_(HC,H), digit_(HC1,H1),
+	H is (L+1) mod 10,
+	L1 >= 5, H1 < 5.
 
-% assumes properly formatted via number_codes
-digit_(D) :- "0"=<D,D=<"9".
-
-digits_([]).
-digits_([D|Ds]) :- digit_(D), digits_(Ds).
+% char test for properly formatted number 
+digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
 %
 %  developer trace debug code only -  used by stable_/1
 %
 traceIntOp_(Op, Ints, Ins, Outs) :-
 	debugging(clpBNR,true),  % only while debugging clpBNR
-	writef('node:  %w(',[Op]),
+	format('node:  ~w(',[Op]),
 	traceInts(Ints),
 	traceChanges(Ints, Ins, Outs),
 	nl, !.
 traceIntOp_(_,_,_,_).
 
-traceInts([Int]) :- writef('%w)',[Int]).
-traceInts([Int|Ints]) :- writef('%w,',[Int]), traceInts(Ints).
+traceInts([Int]) :- format('~w)',[Int]).
+traceInts([Int|Ints]) :- format('~w,',[Int]), traceInts(Ints).
 
 traceChanges([_Int], [In], [In]).  % no change
 traceChanges([Int], [_],  [Out]) :-
-	writef('\n    %p <- (%p)',[Int,Out]).
+	format('\n    ~p <- (~p)',[Int,Out]).
 traceChanges([Int|Ints], [In|Ins], [Out|Outs]) :-
 	traceChanges([Int], [In], [Out]),
 	traceChanges(Ints, Ins, Outs).
@@ -272,6 +265,19 @@ enumerate_([X|Xs]) :-
 	enumerate_(Xs).
 
 %
+% Definition of "small" interval based on width and precision value (defaults to clpBNR_default_precision)
+%
+small(V) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	small(V,P).
+small(V,P) :- 
+	range(V,[L,H]),
+	chk_small(L,H,10**(-P)).
+	
+chk_small(L,H,Err) :- H-L < Err, !. 
+chk_small(L,H,Err) :- (H-L)/sqrt((L**2+H**2)/2) < Err.  % from CLIP?
+
+%
 %  global_minimum(Exp,Z) - Z is an interval containing one or more global minimums of Exp.
 %  global_maximum(Exp,Z) - as above but global maximums
 %
@@ -284,10 +290,10 @@ enumerate_([X|Xs]) :-
 %
 global_maximum(Exp,Z) :-
 	global_minimum(-Exp,NZ),
-	{Z== -NZ}.
+	constrain_(Z== -NZ).
 global_maximum(Exp,Z,P) :-
 	global_minimum(-Exp,NZ,P),
-	{Z== -NZ}.
+	constrain_(Z== -NZ).
 
 global_minimum(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -298,7 +304,7 @@ global_minimum(Exp,Z,P) :-
 	term_variables(Exp,Xs),                      % vars to search on
 	{Z==Exp},                                    % Steps 1. - 4.
 	ranges_([Z|Xs],[(Zl,Zh)|XVs]),               % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).     % and start iteration
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).        % and start iteration
 	
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
 	continue_MS(Zl,Zh,P,Xs,XVs,False), !,        % Step 12., check termination condition
@@ -317,7 +323,7 @@ continue_MS(Zl,Zh,P,_,_,_) :-                      % w(Y) termination criteria
 	!.
 continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
 	build_box_MS(Xs,XVs,T/T),
-	SP is max(3,P), % ?? heuristic
+	SP is min(6,P+2), % ?? heuristic
 	simplesolveall_(Xs,SP),	                     % validate solution
 	!, fail.  % no narrowing escapes
 continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
@@ -371,17 +377,12 @@ widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
 	
 widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
-	midpoint_MS(L,H,XfMid), !.
+	midpoint_(L,H,XfMid), !.
 widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),X0,Xf,XfMid) :-
 	(H-L) > (H0-L0), !,
 	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
 widest1_MS([X|Xs],[XV|XVs],W0,X0,Xf,XfMid) :-
 	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
-	
-% interval midpoint
-midpoint_MS(-1.0Inf,H,M) :- H>0 -> M=0 ; M is H*10-1.                     % L = -inf
-midpoint_MS(L, 1.0Inf,M) :- L<0 -> M=0 ; M is L*10+1.                     % H =  inf
-midpoint_MS(L,H,M)       :- M is L/2+H/2.                                 % else (avoid overflow)
 
 % Midpoint test, Step 11+:
 % Discard all pairs (Z,z) from the list that satisfy F(C)<z where c = mid Y.
@@ -430,15 +431,9 @@ choice_generator_(integer,X,(Xl,Xh),Xmid,_,enumerate(X)):-            % enumerat
 	Xh-Xl =< 16, !.
 choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
 
-bisect_interval_(_,X,Pt) :-
-	buildConstraint_(X=<pt(Pt),T/T,Agenda),
-	stable_(Agenda).
-bisect_interval_(real,X,Pt) :-
-	buildConstraint_(pt(Pt)=<X,T/T,Agenda),   % must use =<
-	stable_(Agenda).
-bisect_interval_(integer,X,Pt) :-
-	buildConstraint_(pt(Pt)<X,T/T,Agenda),    % can use <
-	stable_(Agenda).
+bisect_interval_(_,X,Pt) :-	constrain_(X=<pt(Pt)). 
+bisect_interval_(real,X,Pt) :- constrain_(pt(Pt)=<X).   % must use =<
+bisect_interval_(integer,X,Pt) :-constrain_(pt(Pt)<X).  % can use <
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -455,7 +450,7 @@ bisect_interval_(integer,X,Pt) :-
 %  work in from the edges of the interval ("nibbling away") until you
 %  cannot go nay farther, then reduce step size and resume nibbling.
 %  Control parameters limit the number of successive halvings of the 
-%  step size, which is initially the interval width. 
+%  step size, which is initially half the interval width. 
 %  		Note that absolve and solve each abstract a different part of
 %  of the strategy used in the solve in BNRP V. 3. In this sense, the
 %  combination: " solve(X), absolve(X) "  { in that order } does something
@@ -466,46 +461,38 @@ absolve( X ):-
 	current_prolog_flag(clpBNR_default_precision,P),
 	absolve(X,P),!.
 
-absolve( X , _ ):- number(X), !.
-absolve( X , Limit ):-
-	interval_object(X, Type, (L,U), _), !,    % get interval type and value
-	delta_(Type,L,U,Delta),
-	absolve_l(X,Delta,L,1,Limit),!,
-	absolve_r(X,Delta,U,1,Limit),!.
+absolve(X, _ ):- number(X), !.
+absolve(X, Limit ):- interval_object(X, Type, Val, _), !,  % interval
+	delta_(Type,Val,Delta),
+	% if bound is already a solution avoid the work
+	(not(not(lower_bound(X))) -> true ; absolve_l(X,Type,Delta,1,Limit)),
+	(not(not(upper_bound(X))) -> true ; absolve_r(X,Type,Delta,1,Limit)).
 
-absolve( [], _).		% extends to lists
-absolve( [X|Xs],Lim):- absolve(X,Lim),!, absolve(Xs,Lim).
+absolve([],_).		% extends to lists
+absolve([X|Xs],Lim):- absolve(X,Lim),!, absolve(Xs,Lim).
 
-delta_(integer,L,U,D) :- D is U div 2 - L div 2.
-delta_(real,L,U,D)    :- D is U/2 - L/2.
+delta_(integer,(L,U),D) :- D is U div 2 - L div 2.
+delta_(real,   (L,U),D) :- D is U/2 - L/2.
 
-absolve_l(X, _, _, _, _) :- 
-		not(not(lower_bound(X))),	% changed 93/06/01 WJO to avoid getting stuck on lower bound
-		!.
-absolve_l(X, DL,LB, NL,Limit):- NL<Limit, % work on left side
-	interval_object(X, Type, (LB2, UB2), _),     % get interval type and value
-	trim_point_(NL,NL1,Type,Limit, DL,DL1),
-	Split is LB + DL1,
-	Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
-	not({X=<pt(Split)}),!,  % so X must be > split
-	{X >= pt(Split)},
-	interval_object(X, Type, (LB1, _), _),     % get interval type and value
-	absolve_l(X, DL1, LB1,NL1,Limit).
-absolve_l(_, _, _,  _,_).
+absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
+	getValue(X,(LB1,UB1)), 
+	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
+	Split is LB1 + DL1,
+	LB1 < Split, Split < UB1,                 % in range, not endpoint
+	not({X=<pt(Split)}),!,
+	{X>=pt(Split)},                           % so X must be >
+	absolve_l(X,Type, DL1, NL1, Limit).
+absolve_l(_,_,_,_,_).                         % final result
          
-absolve_r(X, _, _, _, _) :-
-		not(not(upper_bound(X))),	% changed 93/06/01 WJO to avoid getting stuck on upper bound
-		!.
-absolve_r(X, DU,UB, NU,Limit):- NU<Limit, % work on right side
-	interval_object(X, Type, (LB2, UB2), _),     % get interval type and value
-	trim_point_(NU,NU1,Type,Limit, DU,DU1),
-	Split is UB - DU1,
-	Split > LB2, Split < UB2,	% changed 93/06/01 WJO make sure that the interval can be split
-	not({X>=pt(Split)}),!,       % so X must be > split
-	{X =< pt(Split)},
-	interval_object(X, Type, (_, UB1), _),     % get interval type and value
-	absolve_r(X, DU1,UB1, NU1,Limit).
-absolve_r(_, _, _,  _,_).
+absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
+	getValue(X,(LB1,UB1)), 
+	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
+	Split is UB1 - DU1,
+	LB1 < Split, Split < UB1,                 % in range, not endpoint
+	not({X>=pt(Split)}),!,
+	{X=<pt(Split)},                           % so X must be <
+	absolve_r(X,Type, DU1, NU1,Limit).
+absolve_r(_,_,_,_,_).                         % final result
 
 trim_point_( N,N, _Type, _Limit, Delta, Delta).
 trim_point_( N,M, integer, Limit, Delta, Result):- N<Limit,N1 is N + 1,

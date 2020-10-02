@@ -49,11 +49,14 @@ clpStatistic(narrowingOps(C)) :- g_read(evalNode,C).
 
 clpStatistic(narrowingFails(C)) :- g_read(evalNodeFail,C).
 
-%
-%  conditional rounding (if float)
-%
-round_out_(NZ1, Toward, NZ) :- float(NZ1) -> NZ is nexttoward(NZ1,Toward) ; NZ=NZ1.
-
+% SWIP optimization for non_empty/2, replaces nexttoward function call with constant
+goal_expansion(L <  RHS, L < MaxFloat) :-
+	RHS == nexttoward( 1.0Inf,0),
+	current_prolog_flag(float_max,MaxFloat).  % MaxFloat is nexttoward( 1.0Inf,0). 
+goal_expansion(H >  RHS, H > NegMaxFloat) :-
+	RHS == nexttoward( -1.0Inf,0),
+	current_prolog_flag(float_max,MaxFloat),
+	NegMaxFloat is -MaxFloat.  % NegMaxFloat is nexttoward( -1.0Inf,0).
 %
 % non-empty inteval test, L=<H, infinte point values not permitted
 %
@@ -62,8 +65,9 @@ non_empty(L,H) :-
 	L =< H,                      % non-empty
 	% Point infinity values not allowed. IEEE semantics allows overflow infinities
 	% to round down/up to finite values so this more elaborate check is necessary.
-	(rational(L) ; nexttoward(L, 1.0Inf) <  1.0Inf), !,
-	(rational(H) ; nexttoward(H,-1.0Inf) > -1.0Inf), !.
+	% This is performance sensitive - currently fastest implementation: 
+	(float(L) -> L <  nexttoward( 1.0Inf,0) ; true),
+	(float(H) -> H >  nexttoward(-1.0Inf,0) ; true).
 
 %
 % forces all intervals to boolean range, (optimize if already boolean)
@@ -217,11 +221,11 @@ narrowing_op(lt, _, $(Z,X,Y), $(NewZ,X,Y)) :- ^(Z,(0,1),NewZ).  % else just narr
 % Z==(X<=Y)  % inclusion, constrains X to be subinterval of Y (Z boolean)
 
 % Only two cases: either X and Y intersect or they don't.
-narrowing_op(sub, _, $(Z, X, Y), $(NewZ, NewX, Y)):-
+narrowing_op(in, _, $(Z, X, Y), $(NewZ, NewX, Y)):-
 	^(X,Y,NewX), !,   % NewX is intersection of X and Y
 	^(Z,(1,1),NewZ).
 
-narrowing_op(sub, p, $((0,0), X, Y), $((0,0), NewX, Y)):-    % persistent, X and Y don't intersect'
+narrowing_op(in, p, $((0,0), X, Y), $((0,0), NewX, Y)):-    % persistent, X and Y don't intersect'
 	^(Z,(0,0),NewZ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -232,11 +236,13 @@ narrowing_op(add, _, $((Zl,Zh), (Xl,Xh), (Yl,Yh)), $((NZl,NZh), (NXl,NXh), (NYl,
 	NZl is max(Zl, roundtoward( Xl+Yl,  to_negative)),       % NewZ := Z ^ (X+Y),
 	NZh is min(Zh, roundtoward( Xh+Yh,  to_positive)),
 	non_empty(NZl,NZh),
-	NXl is max(Xl, roundtoward(NZl-Yh,  to_negative)),       % NewX := X ^ (NZ-Y),
-	NXh is min(Xh, roundtoward(NZh-Yl,  to_positive)),
+	% Note: subtraction done by adding minus values so rounding mode consistent
+	% during any numeric type conversion.
+	NXl is max(Xl, roundtoward(NZl+(-Yh),  to_negative)),    % NewX := X ^ (NZ-Y),
+	NXh is min(Xh, roundtoward(NZh+(-Yl),  to_positive)),
 	non_empty(NXl,NXh),
-	NYl is max(Yl, roundtoward(NZl-NXh, to_negative)),       % NewY := Y ^ (NZ-NX).
-	NYh is min(Yh, roundtoward(NZh-NXl, to_positive)),
+	NYl is max(Yl, roundtoward(NZl+(-NXh), to_negative)),    % NewY := Y ^ (NZ-NX).
+	NYh is min(Yh, roundtoward(NZh+(-NXl), to_positive)),
 	non_empty(NYl,NYh).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -481,10 +487,7 @@ narrowing_op(pow, _, $(Z,(Xl,Xh),Y), $(NewZ, NewX, NewY)) :-   % interval Y, X m
 	ln(NewZ,Ynum), ln(NewX,Yden),
 	odiv_(Ynum,Yden,Y,NewY).       % NY := Y ^ log(NZ)/log(NX)*/
 	
-ln((Xl,Xh), (Zl,Zh)) :-
-	Zl is roundtoward(log(Xl),to_negative), % rounding dependable?
-	Zh is roundtoward(log(Xh),to_positive).
-
+% requires conservative rounding using nexttoward
 pt_powr_(Z,X,R,NewZ) :- 
 	R < 0, !,                                    % negative R
 	Rp is -R,
@@ -492,44 +495,63 @@ pt_powr_(Z,X,R,NewZ) :-
 	odiv_((1,1),Z,UI,Zi),
 	pt_powr_(Zi,X,Rp,NZi),
 	odiv_((1,1),NZi,Z,NewZ).
-pt_powr_((Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-
+pt_powr_(Z,X,R,NewZ) :-
 	integer(R), R rem 2 =:= 0, !,                % even integer R
-	Zl1 is roundtoward(Xl**R,to_negative), Zh1 is roundtoward(Xh**R,to_positive),
-	Zl2 is min(Zl1,Zh1), %%round_out_(Zl2,-1.0Inf,Zl3),
+	Z = (Zl,Zh), X = (Xl,Xh),
+	(float(Xl) 
+	 -> Zl1 is max(0,nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf))
+	  ; Zl1 is max(0,roundtoward(Xl**R,to_negative))
+	),
+	(float(Xh)
+	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
+	  ; Zh1 is roundtoward(Xh**R,to_positive)
+	),
 	( sign(Xl)*sign(Xh) =< 0
 	 -> NZl is max(0,Zl)             % X bounded by or includes 0
-	 ;  NZl is max(Zl2,Zl)           % X doesn't include 0
+	 ;  NZl is max(min(Zl1,Zh1),Zl)  % X doesn't include 0
 	),
-	Zh2 is max(Zl1,Zh1), %%round_out_(Zh2,1.0Inf,Zh3),
-	NZh is min(Zh2,Zh).
-pt_powr_((Zl,Zh),(Xl,Xh),R,NewZ) :-
+	NZh is min(max(Zl1,Zh1),Zh),
+	NewZ = (NZl,NZh).
+pt_powr_(Z,X,R,NewZ) :-
 	rational(R), denominator(R) rem 2 =:= 0, !,  % even rational R
-	Zl1 is max(0,roundtoward(Xl**R,to_negative)), %%round_out_(Zl1,-1.0Inf,Zl2),
-	Zh1 is roundtoward(Xh**R,to_positive), %%round_out_(Zh1, 1.0Inf,Zh2), Zh1 \=1.5NaN,
-	powr_set_(Zl,Zh, 1,Zl1,Zh1,Zps),
-	powr_set_(Zl,Zh,-1,Zh1,Zl1,Zns),
-	union_(Zps,Zns,NewZ).
+	Z = (Zl,Zh), X = (Xl,Xh),
+	(float(Xl) 
+	 -> Zl1 is max(0,nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf))
+	  ; Zl1 is max(0,roundtoward(Xl**R,to_negative))
+	),
+	(float(Xh)
+	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
+	  ; Zh1 is roundtoward(Xh**R,to_positive)
+	),	
+	Zpl is max(Zl,Zl1),  Zph is min(Zh,Zh1),    % positive case
+	(Zpl =< Zph -> Zps = (Zpl,Zph) ; Zps = []),
+	Znl is max(Zl,-Zh1), Znh is min(Zh,-Zl1),   % negative case
+	(Znl =< Znh -> Zns = (Znl,Znh) ; Zns = []),
+	union_(Zps,Zns,NewZ).                       % union of positive and negative cases
 pt_powr_((Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-         % all other cases
-	Zl1 is roundtoward(Xl**R,to_negative), %%round_out_(Zl1,-1.0Inf,Zl2),
-	Zh1 is roundtoward(Xh**R,to_positive), %%round_out_(Zh1, 1.0Inf,Zh2),
-	((Xl<0,Xh>0) 
-	  -> (NZl is max(Zl,min(0,Zl1)), NZh is min(Zh,max(Zl1,Zh1)))  % split X
-	  ;  (NZl is max(Zl,min(Zl1,Zh1)), NZh is min(Zh,max(Zl1,Zh1)))
-	).
+	(float(Xl)
+	 -> Zl1 is nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf)
+	  ; Zl1 is roundtoward(Xl**R,to_negative)
+	),
+	(float(Xh)
+	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
+	  ; Zh1 is roundtoward(Xh**R,to_positive)
+	),
+	NZl is max(Zl,min(Zl1,Zh1)), NZh is min(Zh,max(Zl1,Zh1)).
 
-powr_set_(Zl,Zh,S,Z1l,Z1h,(Zsl,Zsh)) :-
-	Zsl is max(Zl,S*Z1l),
-	Zsh is min(Zh,S*Z1h),
-	Zsl =< Zsh, !.
-powr_set_(_,_,_,_,_,[]).
+ln((Xl,Xh), (Zl,Zh)) :-
+	Zl is roundtoward(log(Xl),to_negative), % rounding dependable?
+	Zh is roundtoward(log(Xh),to_positive).
 
-powr_((Zl,Zh), (Xl,Xh), (Yl,Yh), (NZl,NZh)) :-
-	Zll is roundtoward(Xl**Yl,to_negative), Zlh is roundtoward(Xl**Yh,to_positive),
-	Zhl is roundtoward(Xh**Yl,to_negative), Zhh is roundtoward(Xh**Yh,to_positive),
-	NZl1 is min(Zll, min(Zlh, min(Zhl, Zhh))), %%round_out_(NZl1,-1.0Inf,NZl2),
-	NZl is max(Zl,NZl1),
-	NZh1 is max(Zll, max(Zlh, max(Zhl, Zhh))), %%round_out_(NZh1, 1.0Inf,NZh2),
-	NZh is min(Zh,NZh1).
+powr_((Zl,Zh), (Xl,Xh), (Yl,Yh), (NZl,NZh)) :-  % X assumed positive
+	Zll is max(0,nexttoward(roundtoward(Xl**Yl,to_negative),-1.0Inf)), 
+	Zlh is nexttoward(roundtoward(Xl**Yh,to_positive), 1.0Inf),
+	Zhl is max(0,nexttoward(roundtoward(Xh**Yl,to_negative),-1.0Inf)),
+	Zhh is nexttoward(roundtoward(Xh**Yh,to_positive), 1.0Inf),
+	NZlmin is min(Zll, min(Zlh, min(Zhl, Zhh))),  % min of all
+	NZl is max(Zl,NZlmin),
+	NZhmax is max(Zll, max(Zlh, max(Zhl, Zhh))),  % max of all
+	NZh is min(Zh,NZhmax).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

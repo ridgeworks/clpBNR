@@ -89,7 +89,7 @@ eg
 Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later. First a few Shaum's examples more grounded in the real world.
  
 ##### The Furniture Maker
-"A furniture maker has 6 units of wood and 28 h of free time, in which he will make decorative screens. Two models have sold well in the past, so he will restrict himself to those two. He estimates that model I requires 2 units of wood and 7 h of time, while model II requires 1 unit of wood and 8 h of time.  The prices of the models are $120 and $80 respectively. How many screens of each model should the furniture maker assemble if he wishes to maximize his sales revenue?"
+"*A furniture maker has 6 units of wood and 28 h of free time, in which he will make decorative screens. Two models have sold well in the past, so he will restrict himself to those two. He estimates that model I requires 2 units of wood and 7 h of time, while model II requires 1 unit of wood and 8 h of time.  The prices of the models are $120 and $80 respectively. How many screens of each model should the furniture maker assemble if he wishes to maximize his sales revenue?*"
 
 This integer problem can be easily expressed in CLP(BNR):
 eg
@@ -100,15 +100,15 @@ eg
 Maximum revenue of $360 can be achieved by building 3 model I screens and no model II's.
 
 ##### "Universal Mines Inc."
-"Universal Mines Inc. operates three mines in West Virginia. The ore from each mine is separated into two grades before it is shipped; the daily production capacities of the mines, as well as their daily operating costs, are as follows:"
+"*Universal Mines Inc. operates three mines in West Virginia. The ore from each mine is separated into two grades before it is shipped; the daily production capacities of the mines, as well as their daily operating costs, are as follows:*
 .tsv
 	 		High-grade Ore, tons/day	Low-grade Ore, tons/day	Operating Cost, $1000/day
 	Mine I			4							4						20
 	Mine II			6							4						22
 	Mine III		1							6						18
-"Universal has committed itself to deliver 54 tons of high-grade ore and 65 tons of low-grade ore by the end of the week. It also has labor contracts that guarantee employees in each mine a full day’s pay for each day or fraction of a day the mine is open. Determine the number of days each mine should be operated during the upcoming week if Universal Mines is to fulfill its commitment at minimum total cost."
+*Universal has committed itself to deliver 54 tons of high-grade ore and 65 tons of low-grade ore by the end of the week. It also has labor contracts that guarantee employees in each mine a full day’s pay for each day or fraction of a day the mine is open. Determine the number of days each mine should be operated during the upcoming week if Universal Mines is to fulfill its commitment at minimum total cost.*
  
-"Hidden constraints: No mine may operate a negative number of days and no mine may operate more than 7 days in a week. In view of the labor contracts, Universal Mines has nothing to gain in operating a mine for part of a day."
+*Hidden constraints: No mine may operate a negative number of days and no mine may operate more than 7 days in a week. In view of the labor contracts, Universal Mines has nothing to gain in operating a mine for part of a day.*"
 
 The hidden constraints bound the days for each mine to `integer(0,7)`:
 eg
@@ -123,13 +123,13 @@ eg
 Minimum cost (single solution) to achieve target production is $284,000 running Mine I for 2 days, Mine II for 7 days, and Mine 3 for 5 days.
 
 ##### The Investor
-"An individual has $4000 to invest and three opportunities available to him. Each opportunity requires deposits in $1000 amounts; the investor may allocate all the money to just one opportunity or split the money between them. The expected returns are tabulated as follows:"
+"*An individual has $4000 to invest and three opportunities available to him. Each opportunity requires deposits in $1000 amounts; the investor may allocate all the money to just one opportunity or split the money between them. The expected returns are tabulated as follows:*
 .tsv
 	Dollars Invested:		0	1000	2000	3000	4000
 	Return Opportunity 1	0	2000	5000	6000	7000
 	Return Opportunity 2	0	1000	3000	6000	7000
 	Return Opportunity 3	0	1000	4000	5000	8000
-"How much money should be invested in each opportunity to obtain the greatest total return?"
+*How much money should be invested in each opportunity to obtain the greatest total return?*"
 
 The returns are not simple functions of dollars invested, but can be expressed by boolean expressions to separate the various cases:
 eg
@@ -144,17 +144,17 @@ eg
 The maximum return can be be realized by investing $2000 in each of opportunity 1 and opportunity 3.
 
 ##### "Aztec Refining Company"
-"The Aztec Refining Company produces two types of unleaded gasoline, regular and premium, which it sells to its chain of service stations for $12 and $14 per barrel, respectively. Both types are blended from Aztec’s inventory of refined domestic oil and refined foreign oil, and must meet the following specifications:"
+"*The Aztec Refining Company produces two types of unleaded gasoline, regular and premium, which it sells to its chain of service stations for $12 and $14 per barrel, respectively. Both types are blended from Aztec’s inventory of refined domestic oil and refined foreign oil, and must meet the following specifications:*
 .tsv
 	 	Maximum Vapor Pressure	Minimum Octane Rating	Maximum Demand, bbl/wk	Minimum Deliveries, bbl/wk
 	Regular		23						88						100000					50000
 	Premium		15						98						20000					5000
-"The characteristics of the refined oils in inventory are as follows:"
+*The characteristics of the refined oils in inventory are as follows:*
 .tsv
 	 	Vapor Pressure	Octane Rating	Inventory, bbl	Cost, $/bbl
 	Domestic	25			87				40000			8
 	Foreign		15			98				60000			15
-"What quantities of the two oils should Aztec blend into the two gasolines in order to maximize weekly profit?"
+*What quantities of the two oils should Aztec blend into the two gasolines in order to maximize weekly profit?*"
 
 If:
 >	`RegDom` = barrels of domestic blended into regular
@@ -362,9 +362,9 @@ eg
 In general, it's advantageous to use `local_optima` but this requires that a local critical point exists within the domain defined by the problem. If such is not the case the search may fail, i.e. the global optima is at a boundary. In this case, it make take an excessive amount of time to find it by exhaustive search. Or, as in some of the following relatively simple examples, stack overflows can occur.
 
 ##### "Cheese Shop"
-"A cheese shop has 20 lb of a seasonal fruit mix and 60 lb of an expensive cheese with which it will make two cheese spreads, delux and regular, that are popular during Christmas week. Each pound of the delux spread consists of 0.2 lb of the fruit mix and 0.8 lb of the expensive cheese, while each pound of the regular spread consists of 0.2 lb of the fruit mix, 0.3 lb of the expensive cheese, and 0.5 lb of a filler cheese which is cheap and in plentiful supply. From past pricing policies, the shop has found that the demand for each spread depends on its price as follows:
+"*A cheese shop has 20 lb of a seasonal fruit mix and 60 lb of an expensive cheese with which it will make two cheese spreads, delux and regular, that are popular during Christmas week. Each pound of the delux spread consists of 0.2 lb of the fruit mix and 0.8 lb of the expensive cheese, while each pound of the regular spread consists of 0.2 lb of the fruit mix, 0.3 lb of the expensive cheese, and 0.5 lb of a filler cheese which is cheap and in plentiful supply. From past pricing policies, the shop has found that the demand for each spread depends on its price as follows:*
 >	`Dd = 190 - 25*Pd`  and  `Dr = 250 - 50*Pr`
-where `D` denotes demand (in pounds), `P` denotes price (in dollars per pound), and the subscripts `d` and `r` refer to the delux and regular spreads, respectively. How many pounds of each spread should the cheese shop prepare, and what prices should it establish, if it wishes to maximize income and be left with no inventory of either spread at the end of Christmas week?"
+*where `D` denotes demand (in pounds), `P` denotes price (in dollars per pound), and the subscripts `d` and `r` refer to the delux and regular spreads, respectively. How many pounds of each spread should the cheese shop prepare, and what prices should it establish, if it wishes to maximize income and be left with no inventory of either spread at the end of Christmas week?*"
 
 If `X` denotes the amount of each spread to be made. the objective is to maximize `Pd*Xd_Pr*Xr`. To eliminate excess inventory, production must not exceed demand, i.e., `Xd=<Dd` and `Xr=<Dr`. Fom the availability of the raw ingredients, `0.2*X1+0.2*X2=<20` and `0.8*X1+0.3*X2=<60`. The solution is given by:
 eg
@@ -382,7 +382,7 @@ eg
 The maximum income of $481.50 can be realized by making (and selling) 55 pounds of deluxe spread at $5.50/pound, and 45 pounds of of regular at $4.10/pound. (This example runs over 50 times faster with local optima constraints applied.)
 
 ##### Refinery Location
-"A major oil company wants to build a refinery that will be supplied from three port cities. Port B is located 300 km east and 400 km north of Port A, while Port C is 400 km east and 100 km south of Port B. Determine the location of the refinery so that the total amount of pipe required to connect the refinery to the ports is minimized."
+"*A major oil company wants to build a refinery that will be supplied from three port cities. Port B is located 300 km east and 400 km north of Port A, while Port C is 400 km east and 100 km south of Port B. Determine the location of the refinery so that the total amount of pipe required to connect the refinery to the ports is minimized.*"
 
 The objective is to minimize the distance between the refinery and the three ports. Assuming a coordinate system with Port A at ` (0,0) ` the objective function becomes:
 >	`sqrt(X**2+Y**2)+sqrt((X-300)**2+(Y-400)**2)+sqrt((X-700)**2+(Y-300)**2)`
@@ -413,6 +413,7 @@ Here `{OF==Z}` has been applied before calling `global_minimum` which now only h
 Global optimization is a hard problem and the approaches described in this section, while general, are not the only way to tackle it. Alternative searching techniques and numerical methods can be applied which can be more effective in particular problem domains. Domain specific constraints which may be hidden in the original problem statement should almost always be used to prune what can be a very large search space.
 
 <#TableOfContents>
+
 &
 	[New Computer Methods for Global Optimization] <- link https://pages.cpsc.ucalgary.ca/~rokne/global_book.pdf
 	[Schaum's Outlines, Operations Research] <- link https://www.amazon.com/gp/product/B00AUGCJD0/ref=dbs_a_def_rwt_bibl_vppi_i1

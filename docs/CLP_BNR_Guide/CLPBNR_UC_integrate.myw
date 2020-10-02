@@ -424,8 +424,8 @@ When the fuel is expended at 20 sec., the rocket has reached a (peak) velocity o
 This topic just covers a small but useful subclass of science and engineering problems involving differential equations, namely initial (or final) value problems using ordinary differential equations. And the examples just cover a few of the many possible applications in mechanics, heat flow, electrical circuits, optics, radioactivity, chemistry, etc. It's not uncommon that the equations that arise are incapable of exact (analytical) treatment and numerical methods are required. A particular advantage of using intervals in this domain is automatic error analysis which provides explict evidence of algorithm instability which may not be so obvious using conventional floating point methods.
 
 <#TableOfContents>
+
 &
 	[Application of Relational Interval Arithmetic to Ordinary Differential Equations] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/ODEsOlder.pdf
 	[Applied Differential Equations, 2nd Ed., M.R. Spiegel] <- link https://www.scribd.com/document/357337779/Murray-R-Spiegel-Applied-Differential-Equations-Prentice-Hall-Inc-1967
-	[`library(yall)`] <- link https://www.swi-prolog.org/pldoc/man?section=yall
 	[Appendix 4] <- link #toc4Appendix_4_-__integrateV.pl__Source

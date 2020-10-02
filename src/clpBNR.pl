@@ -32,9 +32,9 @@
 	interval/1,            % filter for clpBNR constrained var
 	list/1,                % for compatibility
 	domain/2, range/2,     % for compatibility
-	delta/2,               % width (span) of an interval or numeric (also aritmetic function)
-	midpoint/2,            % midpoint of an interval (or numeric) (also aritmetic function)
-	median/2,              % median of an interval (or numeric) (also aritmetic function)
+	delta/2,               % width (span) of an interval or numeric (also arithmetic function)
+	midpoint/2,            % midpoint of an interval (or numeric) (also arithmetic function)
+	median/2,              % median of an interval (or numeric) (also arithmetic function)
 	lower_bound/1,         % narrow interval to point equal to lower bound
 	upper_bound/1,         % narrow interval to point equal to upper bound
 
@@ -51,6 +51,7 @@
 
 	% utilities
 	print_interval/1, print_interval/2,      % pretty print interval with optional stream
+	small/1, small/2,      % defines small interval width based on precision value
 	solve/1, solve/2,      % solve (list of) intervals using split to find point solutions
 	splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 	absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
@@ -101,7 +102,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 %
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
 
-:-set_prolog_flag(optimise,true).  % false).
+:-set_prolog_flag(optimise,true).
 
 current_node_(Node) :-  % look back to find current Op being excuted for debug messages
 	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
@@ -160,15 +161,21 @@ clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read(inferences_,I0)
 %
 % Current interval bounds updates via setarg(Val) which is backtrackable
 %
-interval_object(Int, Type, Val, Nodelist) :-
-	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).       %%SWIP
+%  interval(X)  - filter
+%
+interval(X) :- get_attr(X, clpBNR, _).
 
+% internal abstraction
+interval_object(Int, Type, Val, Nodelist) :-
+	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
+
+% flags (list)  abstraction
 get_interval_flags_(Int,Flags) :-
 	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
 	
 set_interval_flags_(Int,Flags) :-  % flags assumed to be ground so no copy required
-	get_attr(Int, clpBNR, Def),
-	nb_linkarg(4,Def,Flags).
+	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, _)),
+	put_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
 
 %
 % Interval value constants
@@ -189,9 +196,10 @@ finite_interval(integer, (L,H)) :-  %% SWIP:
 %
 % get current value
 %
-getValue(Int, Val) :-                      % if an interval, get value from attribute
-	get_attr(Int, clpBNR, interval(_, Val, _, _)), !.     %% optimized for SWIP
-getValue(Num, (Num,Num)) :- number(Num).   % else a number
+getValue(Int, Val) :- 
+	number(Int)
+	 -> Val=(Int,Int)                                   % numeric point value
+	 ;  get_attr(Int, clpBNR, interval(_, Val, _, _)).  % interval, optimized for SWIP
 
 %
 % set monitor action on an interval
@@ -246,14 +254,6 @@ integral_(-1.0Inf).
 integral_(B) :- integer(B).
 
 %
-% Test for interval:
-%
-%
-%  interval(X)  - filter
-%
-interval(X) :- interval_object(X,_,_,_).
-
-%
 %  range(Int, Bounds) for compatability 
 %
 % for interval(Int) and number(Int), check if value is (always) in specified range, unifying any vars with current value
@@ -282,7 +282,7 @@ arithmetic:evaluable(delta(X),user).
 
 delta(Int, Wid) :-
 	getValue(Int,(L,H)),
-	Wid is H-L.
+	Wid is roundtoward(H-L,to_positive).
 
 %
 %  midpoint(Int, Wid) midpoint of an interval or numeric value
@@ -401,14 +401,18 @@ upper_bound_val_(real,H,IH) :-             % real: evaluate and round outward (i
 upper_bound_val_(integer,H,IH) :-          % integer: make integer, fail if -inf
 	IH is floor(H), IH \= -1.0Inf.
 
-applyType_(boolean, real, Int, Agenda, NewAgenda) :- !,     % narrow real to boolean
-	applyType_(integer, real, Int, Agenda, NewAgenda).
 applyType_(integer, real, Int, Agenda, NewAgenda) :- !,     % narrow real to integer
-	get_attr(Int,clpBNR,Def),
-	(debugging(clpBNR,true) -> check_monitor_(Int, integer, Def) ; true),
-	setarg(1,Def,integer),               % set Type (only case allowed)
-	Def = interval(Type,Val,NodeList,Flags),
-	linkNodeList_(NodeList, Agenda, NewAgenda).
+	get_attr(Int,clpBNR,interval(Type,Val,NodeList,Flags)),
+	(debugging(clpBNR,true) -> check_monitor_(Int, integer, interval(Type,Val,NodeList,Flags)) ; true),
+	Val = (L,H),
+	lower_bound_val_(integer,L,IL),
+	upper_bound_val_(integer,H,IH),
+	(IL=IH
+	 -> Int=IL  % narrowed to point
+	 ; 	(put_attr(Int,clpBNR,interval(integer,(IL,IH),NodeList,Flags)),  % set Type (only case allowed)
+		 linkNodeList_(NodeList, Agenda, NewAgenda)
+		)
+	).
 applyType_(Type,IType,Int, Agenda, Agenda).                       % anything else: no change
 
 %
@@ -422,17 +426,14 @@ attr_unify_hook(interval(Type,(L,H),Nodelist,Flags), V) :-     % unify an interv
 	stable_(Agenda).         % broadcast change
 
 attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-    % unifying two intervals
-	get_attr(Int, clpBNR, Def),         %%SWIP Def = interval(Type, Val, Nodelist, Flags)
-	Def = interval(Type2,V2,Nodelist2,Flags2),  % fails on Type mismatch,
+	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)),  %%SWIP attribute def.
 	mergeType_(Type1, Type2, NewType),  % unified Type=integer if either is an integer
 	^(V1,V2,V),                         % unified range is intersection (from ia_primitives),
 	mergeNodes_(Nodelist2,Nodelist1,Newlist),  % unified node list is a merge of two lists
 	mergeFlags_(Flags1,Flags2,Flags),
 	(debugging(clpBNR,true) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
-	setarg(1,Def,NewType),              % update new type, value and constraint list, undone on backtracking
-	setarg(2,Def,V),
-	setarg(3,Def,Newlist),
-	setarg(4,Def,Flags),
+	% update new type, value and constraint list, undone on backtracking
+	put_attr(Int,clpBNR,interval(NewType,V,Newlist,Flags)),
 	linkNodeList_(Newlist, T/T, Agenda),
 	stable_(Agenda).         % broadcast change
 
@@ -479,7 +480,6 @@ notIn_(_,_,_).            % end of search
 addConstraints_(C,Agenda,NewAgenda) :-
 	constraint_(C), !, % a constraint is a boolean expression that evaluates to true
 	simplify(C,CS),    % optional
-	debug_clpBNR_('Add ~p',{CS}),
 	buildConstraint_(CS, Agenda, NewAgenda).
 addConstraints_((C,Cs),Agenda,NewAgenda) :-  % Note: comma as operator
 	nonvar(C),
@@ -490,8 +490,14 @@ addConstraints_([C|Cs],Agenda,NewAgenda) :-
 	nonvar(C),
 	addConstraints_(C,Agenda,NextAgenda), !,
 	addConstraints_(Cs,NextAgenda,NewAgenda).
+
+% low overhead version for internal use	
+constrain_(C) :- 
+	buildConstraint_(C,T/T,Agenda),
+	stable_(Agenda).
 	
 buildConstraint_(C,Agenda,NewAgenda) :-
+	debug_clpBNR_('Add ~p',{C}),
 	build_(C, 1, boolean, Agenda, NewAgenda), !.
 
 :- include(ia_simplify).  % simplifies constraints to a hopefully more efficient equivalent
@@ -549,8 +555,8 @@ fmap_(=<,   le,    ZXY,     ZXY,     [boolean,real,real]).
 fmap_(>=,   le,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).
 fmap_(<,    lt,    ZXY,     ZXY,     [boolean,real,real]).
 fmap_(>,    lt,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).
-fmap_(<=,   sub,   ZXY,     ZXY,     [boolean,real,real]).  % inclusion/subinterval
-fmap_(=>,   sub,   [Z,X,Y], [Z,Y,X], [boolean,real,real]).  % inclusion/subinterval
+fmap_(<=,   in,    ZXY,     ZXY,     [boolean,real,real]).  % inclusion/subinterval
+fmap_(=>,   in,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).  % inclusion/subinterval
 
 fmap_(and,  and,   ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(or,   or,    ZXY,     ZXY,     [boolean,boolean,boolean]).
@@ -645,7 +651,7 @@ clpStatistic(max_iterations(O/L)) :-
 %	Note: "special" ops like instantiate and integral not counted as narrowing op in clpStatistics 
 %
 % Comment out the following to enable Op tracing:
-system:goal_expansion(traceIntOp_(Op, Args, PrimArgs, New),true).
+goal_expansion(traceIntOp_(Op, Args, PrimArgs, New),true).
 
 doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, Agenda, NewAgenda) :-  % Arity 3 Op
 	var(P), !,                                    % check persistent bit
@@ -666,8 +672,8 @@ doNode_($(ZArg,XArg), Op, P, OpsLeft, Agenda, NewAgenda) :-        % Arity 2 Op
 	getValue(XArg,XVal),
 	evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),        % can fail causing stable_ to fail => backtracking
 	traceIntOp_(Op, [ZArg,XArg], [ZVal,XVal], [NZVal,NXVal]), % in ia_utilities
-	updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),	
-	updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda).	
+	updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
+	updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda).
 
 doNode_($(Arg), Op, P, OpsLeft, Agenda, NewAgenda) :-              % Arity 1 Op
 	var(P), !,                                    % check persistent bit
@@ -678,23 +684,29 @@ doNode_($(Arg), Op, P, OpsLeft, Agenda, NewAgenda) :-              % Arity 1 Op
 	updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda).  % always update value regardless of OpsLeft limiter	
 
 doNode_(Args, Op, p, _, Agenda, Agenda) :-    % persistent bit "set", skip node and trim
-	Args =.. [$|ArgList],
-	trim_ops_(ArgList).
+	trim_ops_(Args).
 
 %
 % called whenever a persistent node is encountered in FP iteration
 %	remove it from any node arguments
 %
-trim_ops_([]).
-trim_ops_([Arg|ArgL]) :-
+trim_ops_($(Op1,Op2,Op3)) :-
+	trim_op_(Op1),
+	trim_op_(Op2),
+	trim_op_(Op3).
+trim_ops_($(Op1,Op2)) :-
+	trim_op_(Op1),
+	trim_op_(Op2).
+trim_ops_($(Op1)) :-
+	trim_op_(Op1).
+
+trim_op_(Arg) :- number(Arg), !.
+trim_op_(Arg) :- 
 	get_attr(Arg, clpBNR, Def),     % an interval ?
 	Def = interval(_, _, NList, _),
 	trim_persistent_(NList,TrimList),
 	% if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
-	(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList)), !,  % write trimmed node list
-	trim_ops_(ArgL).
-trim_ops_([Arg|ArgL]) :-               % skip numbers (or anything else)
-	trim_ops_(ArgL).
+	(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList)).  % write trimmed node list
 
 trim_persistent_(T,T) :- var(T), !.    % end of indefinite list  
 trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
@@ -741,6 +753,8 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 % end of reset chain succeeds. Need cut since predicate is "discontiguous".
 clpStatistics :- !.
 
+clpBNR_version_("0.9.2").
+
 :- initialization((
 	% restore "optimise" flag
 	(nb_current(clpBNR_temp,Opt) 
@@ -748,7 +762,7 @@ clpStatistics :- !.
 	 ; true
 	),
 
-	write("*** clpBNR v0.9.1alpha ***\n\n"),
+	clpBNR_version_(Version), format("*** clpBNR v~walpha ***\n\n",[Version]),
 	(current_prolog_flag(bounded,true)
 	 -> write("Error: This version requires unbounded integers and rationals.\n")
 	 ;  true
@@ -767,7 +781,8 @@ clpStatistics :- !.
 	set_prolog_flag(float_zero_div,infinity),
 	set_prolog_flag(float_undefined,nan),
 	
-	set_prolog_stack(global,min_free(8196)),  % minimum free cells (8 bytes/cell)
+	once(prolog_stack_property(global,min_free(Free))),  % minimum free cells (8 bytes/cell)
+	(Free < 8196 ->	set_prolog_stack(global,min_free(8196)) ; true),
 	
 	% create clpBNR specific flags
 	create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)]),

@@ -1,0 +1,544 @@
+#### Constructing Metalevel Contractors
+
+Other implementations of CLP over intervals have been characterized (see [CLIP]) as either "RISC" or "CISC" designs. In the RISC approach each constraint is broken down into a sequence of low level primitives which are "executed" by the constraint engine (fixed point iterator). However, as seen in previous examples, narrowing of the internal fixed point iteration can be weak due to the dependency issue. CISC systems try to address this problem by treating the constraint as a single enity but this requires a more powerful solver. CLIP and CLP(BNR) are RISC designs; [Newton] and [Numerica] are CISC designs. To overcome some of the RISC limitations, CLIP used the concept of metalevel contractors which are a way of adding redundant constraints which can accelerate the convergence of the fixed point iteration. Relative to CISC designs, this has performance implications, but can be accomplished without complicating the underlying constraint infrastructure.
+aside> Aside: With conventional floating point arithmetic, adding redundant equations must be done carefully because they can exacerbate problems caused by rounding errors. Using sound interval arithmetic, these problems are avoided and redundancy can be used to accelerate convergence. (See also [Algorithmic Power from Declarative Use of Redundant Constraints]).
+A contractor is just a procedure which forces some narrowing operation on set of intervals. `solve`, `splitsolve` and `absolve`, as defined in the `clpBNR` package, are contractors bundled with an iterating algorithm that terminates when some condition is met, e.g., the width of the interval(s) is less than some value. Here's two contractors that split intervals at their midpoint; `mid_split_one` selects the largest interval (by width) from a list. It uses `mid_point_split` which takes a single interval as its argument and splits it (see [Appendix 2] for module `clpBNRmeta_contractor` source code):
+.pl
+	%
+	% contractor to split largest interval of a list on midpoint
+	%
+	mid_split_one(Xs) :-
+		select_split(Xs,X),  % select largest interval with largest width
+		mid_split(X).        % split it
+	%
+	% contractor to split a single interval on midpoint if sufficiently wide (creates a choicepoint)
+	%
+	mid_split(X) :- small(X), !.    % too narrow to split
+	mid_split(X) :-
+		M is midpoint(X),
+		({X=<M} ; {M=<X}).
+	
+	% select interval with largest width
+	select_split([X],X) :- !.       % select last remaining element
+	select_split([X1,X2|Xs],X) :-   % compare widths and discard one interval
+		delta(X1,D1),
+		delta(X2,D2),
+		(D1 >= D2
+		 -> select_split([X1|Xs],X)
+		 ;  select_split([X2|Xs],X)
+		).
+ If the selected interval is already small (as defined by `clpBNR:small/1`), the contractor has no effect. If this isn't the case, the interval is split at its midpoint leaving a choicepoint so the alternatives can be explored on backtracking. If further splitting is required, an iterator becomes necessary to keep the process going. Here's a simple one which  executes a `Goal` a maximum of `N` times (`N>0`) or until `Test` succeeds:
+.pl
+	%
+	% General purpose iterator: execute Goal a maximum of N times or until Test succeeds
+	%
+	iterate_until(N,Test,Goal) :- N>0, !, 
+		Goal,
+		N1 is N-1,
+		(Test
+		 -> true
+		  ; iterate_until(N1,Test,Goal)
+		).
+	iterate_until(_N,_,_).  % non-positive N --> exit
+A few simple examples from [Solving Polynomial Equations in one Variable] using the `mid_split_one` contractor with this iterator:
+eg
+	﻿?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, iterate_until(50,small(X),mid_split_one([X])).
+	X:: 1.00000... ;
+	X:: 3.00000... ;
+	false.
+	
+	﻿?- {X**2+Y**2==2, Y-X**2==0}, iterate_until(50,maplist(small,[X,Y]),mid_split_one([X,Y])).
+	X:: -1.000000000000000...,
+	Y:: 1.000000000000000... ;
+	X:: 1.00000000000000...,
+	Y:: 1.00000000000000... .
+This demonstrates the general principle of constructing metalevel contractors, but the real value comes when the functionality of built-in CISC style contractors can be replicated as metalevel contractors.
+
+##### A Multivariate Taylor Contractor
+
+The Taylor series expansion of a function can be used to define redundant constraints which can accelerate the convergence of the fixed point iteration. For a multivariate equation of the form 
+math>  f(x_1,...x_i,...x_n) = 0
+a redundant constraint of the form
+math>  0 = f(a_i)+f'(xi_i)*(x_i-a_i) , xi_i = a_i+t_i*(x_i-a_i) , 0<=t_i<=1
+can be added for each {`i`}, where {`a_i`} is some value in the domain of {`x_i`}. Usually the best convergence occurs when {`a_i`} is the midpoint of {`x_i`}. (For a more complete description of the underlying math see [CLIP].)
+
+We'll now define a predicate which takes an equation of the form `E1 == E2` and builds a centred form contractor `cf_contractor(Xs,As)` which can be used in an iterator in much the same way as `mid_split` in the example above. In the process, the original equation (as a constraint) and any redundant constraints are added to the system. There is a requirement that the expression `E1-E2` be differentiable over the range of the variables it contains. The `Xs` and `As` correspond to the {`x_i`}'s and {`a_i`}'s in the equations defined above.
+.pl
+	build_taylor_contractor(E1==E2, cf_contractor(Xs,As)) :-
+		Exp=E1-E2,                           % define constraints for Exp==0
+		term_variables(Exp,Xs),              % constraint arguments 
+		make_EQ_(Exp,TEQ),                   % original constraint with arguments
+		% build constraint list starting with Z's and ending with TEQ and DEQ ()
+		T::real(0,1),
+		make_As_and_Zs_(Xs,T,As,Zs,Cs,[TEQ,DEQ]),
+		% now build Taylor constraint, DEQ
+		copy_term_nat(Exp,AExp),             % copy of original constraint with As
+		term_variables(AExp,As),
+		sum_diffs(Xs, As, Zs, Zs, Exp, AExp, DEQ),  % add on D(Z)'s'
+		% ensure that any vars in original equation are (at least) finite real intervals
+		Xs::real,
+		{Cs}.                                % apply constraints
+	
+	make_As_and_Zs_([],T,[],[],Tail,Tail).
+	make_As_and_Zs_([X|Xs],T,[A|As],[Z|Zs],[Z==A+T*(X-A)|CZs],Tail) :-
+		make_As_and_Zs_(Xs,T,As,Zs,CZs,Tail).
+	
+	sum_diffs([], [], [], AllZs, Exp, ExpIn, EQ) :- make_EQ_(ExpIn,EQ).
+	sum_diffs([X|Xs], [A|As], [Z|Zs], AllZs, Exp, AExp, DEQ) :-
+		copy_term_nat(Exp,NExp),             % copy expression and replace Xs by Zs
+		term_variables(NExp,AllZs),
+		partial_derivative(NExp,Z,DZ),       % differentiate wrt. Z and add to generated expression
+		sum_diffs(Xs, As, Zs, AllZs, Exp, AExp+DZ*(X-A), DEQ).
+	
+	% map expression Exp to an equation equivalent to Exp==0 with numeric RHS
+	make_EQ_(Exp,LHS==RHS) :-    % turn expression into equation equivalent to Exp==0.
+		make_EQ_(Exp,LHS,RHS).
+	
+	make_EQ_(E,E,0)         :- var(E), !.
+	make_EQ_(X+Y,X,SY)      :- number(Y), !, SY is -Y.
+	make_EQ_(X-Y,X,Y)       :- number(Y), !.
+	make_EQ_(X+Y,Y,SX)      :- number(X), !, SX is -X.
+	make_EQ_(X-Y,SY,SX)     :- number(X), !, SX is -X, negate_sum_(Y,SY).
+	make_EQ_(X+Y,LHS+Y,RHS) :- !, make_EQ_(X,LHS,RHS).
+	make_EQ_(X-Y,LHS-Y,RHS) :- !, make_EQ_(X,LHS,RHS).
+	make_EQ_(E,E,0).        % default (non +/- subexpression)
+	
+	negate_sum_(Y,-Y) :- var(Y), !.
+	negate_sum_(X+Y,NX-Y) :- !, negate_sum_(X,NX).
+	negate_sum_(X-Y,NX+Y) :- !, negate_sum_(X,NX).
+	negate_sum_(E,-E).
+After building the contractor the constraints are activated (last step in `build_taylor_contractor`) but the actual contraction operation has not yet been implemented. (`build_taylor_contractor/2` just builds the "goal" to be called.) For the Taylor contractor, this operation must bind the values of {`a_i`} (i.e., the members of `As`) to the midpoints of {`x_i`}. However, to support repetitive application of the contractor (required by the iterator), the contractor should not permanently bind any {`a_i`}. `findall/3` will be used to achieve this "forward checking" (as suggested in [CLIP]):
+.pl
+	cf_contractor(Xs,As) :-
+		findall(Ds,(maplist(bind_to_midpoint,Xs,As),maplist(domain,Xs,Ds)),[XDs]),
+		maplist(::,Xs,XDs).
+	
+	bind_to_midpoint(X,A) :- A is float(midpoint(X)).
+After the call to `findall`, `XDs` is a list of narrowed domains of `Xs` and are then applied to `Xs`.  But the `As` are unchanged so they can be used again in the next iteration with the updated `Xs` values.
+aside> Aside: This contractor can be used with any "centred form", e.g., Newton or Krawczyk, since it only depends on intervals and their midpoints, hence its name `cf_contractor`. The details which distinguish the variety of centred form are built into the variables' constraints.
+This contractor can be used as an alternative to `solve` and absolve` to find roots of polynomial equations (as done in [Solving Polynomial Equations in one Variable]). In general, it provides better results (narrower intervals and fewer "false positives") in a fraction of the time: 
+eg
+	﻿?- X::real,build_taylor_contractor(X**2-4*X+3==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_14356]),
+	X:: 1.000000000000000...,
+	_14356::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_82196]),
+	X:: 3.00000000000000...,
+	_82196::real(-1.0Inf, 1.0Inf).
+	
+	?- X::real,build_taylor_contractor(X**4-4*X**3+4*X**2-4*X+3==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_15084]),
+	X:: 1.000000...,
+	_15084::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_32214]),
+	X:: 3.00000000...,
+	_32214::real(-1.0Inf, 1.0Inf) ;
+	false.
+	
+	?- X::real,build_taylor_contractor(17*X**256+35*X**17-99*X==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_20026]),
+	X:: 0.0000000000000000...,
+	_20026::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_41316]),
+	X:: 1.005027892894011...,
+	_41316::real(-1.0Inf, 1.0Inf).
+	
+	?- X::real,build_taylor_contractor(35*X**256-14*X**17+X==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_12240]),
+	X:: -0.847943660827315...,
+	_12240::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_20148]),
+	X:: 0.0000000000000000...,
+	_20148::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_9700]),
+	X:: 0.847943660827315...,
+	_9700::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_31422]),
+	X:: 0.995842494200498...,
+	_31422::real(-1.0Inf, 1.0Inf).
+	
+	?- X::real,build_taylor_contractor(X**4-12*X**3+47*X**2-60*X==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_25738]),
+	X:: 0.0000000000000000...,
+	_25738::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_9122]),
+	X:: 3.00000...,
+	_9122::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_14312]),
+	X:: 4.00000000...,
+	_14312::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_13950]),
+	X:: 5.0000000...,
+	_13950::real(-1.0Inf, 1.0Inf) ;
+	false.
+	
+	?- X::real,build_taylor_contractor(X**2-2*X+1==0,T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	T = cf_contractor([X], [_43654]),
+	X:: 0.999999...,
+	_43654::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_48110]),
+	X:: 1.000000...,
+	_48110::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_43692]),
+	X:: 1.0000002...,
+	_43692::real(-1.0Inf, 1.0Inf) ;
+	false.
+Comparing `solve` and iteration using the metalevel Taylor contractor in terms of narrowing operations performed (should be relatively implementation and machine independent):
+.myw
+	.tsv
+		Polynomial						`solve`			Taylor
+		`X**2-4*X+3`					`    780`		`  1367`
+		`X**4-4*X**3+4*X**2-4*X+3`		`  22065`		` 16231`
+		`17*X**256+35*X**17-99*X`		`    228`		`   362`
+		`35*X**256-14*X**17+X`			`   2405`		`   979`
+		`X**4-12*X**3+47*X**2-60*X`		` 350459`		` 20153`
+		`X**2-2*X+1`					`2088026`		`147593`
+	&	// local styles for table
+		@css
+			table.my_array { border-collapse:collapse; }
+			table.my_array tr td { background:whitesmoke; padding: 4px 16px; }
+			table.my_array tr:nth-child(1) td { background:lightgray; }
+
+Other than the simple cases where minimal splitting is required, iteration using the Taylor contractor is significantly faster (sometimes by a factor of 15) and does a better job at eliminating false positives due to precision limits. (Multiple roots at one value are usually problematical; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
+
+Problems involving multiple variables typically require more than one equation. Since the variables are shared, the generated Taylor contractors (one per equation) can be merged into a single contractor by omitting duplicates. `build_taylor_merged/2` takes a list of equations and constructs a single `cf_contractor` for use in an iterator:
+.pl
+	build_taylor_merged(Es,T) :-
+		maplist(build_taylor_contractor_,Es,Ts),  % construct list of contractors
+		cf_merge(Ts,T).                           % and merge them
+	
+	cf_merge(CFs,CF) :- cf_merge(CFs,cf_contractor([],[]),CF).
+	
+	cf_merge([],CF,CF).
+	cf_merge([cf_contractor(Xs,As)|CFs],cf_contractor(XsIn,AsIn),CF) :-
+		cf_add(Xs,As,XsIn,AsIn,XsOut,AsOut),
+		cf_merge(CFs,cf_contractor(XsOut,AsOut),CF).
+	
+	cf_add([],[],Xs,As,Xs,As).
+	cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
+		var_existing(XsIn,AsIn,X,A), !,
+		cf_add(Xs,As,XsIn,AsIn,XsOut,AsOut).
+	cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
+		cf_add(Xs,As,[X|XsIn],[A|AsIn],XsOut,AsOut).
+	
+	var_existing([Xex|_], [A|_],   X,A) :- Xex==X, !.
+	var_existing([_|XsIn],[_|AsIn],X,A) :- var_existing(XsIn,AsIn,X,A).
+Examples of using this predicate follow.
+
+##### The Numerica "Combustion" Problem
+
+An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polynomial Systems Using Continuation for Scientic and Engineering Problems, Prentice-Hall, 1987) refers to a combustion problem for a temperature of 3000˚ represented by a system of 9 equations in 9 unknowns. Expressed in Prolog it looks like:
+.pl
+	combustion(
+		[X1,X2,X3,X4,X5,X6,X7,X8,X9,X10],
+		[X2+2*X6+X9+2*X10 == 1e-5,
+		 X3+X8 == 3e-5,
+		 X1+X3+2*X5+2*X8+X9+X10 == 5e-5,
+		 X4+2*X7 == 1e-5,
+		 0.5140437e-7*X5 == X1**2,
+		 0.1006932e-6*X6 == 2*X2**2,
+		 0.7816278e-15*X7 == X4**2,
+		 0.1496236e-6*X8 == X1*X3,
+		 0.6194411e-7*X9 == X1*X2,
+		 0.2089296e-14*X10 == X1*X2**2
+		]
+		).
+Because there is only a single occurrence of any variable in any equation, the fixed point iteration forces considerable narrowing by itself:
+eg
+	﻿?- combustion(Vs,Es),Vs::real(0,1),{Es}.
+	Vs = [_112754, _112760, _112766, _112772, _112778, _112784, _112790, _112796, _112802, _112808],
+	Es = [_112760+2*_112784+_112802+2*_112808==1.0e-5, _112766+_112796==3.0e-5, _112754+_112766+2*_112778+2*_112796+_112802+_112808==5.0e-5, _112772+2*_112790==1.0e-5, 5.140437e-8*_112778==_112754**2, 1.006932e-7*_112784==2*_112760**2, 7.816278e-16*_112790==_112772**2, 1.496236e-7*_112796==_112754*_112766, 6.194411e-8*_112802==_112754*_112760, 2.089296e-15*_112808==_112754*_112760**2],
+	_112754:: 0.0000001...,
+	_112760:: 0.000000...,
+	_112766:: 0.00001...,
+	_112772:: 0.0000000000625149...,
+	_112778:: 0.000000...,
+	_112784:: 0.00000...,
+	_112790:: 0.0000049999687425...,
+	_112796:: 0.00001...,
+	_112802:: 0.000000...,
+	_112808:: 0.00000... .
+Adding `solve` further refines the answer:
+eg
+	﻿?- combustion(Vs,Es),Vs::real(0,1),{Es},solve(Vs).
+	Vs = [_20984, _20990, _20996, _21002, _21008, _21014, _21020, _21026, _21032, _21038],
+	Es = [_20990+2*_21014+_21032+2*_21038==1.0e-5, _20996+_21026==3.0e-5, _20984+_20996+2*_21008+2*_21026+_21032+_21038==5.0e-5, _21002+2*_21020==1.0e-5, 5.140437e-8*_21008==_20984**2, 1.006932e-7*_21014==2*_20990**2, 7.816278e-16*_21020==_21002**2, 1.496236e-7*_21026==_20984*_20996, 6.194411e-8*_21032==_20984*_20990, 2.089296e-15*_21038==_20984*_20990**2],
+	_20984:: 0.00000014709...,
+	_20990:: 0.00000022619...,
+	_20996:: 0.000015128...,
+	_21002:: 0.0000000000625149...,
+	_21008:: 0.0000004208...,
+	_21014:: 0.0000010162...,
+	_21020:: 0.0000049999687425...,
+	_21026:: 0.000014872...,
+	_21032:: 0.0000005371...,
+	_21038:: 0.000003602... .
+The same problem using metalevel contractors:
+eg 
+	﻿?- ﻿combustion(Vs,Es),Vs::real(0,1),build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X),Vs),(T,mid_split_one(Vs))).
+	Vs = [_82290, _82296, _82302, _82308, _82314, _82320, _82326, _82332, _82338, _82344],
+	Es = [_82296+2*_82320+_82338+2*_82344==1.0e-5, _82302+_82332==3.0e-5, _82290+_82302+2*_82314+2*_82332+_82338+_82344==5.0e-5, _82308+2*_82326==1.0e-5, 5.140437e-8*_82314==_82290**2, 1.006932e-7*_82320==2*_82296**2, 7.816278e-16*_82326==_82308**2, 1.496236e-7*_82332==_82290*_82302, 6.194411e-8*_82338==_82290*_82296, 2.089296e-15*_82344==_82290*_82296**2],
+	T = cf_contractor([_82326, _82308, _82314, _82290, _82332, _82302, _82344, _82338, _82320, _82296], [_82794, _82800, _82806, _82812, _82818, _82824, _82830, _82836, _82842, _82848]),
+	_82290:: 0.0000001...,
+	_82296:: 0.0000002...,
+	_82302:: 0.000015...,
+	_82308:: 0.0000000000625149...,
+	_82314:: 0.0000004...,
+	_82320:: 0.000001...,
+	_82326:: 0.0000049999687425...,
+	_82332:: 0.000015...,
+	_82338:: 0.000000...,
+	_82344:: 0.000003...,
+	_82848::real(-1.0Inf, 1.0Inf),
+	_82842::real(-1.0Inf, 1.0Inf),
+	_82836::real(-1.0Inf, 1.0Inf),
+	_82830::real(-1.0Inf, 1.0Inf),
+	_82824::real(-1.0Inf, 1.0Inf),
+	_82818::real(-1.0Inf, 1.0Inf),
+	_82812::real(-1.0Inf, 1.0Inf),
+	_82806::real(-1.0Inf, 1.0Inf),
+	_82800::real(-1.0Inf, 1.0Inf),
+	_82794::real(-1.0Inf, 1.0Inf) .
+This halts when the default precision limit is reached (`clpBNR_default_precision= 6`). To achieve the same precision as `solve`, it is necessary to tune the test via the second argument to `small`,to get the same precision:
+eg
+	﻿?- ﻿combustion(Vs,Es),Vs::real(0,1),build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X,9),Vs),(T,mid_split_one(Vs))).
+	Vs = [_42932, _42938, _42944, _42950, _42956, _42962, _42968, _42974, _42980, _42986],
+	Es = [_42938+2*_42962+_42980+2*_42986==1.0e-5, _42944+_42974==3.0e-5, _42932+_42944+2*_42956+2*_42974+_42980+_42986==5.0e-5, _42950+2*_42968==1.0e-5, 5.140437e-8*_42956==_42932**2, 1.006932e-7*_42962==2*_42938**2, 7.816278e-16*_42968==_42950**2, 1.496236e-7*_42974==_42932*_42944, 6.194411e-8*_42980==_42932*_42938, 2.089296e-15*_42986==_42932*_42938**2],
+	T = cf_contractor([_42968, _42950, _42956, _42932, _42974, _42944, _42986, _42980, _42962, _42938], [_43436, _43442, _43448, _43454, _43460, _43466, _43472, _43478, _43484, _43490]),
+	_42932:: 0.0000001470...,
+	_42938:: 0.0000002262...,
+	_42944:: 0.00001512...,
+	_42950:: 0.0000000000625149...,
+	_42956:: 0.000000420...,
+	_42962:: 0.000001016...,
+	_42968:: 0.0000049999687425...,
+	_42974:: 0.00001487...,
+	_42980:: 0.000000537...,
+	_42986:: 0.000003602...,
+	_43490::real(-1.0Inf, 1.0Inf),
+	_43484::real(-1.0Inf, 1.0Inf),
+	_43478::real(-1.0Inf, 1.0Inf),
+	_43472::real(-1.0Inf, 1.0Inf),
+	_43466::real(-1.0Inf, 1.0Inf),
+	_43460::real(-1.0Inf, 1.0Inf),
+	_43454::real(-1.0Inf, 1.0Inf),
+	_43448::real(-1.0Inf, 1.0Inf),
+	_43442::real(-1.0Inf, 1.0Inf),
+	_43436::real(-1.0Inf, 1.0Inf) .
+The builtin `solve` and fixed point iteration does a credible job on this problem so it turns out adding the metalevel contractor redundant constraints is not worth the additional overhead incurred. It is often the case some experimentation is required to achieve required precision within a given time budget.
+
+##### The Broyden Banded Function
+
+A common example in interval arithmetic publications is the Broyden banded function which defines the following system of {`n`} equations in {`n`} variables {`{x_1,...,x_n}`}:
+math> x_i*(2+5x_i^2) = sum_(i-5<=j<=i+1,j!=i,jin[1,n])x_j*(x_j+1)
+A predicate to generate this set of equations for different values of `N`:
+.pl
+	broyden(N,Vs,EQs) :-
+		length(Vs,N),
+		cbbf(1,N,Vs,Vs,EQs), !.
+	
+	cbbf(I,N,[Xi|Xs],L,[Xi*(2+5*Xi**2) + 1==Si|Rest]) :- 
+		make_si(1,I,N,L,0,Si),
+		I1 is I+1,
+		cbbf(I1,N,Xs,L,Rest).
+	cbbf(_I,_N,[],_,[]).
+	
+	make_si(J,_,N,_,S,S)         :- J > N , !.                       % terminate
+	make_si(J,I,N,[Xj|Xs],S1,S)  :- I-5 =< J, J =< I+1, I\==J,  !,   % add a term
+	  J1 is J+1,
+	  make_si(J1,I,N,Xs,S1 + Xj*(1+Xj),S).
+	make_si(J,I,N,[_Xj|Xs],S1,S) :-                                  % skip
+	  J1 is J+1,
+	  make_si(J1,I,N,Xs,S1,S).
+Using `solve` will generate the correct result; for `N=5`:
+eg
+	﻿?- broyden(5,Vs,Es),Vs::real(-1,1),{Es},solve(Vs).
+	Vs = [_2925242, _2925248, _2925254, _2925260, _2925266],
+	Es = [_2925242*(2+5*_2925242**2)+1==0+_2925248*(1+_2925248), _2925248*(2+5*_2925248**2)+1==0+_2925242*(1+_2925242)+_2925254*(1+_2925254), _2925254*(2+5*_2925254**2)+1==0+_2925242*(1+_2925242)+_2925248*(1+_2925248)+_2925260*(1+_2925260), _2925260*(2+5*_2925260**2)+1==0+_2925242*(1+_2925242)+_2925248*(1+_2925248)+_2925254*(1+_2925254)+_2925266*(1+_2925266), _2925266*(2+5*_2925266**2)+1==0+_2925242*(1+_2925242)+_2925248*(1+_2925248)+_2925254*(1+_2925254)+_2925260*(1+_2925260)],
+	_2925242:: -0.428302...,
+	_2925248:: -0.476596...,
+	_2925254:: -0.519637...,
+	_2925260:: -0.558861...,
+	_2925266:: -0.558862... ;
+	false.
+If the Taylor contractor is used by itself, the result is less than satisfactory:
+eg
+	﻿?- broyden(5,Vs,Es),Vs::real(-1,1),build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X),Vs),T).
+	Vs = [_176150, _176156, _176162, _176168, _176174],
+	Es = [_176150*(2+5*_176150**2)+1==0+_176156*(1+_176156), _176156*(2+5*_176156**2)+1==0+_176150*(1+_176150)+_176162*(1+_176162), _176162*(2+5*_176162**2)+1==0+_176150*(1+_176150)+_176156*(1+_176156)+_176168*(1+_176168), _176168*(2+5*_176168**2)+1==0+_176150*(1+_176150)+_176156*(1+_176156)+_176162*(1+_176162)+_176174*(1+_176174), _176174*(2+5*_176174**2)+1==0+_176150*(1+_176150)+_176156*(1+_176156)+_176162*(1+_176162)+_176168*(1+_176168)],
+	T = cf_contractor([_176174, _176168, _176162, _176156, _176150], [_176702, _176708, _176714, _176720, _176726]),
+	_176150::real(-0.8986026814821333, 0.8192591229206055),
+	_176156::real(-0.9895306792624361, 0.9729979350338641),
+	_176162::real(-1, 1),
+	_176168::real(-1, 1),
+	_176174::real(-1, 1),
+	_176726::real(-1.0Inf, 1.0Inf),
+	_176720::real(-1.0Inf, 1.0Inf),
+	_176714::real(-1.0Inf, 1.0Inf),
+	_176708::real(-1.0Inf, 1.0Inf),
+	_176702::real(-1.0Inf, 1.0Inf).
+The problem is that the redundant constraints of centred form contractors become less effective when the intervals are wider, as we see here when the initial domains are reduced to `real(-1,0)`:
+eg
+	﻿?- broyden(5,Vs,Es),Vs::real(-1,0),build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X),Vs),T).
+	Vs = [_40440, _40446, _40452, _40458, _40464],
+	Es = [_40440*(2+5*_40440**2)+1==0+_40446*(1+_40446), _40446*(2+5*_40446**2)+1==0+_40440*(1+_40440)+_40452*(1+_40452), _40452*(2+5*_40452**2)+1==0+_40440*(1+_40440)+_40446*(1+_40446)+_40458*(1+_40458), _40458*(2+5*_40458**2)+1==0+_40440*(1+_40440)+_40446*(1+_40446)+_40452*(1+_40452)+_40464*(1+_40464), _40464*(2+5*_40464**2)+1==0+_40440*(1+_40440)+_40446*(1+_40446)+_40452*(1+_40452)+_40458*(1+_40458)],
+	T = cf_contractor([_40464, _40458, _40452, _40446, _40440], [_40992, _40998, _41004, _41010, _41016]),
+	_40440:: -0.428302864642701...,
+	_40446:: -0.47659653150109...,
+	_40452:: -0.5196377221007...,
+	_40458:: -0.5588619565270...,
+	_40464:: -0.5588619565270...,
+	_41016::real(-1.0Inf, 1.0Inf),
+	_41010::real(-1.0Inf, 1.0Inf),
+	_41004::real(-1.0Inf, 1.0Inf),
+	_40998::real(-1.0Inf, 1.0Inf),
+	_40992::real(-1.0Inf, 1.0Inf).
+When the initial domains can't be predicted so precisely, the `mid_split_one` contactor can be used to sub-divide the solution space; the redundant constraints will often quickly prune the search space:
+eg
+	﻿?- broyden(5,Vs,Es),Vs::real(-1,1),build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X),Vs),(T,mid_split_one(Vs))).
+	Vs = [_805840, _805846, _805852, _805858, _805864],
+	Es = [_805840*(2+5*_805840**2)+1==0+_805846*(1+_805846), _805846*(2+5*_805846**2)+1==0+_805840*(1+_805840)+_805852*(1+_805852), _805852*(2+5*_805852**2)+1==0+_805840*(1+_805840)+_805846*(1+_805846)+_805858*(1+_805858), _805858*(2+5*_805858**2)+1==0+_805840*(1+_805840)+_805846*(1+_805846)+_805852*(1+_805852)+_805864*(1+_805864), _805864*(2+5*_805864**2)+1==0+_805840*(1+_805840)+_805846*(1+_805846)+_805852*(1+_805852)+_805858*(1+_805858)],
+	T = cf_contractor([_805864, _805858, _805852, _805846, _805840], [_806392, _806398, _806404, _806410, _806416]),
+	_805840:: -0.4283028646427...,
+	_805846:: -0.47659653150...,
+	_805852:: -0.519637722...,
+	_805858:: -0.558861956...,
+	_805864:: -0.558861956...,
+	_806416::real(-1.0Inf, 1.0Inf),
+	_806410::real(-1.0Inf, 1.0Inf),
+	_806404::real(-1.0Inf, 1.0Inf),
+	_806398::real(-1.0Inf, 1.0Inf),
+	_806392::real(-1.0Inf, 1.0Inf) .
+Comparing performance, using the Taylor contractor produces a more precise answer than `solve` in a fraction of the time. (For `N = 40`, the Taylor version runs about 35 times faster.) Furthermore, it scales (approximately) linearly with `N` and is fairly insensitive to the initial range: 
+eg
+	﻿?- broyden(20,Vs,Es),Vs::real,build_taylor_merged(Es,T),
+	iterate_until(50,maplist([X]>>small(X),Vs),(T,mid_split_one(Vs))).
+	Vs = [_6830576, _6830582, _6830588, _6830594, _6830600, _6830606, _6830612, _6830618, _6830624, _6830630, _6830636, _6830642, _6830648, _6830654, _6830660, _6830666, _6830672, _6830678, _6830684|...],
+	Es = [_6830576*(2+5*_6830576**2)+1==0+_6830582*(1+_6830582), _6830582*(2+5*_6830582**2)+1==0+_6830576*(1+_6830576)+_6830588*(1+_6830588), _6830588*(2+5*_6830588**2)+1==0+_6830576*(1+_6830576)+_6830582*(1+_6830582)+_6830594*(1+_6830594), _6830594*(2+5*_6830594**2)+1==0+_6830576*(1+_6830576)+_6830582*(1+_6830582)+_6830588*(1+_6830588)+_6830600*(1+_6830600), _6830600*(2+5*_6830600**2)+1==0+_6830576*(1+_6830576)+_6830582*(1+_6830582)+_6830588*(1+_6830588)+_6830594*(1+_6830594)+_6830606*(1+_6830606), _6830606*(2+5*_6830606**2)+1==0+_6830576*(1+_6830576)+_6830582*(1+_6830582)+_6830588*(1+_6830588)+_6830594*(1+_6830594)+_6830600*(1+_6830600)+_6830612*(1+_6830612), _6830612*(2+5*_6830612**2)+1==0+_6830582*(1+_6830582)+_6830588*(1+_6830588)+_6830594*(1+_6830594)+_6830600*(1+_6830600)+_6830606*(1+_6830606)+_6830618*(1+_6830618), _6830618*(2+5*_6830618**2)+1==0+_6830588*(1+_6830588)+_6830594*(1+_6830594)+_6830600*(1+_6830600)+_6830606*(1+_6830606)+_6830612*(1+_6830612)+_6830624*(1+_6830624), _6830624*(2+5*_6830624**2)+1==0+_6830594*(1+_6830594)+_6830600*(1+_6830600)+_6830606*(1+_6830606)+_6830612*(1+_6830612)+_6830618*(1+_6830618)+_6830630*(1+_6830630), _6830630*(2+5*_6830630**2)+1==0+_6830600*(1+_6830600)+_6830606*(1+_6830606)+_6830612*(1+_6830612)+_6830618*(1+_6830618)+_6830624*(1+_6830624)+_6830636*(1+_6830636), _6830636*(2+5*_6830636**2)+1==0+_6830606*(... + ...)+_6830612*(1+_6830612)+_6830618*(1+_6830618)+_6830624*(1+_6830624)+_6830630*(1+_6830630)+_6830642*(1+_6830642), _6830642*(2+5*_6830642**2)+1==0+ ... * ... + _6830618*(... + ...)+_6830624*(1+_6830624)+_6830630*(1+_6830630)+_6830636*(1+_6830636)+_6830648*(1+_6830648), _6830648*(2+5*_6830648**2)+1== ... + ... + ... * ... + _6830630*(... + ...)+_6830636*(1+_6830636)+_6830642*(1+_6830642)+_6830654*(1+_6830654), _6830654*(2+5* ... ** ...)+1== ... + ... + ... * ... + _6830642*(... + ...)+_6830648*(1+_6830648)+_6830660*(1+_6830660), _6830660*(2+ ... * ...)+1== ... + ... + ... * ... + _6830654*(... + ...)+_6830666*(1+_6830666), _6830666*(... + ...)+1== ... + ... + ... * ... + _6830672*(... + ...), ... * ... + 1== ... + ... + ... * ..., ... + ... == ... + ..., ... == ...|...],
+	T = cf_contractor([_6830690, _6830684, _6830678, _6830672, _6830666, _6830660, _6830654, _6830648, _6830642, _6830636, _6830630, _6830624, _6830618, _6830612, _6830606, _6830600, _6830594, _6830588|...], [_6833558, _6833564, _6833570, _6833576, _6833582, _6833588, _6833594, _6833600, _6833606, _6833612, _6833618, _6833624, _6833630, _6833636, _6833642, _6833648, _6833654, _6833660|...]),
+	_6830576:: -0.428302863587250...,
+	_6830582:: -0.476596424356293...,
+	_6830588:: -0.519652463646401...,
+	_6830594:: -0.558099324856152...,
+	_6830600:: -0.592506155965083...,
+	_6830606:: -0.62450370741051...,
+	_6830612:: -0.62323866913245...,
+	_6830618:: -0.62141967671364...,
+	_6830624:: -0.61961584283347...,
+	_6830630:: -0.61822601791985...,
+	_6830636:: -0.61751802484149...,
+	_6830642:: -0.6177318303186...,
+	_6830648:: -0.61790031625...,
+	_6830654:: -0.6180077985...,
+	_6830660:: -0.61805706...,
+	_6830666:: -0.61806270...,
+	_6830672:: -0.61804720...,
+	_6830678:: -0.61801119...,
+	_6830684:: -0.61887208...,
+	_6830690:: -0.58627694...,
+	_6833672::real(-1.0Inf, 1.0Inf),
+	_6833666::real(-1.0Inf, 1.0Inf),
+	_6833660::real(-1.0Inf, 1.0Inf),
+	_6833654::real(-1.0Inf, 1.0Inf),
+	_6833648::real(-1.0Inf, 1.0Inf),
+	_6833642::real(-1.0Inf, 1.0Inf),
+	_6833636::real(-1.0Inf, 1.0Inf),
+	_6833630::real(-1.0Inf, 1.0Inf),
+	_6833624::real(-1.0Inf, 1.0Inf),
+	_6833618::real(-1.0Inf, 1.0Inf),
+	_6833612::real(-1.0Inf, 1.0Inf),
+	_6833606::real(-1.0Inf, 1.0Inf),
+	_6833600::real(-1.0Inf, 1.0Inf),
+	_6833594::real(-1.0Inf, 1.0Inf),
+	_6833588::real(-1.0Inf, 1.0Inf),
+	_6833582::real(-1.0Inf, 1.0Inf),
+	_6833576::real(-1.0Inf, 1.0Inf),
+	_6833570::real(-1.0Inf, 1.0Inf),
+	_6833564::real(-1.0Inf, 1.0Inf),
+	_6833558::real(-1.0Inf, 1.0Inf) .
+
+##### Ebers and Moll Transistor Model
+
+One of the more challenging examples in the literature is the Ebers-Moll transistor model consisting of 9 non-linear equations in 9 variables. From [Progress in the solving of a circuit design problem]:
+>	"*Ebers and Moll’s circuit design problem [6] is considered as a challenging benchmark for local and global methods. Recently, two interval-based techniques were successfully applied: Ratschek and Rokne’ algorithm [17] has derived the solution with a precision of four significant digits in about fourteen months using a network of thirty Sun Sparc 1 workstations; Puget and Van Hentenryck’ method [16] has solved the problem with a precision of eight significant digits in about forty minutes using a Sun Sparc UltraII workstation (the improvement is great though different machines were used).*"
+The quoted paper reports further algorithmic improvements resulting in 12 digit accuracy in less than 10 minutes. While `clpBNR`, being a wholly Prolog implementation, is not at all competitive on performance, this a good example of what issues can arise given such a "challenging" problem.
+
+The Prolog definition of the Ebers and Moll transistor example:
+.pl
+	ebers_moll(Vs,Es) :-
+		Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],
+		G1s=g1(0.485,0.752,0.869,0.982),
+		G2s=g2(0.369,1.254,0.703,1.455),
+		G3s=g3(5.2095,10.0677,22.9274,20.2153),
+		G4s=g4(23.3037,101.779,111.461,191.267),
+		G5s=g5(28.5132,111.8468,134.3844,211.4823),
+		eq1s(Vs,G1s,G2s,G3s,G4s,G5s,Eq1s),
+		eq2s(Vs,G1s,G2s,G3s,G4s,G5s,Eq2s),
+		flatten([Eq1s,Eq2s,X1*X3-X2*X4==0],Es).
+		 
+	eq1s(Xs,G1s,G2s,G3s,G4s,G5s,Eqs) :- eq1s(4,Xs,G1s,G2s,G3s,G4s,G5s,Eqs).
+	eq1s(0,Xs,G1s,G2s,G3s,G4s,G5s,[]) :-!.
+	eq1s(K,Xs,G1s,G2s,G3s,G4s,G5s,[EqK|Eqs]) :-
+		K1 is K-1, eq1s(K1,Xs,G1s,G2s,G3s,G4s,G5s,Eqs),
+		eq1(K,Xs,G1s,G2s,G3s,G4s,G5s,EqK).
+	
+	eq2s(Xs,G1s,G2s,G3s,G4s,G5s,Eqs) :- eq2s(4,Xs,G1s,G2s,G3s,G4s,G5s,Eqs).
+	eq2s(0,Xs,G1s,G2s,G3s,G4s,G5s,[]) :-!.
+	eq2s(K,Xs,G1s,G2s,G3s,G4s,G5s,[EqK|Eqs]) :-
+		K1 is K-1, eq2s(K1,Xs,G1s,G2s,G3s,G4s,G5s,Eqs),
+		eq2(K,Xs,G1s,G2s,G3s,G4s,G5s,EqK).
+		
+	eq1(K,[X1,X2,X3,X4,X5,X6,X7,X8,X9|Ys],G1s,G2s,G3s,G4s,G5s,
+		(1-X1*X2)*X3*(exp(X5*(G1K-G3K*X7*1e-3-G5K*X8*1e-3))-1)-G5K+G4K*X2 == 0
+		) :-
+		arg(K,G1s,G1K), arg(K,G3s,G3K), arg(K,G4s,G4K), arg(K,G5s,G5K).
+	
+	eq2(K,[X1,X2,X3,X4,X5,X6,X7,X8,X9|Ys],G1s,G2s,G3s,G4s,G5s,
+		(1-X1*X2)*X4*(exp(X6*(G1K-G2K-G3K*X7*1e-3+G4K*X9*1e-3))-1)-G5K*X1+G4K == 0
+		) :-
+		arg(K,G1s,G1K), arg(K,G2s,G2K), arg(K,G3s,G3K), arg(K,G4s,G4K), arg(K,G5s,G5K).
+Due to slow convergence, just applying the contraints and using `solve` is fairly ineffective; the builtin throttling mechanism, even with a fairly high `clpBNR_iteration_limit`, prematurely terminates many of the sub-branches without failing so pruning is minimal. Using the Taylor contractor is a significant improvement but can still take many hours before producing a moderately acceptable result (~4 digits of precision in agreement with the published answer).
+ 
+Through experimentation, it was discovered that it's better to split all variables at each iteration step rather than just splitting the largest interval, leading to:
+eg
+	﻿?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),build_taylor_merged(Es,T),
+	iterate_until(20,maplist(small,Vs),(T,maplist(mid_split,Vs))).
+	Vs = [X1, X2, X3, X4, X5, X6, X7, X8, X9],
+	Es = [(1-X1*X2)*X3*(exp(X5*(0.982-20.2153*X7*0.001-211.4823*X8*0.001))-1)-211.4823+191.267*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.869-22.9274*X7*0.001-134.3844*X8*0.001))-1)-134.3844+111.461*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.752-10.0677*X7*0.001-111.8468*X8*0.001))-1)-111.8468+101.779*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.485-5.2095*X7*0.001-28.5132*X8*0.001))-1)-28.5132+23.3037*X2==0,  (1-X1*X2)*X4*(exp(X6*(0.982-1.455-20.2153*X7*0.001+191.267*X9*0.001))-1)-211.4823*X1+191.267==0,  (1-X1*X2)*X4*(exp(X6*(0.869-0.703-22.9274*X7*0.001+111.461*X9*0.001))-1)-134.3844*X1+111.461==0,  (1-X1*X2)*X4*(exp(X6*(0.752-1.254-10.0677*X7*0.001+101.779*X9*0.001))-1)-111.8468*X1+101.779==0,  (1-X1*X2)*X4*(exp(X6*(0.485-0.369-5.2095*X7*0.001+23.3037*X9*0.001))-1)-28.5132*X1+23.3037==0, X1*X3-X2*X4==0],
+	T = cf_contractor([X9, X6, X4, X8, X7, X5, X3, X2, X1], [_984870, _984876, _984882, _984888, _984894, _984900, _984906, _984912, _984918]),
+	X1:: 0.8999987...,
+	X2:: 0.450031...,
+	X3:: 1.00016...,
+	X4:: 2.00019...,
+	X5:: 7.99965...,
+	X6:: 8.00055...,
+	X7:: 5.00084...,
+	X8:: 0.99987...,
+	X9:: 1.99956...,
+	_984918::real(-1.0Inf, 1.0Inf),
+	_984912::real(-1.0Inf, 1.0Inf),
+	_984906::real(-1.0Inf, 1.0Inf),
+	_984900::real(-1.0Inf, 1.0Inf),
+	_984894::real(-1.0Inf, 1.0Inf),
+	_984888::real(-1.0Inf, 1.0Inf),
+	_984882::real(-1.0Inf, 1.0Inf),
+	_984876::real(-1.0Inf, 1.0Inf),
+	_984870::real(-1.0Inf, 1.0Inf) 
+This is just the first solution returned. Again, throttling prevents running fixed point iteration long enough to find failures that would prune the search tree caused by splitting. The complete answer would be the union of all such solutions. But the computation costs of either disabling throttling or collecting all solutions is probably prohibitive for this example. (It's important to demonstrate the limitations of this technology as well as the potential benefits.)
+
+##### Summary
+
+CISC based interval constraint systems overcame deficiencies in RISC, such as slow convergence, by building sophisticated narrowing algorithms into the constraint engine. But metalevel contractors can overcome some of these deficiencies without complicating the underlying engine design. Advances in hardware and software (Prolog) results in comparable performance to earlier CISC implementations, although the comparison is a bit unfair and CISC engine implemented in C will always be faster than this implementation of CLP(BNR) on equivalent hardware. The other advantage of this metalevel design is that it facilitates experimentation with new contractors without understanding (or compromising) the details of the underlying constraint system. This faciliates the addition of "specialized" contractors that may be more effective for particular problem domains.
+
+<#TableOfContents>
+
+&
+	[Solving Polynomial Equations in one Variable] <- link #toc4Solving_Polynomial_Equations_in_one_Variable
+	[Progress in the solving of a circuit design problem] <- link https://www.researchgate.net/publication/2322545_Progress_in_the_Solving_of_a_Circuit_Design_Problem
+	[Algorithmic Power from Declarative Use of Redundant Constraints] <- link http://webhome.cs.uvic.ca/~vanemden/Publications/redund.pdf
+	[Appendix 2] <- link #toc4Appendix_2_-__clpBNRmeta_contractor.pl__Source

@@ -1,18 +1,23 @@
 ### Appendices
 
-#### Appendix 1 - `findroots.pl` Source
-@include supplemental/findroots.pl
-
-#### Appendix 2 - `linear.pl` Source
+#### Appendix 1 - `linear.pl` Source
+aside> ( [/*linear.pl*/raw text] )
 @include supplemental/linear.pl
 
+#### Appendix 2 - `clpBNRmeta_contractor.pl` Source
+aside> ( [/*clpBNRmeta_contractor.pl*/raw text] )
+@include supplemental/clpBNRmeta_contractor.pl
+
 #### Appendix 3 - `local_optima.pl` Source
+aside> ( [/*local_optima.pl*/raw text] )
 @include supplemental/local_optima.pl
 
 #### Appendix 4 - `integrateV.pl` Source
+aside> ( [/*integrateV.pl*/raw text] )
 @include supplemental/integrateV.pl
 
 &
-	//@import pkgs/highlight.mmk
-	// pl :: (content) => `<pre class=pl>${markit('text',content)}</pre>` 
-	//pl :: (content) => `<pre class=pl>${hljs.highlightAuto(content).value}</pre>`
+	[/*linear.pl*/raw text] <- link supplemental/linear.pl
+	[/*local_optima.pl*/raw text] <- link supplemental/local_optima.pl
+	[/*integrateV.pl*/raw text] <- link supplemental/integrateV.pl
+	[/*clpBNRmeta_contractor.pl*/raw text] <- link supplemental/clpBNRmeta_contractor.pl

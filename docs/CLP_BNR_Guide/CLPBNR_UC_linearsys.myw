@@ -1,0 +1,266 @@
+#### Solving Linear Systems
+
+In theory, systems of linear equations are just constraints which should be amenable to the standard CLP techniques already described. In the real world, just as in solving for the roots of polynomials, things are not quite so simple. Consider the following two examples of simple linear systems in two variables:
+eg
+	?- [X,Y]::real,{X+2*Y==1,X-Y==1}.
+	X:: 1.000000000000000...,
+	Y::real(-1.1102230246251565e-16,5.551115123125783e-17).
+
+	?- [X,Y]::real,{X+Y==1,X-Y==1}.
+	﻿X::real(-1.0e+16,1.0e+16),
+	Y::real(-1.0e+16,1.0e+16).
+In the first example, the fixed point iteration immediately converged to an approximate solution (`X=1, Y=0`), while in the second (almost identical) example, the fixed point iteration did not converge at all. To help explain this observation, here are the graphs of the two systems:
+[FPconvergance]
+The red and blue lines are the equations and the solid black lines represent fixed point iteration steps. In the case of no convergance, these steps form a square box (equations intersect at 90 degrees). This means that a fixed point is quickly reached but no narrowing occurs. In the convergent case, each iteration step results in a narrowing of the `X` or `Y` interval, and a solution is found quite quickly. So the first issue is that fixed point convergence is data dependent. (Note this isn't unique to linear systems but it's easy to demonstrate it with these simple examples.)
+
+Fortunately `solve/1` can be used overcome this deficiency:
+eg
+	?- [X,Y]::real,{X+Y==1,X-Y==1},solve(X).
+	﻿X:: 1.00000000...,
+	Y::real(-8.257253769627937e-10,8.257253769627937e-10).
+and, in this case, it works equally well if you solve for `X` or `Y` or both. However this may not always be the case. While the solution found should always be the same, the time taken to find it may vary widely (sometimes an order of magnitude or more). The following "real-world" examples were taken from [SYSTEMS OF LINEAR EQUATIONS AND MATRICES].
+
+##### Manufacturing: Production Scheduling
+"Ace Novelty wishes to produce three types of souvenirs: types A, B, and C. To manufacture a type-A souvenir requires 2 minutes on machine I, 1 minute on machine II, and 2 minutes on machine III. A type-B souvenir requires 1 minute on machine I, 3 minutes on machine II, and 1 minute on machine III. A type-C souvenir requires 1 minute on machine I and 2 minutes each on machines II and III. There are 3 hours available on machine I, 5 hours available on machine II, and 4 hours available on machine III for processing the order. How many souvenirs of each type should Ace Novelty make in order to use all of the available time?"
+
+This can be simply modeled by:
+.pl
+	ace_produce([A,B,C],[MI,MII,MIII]) :-
+		[A,B,C]::integer(0,_),   % numbers of each type to produce
+		{
+		   MI == 2*A + B + C,    % jobs for machine I
+		  MII == A + 3*B + 2*C,  % jobs for machine II
+		 MIII == 2*A + B + 2*C   % jobs for machine III
+		}.
+Fixed point iteration alone is insufficient but `solve` quickly finds the solution:
+eg
+	?- ace_produce([A,B,C],[180,300,240]).
+	A::integer(0,90),
+	B::integer(0,100),
+	C::integer(0,120).
+
+	?- ace_produce([A,B,C],[180,300,240]),solve(A).
+	A = 36,
+	B = 48,
+	C = 60 ;
+	false.
+So Ace Novelty should make 36 type-A souvenirs, 48 type-B souvenirs, and 60 type-C souvenirs.
+
+##### Capital Expenditure Planning
+The management of Hartman Rent-A-Car has allocated $1.5 million to buy a fleet of new automobiles consisting of compact, intermediate-size, and full-size cars. Compacts cost $12,000 each, intermediate-size cars cost $18,000 each, and full-size cars cost $24,000 each. If Hartman purchases twice as many compacts as intermediate-size cars and the total number of cars to be purchased is 100, determine how many cars of each type will be purchased. (Assume that the entire budget will be used.)
+eg
+	﻿?- [C,I,F]::integer(0,_),{C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I}.
+	﻿C::integer(0,100),
+	I::integer(0,50),
+	F::integer(0,62).
+
+	﻿?- [C,I,F]::integer(0,_),{C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I},solve(C).
+	C = 60,
+	I = 30,
+	F = 10 ;
+	false.
+As above, the dependancy issue requires the use of `solve/1` to generate a solution.  
+
+##### Simple D.C. Circuit Analysis
+This example has been included because [Towards Practical Interval Constraint Solving in Logic Programming] documents it as a linear system problem that is not handled well (at all?) by the CLP techniques described so far. Consider the D.C. circuit:
+[SimpleCircuit]
+The problem as stated is to solve for the currents flowing through the resistors assuming {`V=10`} volts and {`R_i = i Omega "for" i=1,2,...,9`}. The arrows indicate the direction of positive current flow. For the most part they are somewhat arbitrary; a negative value just means the flow is in the opposite direction. Applying Kirchhoff's laws yields the following equations:
+.am
+	    I_s-I_1-I_2-I_8 = 0,                                 I_1 = 10,
+	       -I_s+I_1+I_7 = 0,                   2I_2-3I_3-8I_8 = 0,
+	           I_2+I_3-I_5 = 0,                3I_3+5I_5-9I_9 = 0,
+	 -I_3-I_4+I_8-I_9 = 0,             -4I_4+6I_6+9I_9 = 0,
+	           I_4+I_6-I_7 = 0,  -I_1+4I_4+7I_7+8I_8 = 0,
+	           I_5-I_6+I_9 = 0
+As the paper states, there are 11 equations in 10 unknowns, but it's not obvious where the redundancy occurs. (Further it is suggested that initial ranges of `[-100,100]` be used for all intervals, although except for one case, this is not really necessary.)
+
+However consider {`I_s`}. From the equations, it is not obvious that it cannot be negative. But that implies that poitive current can flow from the negative to the positive terminals of the voltage supply. Furthermore any search, e.g., using `solve/1`, will spend considerable effort attempting to find solutions where this can occur. (The paper cited indicates either no answer was achieved within 24 hours on a 2 MIP CPU or no narrowing occurs even using `solve`.) But adding the simple constraint {`Is>=0`} generates the answer withing a second or two (machine dependent). Here's the CLP(BNR) program:
+.pl
+	simpleCircuit(Vs) :-
+		simpleCircuitDef(Vs,EQs),  % EQs is list of constraint equations in Vs
+		Vs::real,                  % declare so intervals are finite
+		{EQs}.                     % activate constraints
+
+	simpleCircuitDef([Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],
+		[
+		 Is-I1-I2-I8 == 0,                 I1 == 10,
+		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
+			I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
+		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
+			I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
+			I5-I6+I9 == 0
+		]).
+Again, no narrowing occurs in the initial fixed point iteration, but it's not obvious which variables to use with `solve`. As `solve` takes a list of variables (breadth first across all intervals named) there's no reason not to use the entire set of interval values:
+eg
+	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs).
+	﻿Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	I1 = 10,
+	Is::real(-9.99999999999999e+15, 1.0e+16),
+	I8::real(-6.25e+15, 6.25e+15),
+	I2::real(-1.0e+16, 1.0e+16),
+	I5::real(-1.0e+16, 1.0e+16),
+	I9::real(-8.888888888888889e+15, 8.888888888888889e+15),
+	I3::real(-1.0e+16, 1.0e+16),
+	I4::real(-1.0e+16, 1.0e+16),
+	I6::real(-1.0e+16, 1.0e+16),
+	I7::real(-1.0e+16, 9.99999999999999e+15).
+	
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),solve(Vs).
+	﻿Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	I1 = 10,
+	Is:: 10.8282986...,
+	I8:: 0.2592087...,
+	I2:: 0.5690898...,
+	I5:: 0.2572598...,
+	I9:: 0.0389787...,
+	I3:: -0.3118300...,
+	I4:: 0.5320600...,
+	I6:: 0.2962385...,
+	I7:: 0.8282986... ;
+	false.
+Using `solve` finds the solution in a few seconds, but there is an arguably missing constraint. We are probably not interested in the case where `Is` is negative, i.e., current flows from the positive terminal of the voltage source to the negative. Adding this constraint reduces the execution time by over a factor of three:
+eg
+	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
+	﻿% 14,300,256 inferences, 3.461 CPU in 3.477 seconds (100% CPU, 4131337 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	I1 = 10,
+	Is:: 10.8282986...,
+	I8:: 0.2592087...,
+	I2:: 0.5690898...,
+	I5:: 0.2572598...,
+	I9:: 0.0389787...,
+	I3:: -0.3118300...,
+	I4:: 0.5320600...,
+	I6:: 0.2962385...,
+	I7:: 0.8282986... .
+	
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),{Is>=0},time(solve(Vs)).
+	﻿% 3,750,130 inferences, 1.011 CPU in 1.016 seconds (100% CPU, 3707978 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	I1 = 10,
+	Is:: 10.828298...,
+	I8:: 0.2592087...,
+	I2:: 0.569089...,
+	I5:: 0.257259...,
+	I9:: 0.0389787...,
+	I3:: -0.3118300...,
+	I4:: 0.532060...,
+	I6:: 0.296238...,
+	I7:: 0.828298... .
+This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for solutions for negative `Is`.
+
+##### Under and Overdetermined Systems
+The examples above are nicely behaved but what happens if the system of equations is under or overdetermined? In case of the latter, incompatible additional constraints should result in failure:
+eg
+	?- [X,Y]::real,{X+2*Y==4,X-2*Y==0,4*X+3*Y==12}.
+	false.
+In the under-determined case, little or no narrowing occurs regardless of how hard `solve` tries to find a solution:
+eg
+	?- [X,Y,Z,W]::real,{X+2*Y-3*Z+W== -2, 3*X-Y-2*Z-4*W==1, 2*X+3*Y-5*Z+W== -3}, solve([X,Y,Z,W]).
+	﻿X::real(-1.0e+16, 1.0e+16),
+	W::real(-1.0e+16, 1.0e+16),
+	Y::real(-1.0e+16, 1.0e+16),
+	Z::real(-1.0e+16, 1.0e+16).
+In general, `solve` can take a long time to determine that little or no narrowing is possible if the set of linear equations is underdetermined.
+
+##### Using Gaussian Elimination
+As the examples above show, the general technique using `solve` (when necessary) with `{}` constraints can be used to solve systems of linear equations. Futhermore, there's nothing in this approach that is specific to linear systems. Non-linear equations and even inequalties can be specified without changing the basic strategy. That's not to say that this approach is the most efficient. When it is known that the problem is a linear system, standard numerical methods, e.g., Gaussian elimination, can be used with interval constraints to find solutions much faster than using `solve` (which, after all, is a pretty blunt instrument). Furthermore, these techniques can be used without undue concerns for accuracy; the mathematical correctness of the underlying arithmetic and the use of intervals contain any rounding errors in the answers.
+
+To demonstrate this, assume that there is a predicate `rewrite_linear(EQs,LinearEQs,OtherEQs)` which takes a list of constraints, `EQs` and separates them into two lists: `LinearEQs` which contain the linear equations (standard defintion) and `OtherEQs`. Furthermore conventional Gaussian elimination has been used to rewrite the original linear equations into an upper triangular form. (See [Appendix 1] for the souce of `rewrite_linear/3` which is too large to include here.) A few examples:
+eg
+	?- rewrite_linear([2*X+4*Y+6*Z==22,3*X+8*Y+5*Z==27,-X+Y+2*Z==2],Cs,Os).
+	Cs = [X+2*Y+3*Z==11,Y-2*Z== -3,Z==2].
+	Os = [].
+	
+	?- rewrite_linear([3*X-2*Y+8*Z==9,-2*X+2*Y+Z==3,X*Y==W,X+2*Y-3*Z==8],Cs,Os).
+	﻿Cs = [X-2r3*Y+8r3*Z==3, Y+19r2*Z==27r2, Z==1],
+	Os = [X*Y==W].
+The generated lists `Cs` and `Os` can then be used as input to `{}` to add them to the constraint network. In many cases this is sufficient to generate the solution:
+eg
+	﻿?- rewrite_linear([2*X+4*Y+6*Z==22,3*X+8*Y+5*Z==27,-X+Y+2*Z==2],Cs,Os),{Cs,Os}.
+	X = 3,
+	Y = 1,
+	Z = 2,
+	Cs = [3+2*1+3*2==11, 1-2*2== -3, 2==2],
+	Os = [].
+
+	﻿?- rewrite_linear([3*X-2*Y+8*Z==9,-2*X+2*Y+Z==3,X*Y==W,X+2*Y-3*Z==8],Cs,Os),{Cs,Os}.
+	X = 3,
+	Y = 4,
+	Z = 1,
+	W = 12,
+	Cs = [3-2r3*4+8r3*1==3, 4+19r2*1==27r2, 1==1],
+	Os = [3*4==12].
+For a complete set of linear equations (at least `N` equations in `N` unknowns, the constraint system does little more than back substitution and evaluation to produce the solution.
+
+The simple, slow convergent case from above:
+eg
+	?- rewrite_linear([X+Y==1,X-Y==1],Cs,Os).
+	Cs = [X+Y==1,Y==0],
+	Os = [].
+
+	﻿?- rewrite_linear([X+Y==1,X-Y==1],Cs,_),{Cs}.
+	X = 1,
+	Y = 0,
+	Cs = [1+0==1, 0==0].
+Note that, in all these examples, the solutions are exact because floating point values introduced in splitting intervals (with `solve`) have been avoided.
+
+Finally here is the "problematic" simple circuit example which now generates the solution in a few milliseconds without the use of `solve`:
+eg
+	﻿?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10,
+		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
+		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
+		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
+		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
+		    I5-I6+I9 == 0],Cs,_).
+	Cs = [Is-I1-I2-I8==0, I1==10, I2+I8-I7==0, I8-1r5*I7+3r10*I3==0, I7+13r8*I3-5r4*I5==0, I3+ ... * ... - 3*I9==0, ... - ... - ... * ... == 0, ... + ... == 0, ... == ...|...].
+	
+	?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10,
+		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
+		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
+		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
+		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
+		    I5-I6+I9 == 0],Cs,_),{Cs}.
+	Is = 55560r5131,
+	I1 = 10,
+	I2 = 2920r5131,
+	I8 = 190r733,
+	I7 = 4250r5131,
+	I3 = -1600r5131,
+	I5 = 1320r5131,
+	I9 = 200r5131,
+	I4 = 390r733,
+	I6 = 1520r5131,
+	Cs = [55560r5131-10-2920r5131-190r733==0, 10==10, 2920r5131+190r733-4250r5131==0, 190r733-1r5*4250r5131+3r10* -1600r5131==0, 4250r5131+13r8* -1600r5131-5r4*1320r5131==0, -1600r5131+ ... * ... - 3*200r5131==0, ... - ... - ... * ... == 0, ... + ... == 0, ... == ...|...].
+Again, the solution values are precise since the input values (voltage source and resistance values) are precise and the gaussian pivoting produces rational coefficients. Rationals are a bit hard to comprehend as output, but they can be converted to (approximate) floating point values using `FIx is float(Ix)`. Or force the use of floats by setting `I1` to a floating point value:
+eg
+
+	﻿?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10.0,
+		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
+		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
+		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
+		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
+		    I5-I6+I9 == 0],Cs,_),{Cs}.
+	﻿Cs = [Is-I1-I2-I8==0, I1==10.0, I2+I8-I7== -0.0, I8-1r5*I7+3r10*I3== -0.0, I7+13r8*I3-5r4*I5==0.0, I3+ ... * ... - 3*I9==0.0, ... - ... - ... * ... == 0.0, ... + ... == 0.0, ... == ...|...],
+	Is:: 10.8282985772753...,
+	I8:: 0.25920873124147...,
+	I7:: 0.8282985772753...,
+	I3:: -0.31183005262132...,
+	I5:: 0.25725979341259...,
+	I9:: 0.03897875657766...,
+	I4:: 0.5320600272851...,
+	I6:: 0.296238549990255...,
+	I2:: 0.5690898460339...,
+	I1:: 10.00000000000000... .
+
+In a real world example, precise input values for resistors and voltage are not practical, but imprecise values can be accomodated with intervals.
+
+The use of Gaussian elimination has a dramatic effect on performance; in the case of the circuit example, over two orders of magnitude. In particular, time is not wasted trying to find solutions to underdetermined sets of equations by splitting intervals. As was the case for finding the roots of polynomials using Taylor expansion, this demonstrates how the use of standard numerical methods, taking advantage of problem specific properties, can be used with interval constraints to improve on the general search techniques provided. Furthermore, the combination is mathematically sound, unlike using these same tecniques with floating point values. The use of `rewrite_linear/3` (or similar) can also be used with mixed linear and non-linear constraints. The only restriction is the full set of linear constraints must be provided in the input list, i.e., they can't be incrementally added. By pushing this responsibilty up to the application level, the underlying basic constraint handling is greatly simplified. In general, numerical methods that depend on more than one constraint (equation) must be implemented outside the constraint system.
+
+<#TableOfContents>
+
+&
+	[SYSTEMS OF LINEAR EQUATIONS AND MATRICES] <- link https://docplayer.net/21711942-The-linear-equations-in-two-variables-studied-in.html
+	[Towards Practical Interval Constraint Solving in Logic Programming] <- link https://pdfs.semanticscholar.org/1dca/e2a910184c4b2f9d770f054168150c6d0bde.pdf
+	[FPconvergance]  <- image images/linearConvergance.png width=50% height=50% style="margin-left:200px"
+	[Appendix 1] <- link #toc4Appendix_1_-__linear.pl__Source
