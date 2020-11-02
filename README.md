@@ -135,7 +135,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	Installed version:      0.9.3
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.3.zip" (34,710 bytes) Y/n? 
+	Install "clpBNR-0.9.3.zip" (35,985 bytes) Y/n? 
 	
 	?- use_module(library(clpBNR)).
 	
