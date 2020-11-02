@@ -333,11 +333,9 @@ simplify_list_([I|IArgs],[O|OArgs]) :-
 
 invert_term_(T/T,NewT/NewT) :- var(T),!.
 invert_term_([elem(V,N)|Es]/T,[elem(V,NN)|NEs]/NewT) :-  !,
-	(V==0.0 -> throw(error("Zero divisor in constraint expression":'_'/V)) ; true),  % throw exception if V=0.0
 	NN is -N,
 	invert_term_(Es/T,NEs/NewT).
 invert_term_([N|Es]/T,[NN|NEs]/NewT) :-
-	(N=:=0 -> throw(error("Zero divisor in constraint expression":N)) ; true),       % throw exception if A=0
 	NN is 1/N,
 	invert_term_(Es/T,NEs/NewT).
 	

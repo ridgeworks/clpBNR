@@ -986,7 +986,7 @@ eg
 	X:: 3.000000... ;
 	X:: 3.000000... ;
 	false.
-What happened here? The two roots (`X=1` and `X=3`) produced four answers. `solve`works by splitting intervals into pieces and discarding those pieces which provably do not contain solutions. Pieces which *may* contain solutions are split again, and the process is repeated. However to keep execution and time space under control, there is a minimum size interval which can be split as determined by the Prolog environment flag `clpBNR_default_precision` (default value=6) which roughly approximates the number of digits of precision. More precise answers can only be achieved by the basic fixed point iteration driven by the interval primitive operations (as indicated by the first example), or by changing the default precision (Prolog flag `clpBNR_default_precision`). 
+What happened here? The two roots (`X=1` and `X=3`) produced four answers. `solve` works by splitting intervals into pieces and discarding those pieces which provably do not contain solutions. Pieces which *may* contain solutions are split again, and the process is repeated. However to keep execution and time space under control, there is a minimum size interval which can be split as determined by the Prolog environment flag `clpBNR_default_precision` (default value=6) which roughly approximates the number of digits of precision. More precise answers can only be achieved by the basic fixed point iteration driven by the interval primitive operations (as indicated by the first example), or by changing the default precision (Prolog flag `clpBNR_default_precision`). 
 eg
 	﻿?- set_prolog_flag(clpBNR_default_precision,7).
 	true.

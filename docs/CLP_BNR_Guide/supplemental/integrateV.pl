@@ -1,3 +1,16 @@
+%
+% integrate/5 for User Guide Examples
+%
+integrate(DFxy,X,Initial,Final,YDomain) :-
+	current_prolog_flag(clpBNR_default_precision,Ctrl),
+	integrate(DFxy,X,Initial,Final,YDomain,Ctrl).
+
+integrate(DFxy,X,Initial,Final,YDomain,Ctrl) :-
+	integrate(DFxy,X,Initial,Final,YDomain,Ctrl,_).
+
+integrate(DFxy,X,(Xi,Yi),(Xf,Yf),YDomain,Ctrl,Out) :-
+	integrateV([DFxy],X,(Xi,[Yi]),(Xf,[Yf]),[YDomain],Ctrl,Out).
+
 /*=============================================================================*
  |  integrateV/5
  |

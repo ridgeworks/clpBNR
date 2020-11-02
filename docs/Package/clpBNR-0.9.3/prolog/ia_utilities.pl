@@ -232,37 +232,32 @@ traceChanges([Int|Ints], [In|Ins], [Out|Outs]) :-
 monitor_action_(trace, Update, Int) :-  !, % log changes to console and enter debugger
 	monitor_action_(log, Update, Int),
 	trace.
-
-monitor_action_(log, Update, Int) :-  !,  % log type change to console
-	monitor_desc_(Update, Desc),
-	debug_clpBNR_('~w~w to (~p)',[Desc,Int,Update]).
-
+monitor_action_(log, Update, Int) :-  var(Update), !,  % log interval unify
+	debug_clpBNR_('Unify ~p with ~p',[Int,Update]).
+monitor_action_(log, Update, Int) :-  number(Update), !,    % log interval unify with number
+	domain(Int,Dom),
+	debug_clpBNR_('Unify _?{~p} with ~p',[Dom,Update]).
+monitor_action_(log, integer, Int) :-  !,  % change type to integer
+	debug_clpBNR_('Set type of  ~p to ~p',[Int,integer]).
+monitor_action_(log, Val, Int) :-  !,  % narrow range
+	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
 monitor_action_(_, _, _).  % default to noop (as in 'none')
-	
-monitor_desc_(Var, 'Unify ') :- var(Var), !.  % unification of two intervals (rare case)
-monitor_desc_(integer, 'Set type of ') :- !.  % note: can't set integer to real
-monitor_desc_(_, 'Set value of ').  % assumed to be a list or number.
 
 %
 %  enumerate integer and boolean intervals
 %
 enumerate(X) :-
-	interval(X), !,   % if single interval, put it into a list
-	enumerate_([X]).  % list of one
+	domain(X,integer(L,H)), !,  % enumerable interval
+	between(L,H,X).             % gen values, constraints run on unification
 enumerate(X) :-
-	integer(X), !.    % already a point value
-enumerate(X) :-
-	enumerate_(X).
+	is_list(X), !,              % list of ..
+	enumerate_list_(X).
+enumerate(X).                   % X not enumerable, skip it
 
-enumerate_([]).
-enumerate_([X|Xs]) :-
-	number(X), !,     % already bound to a point value
-	enumerate_(Xs).
-enumerate_([X|Xs]) :-
-	interval(X),
-	getValue(X,(L,H)),
-	between(L,H,X),   % gen values, constraints run on unification
-	enumerate_(Xs).
+enumerate_list_([]).
+enumerate_list_([X|Xs]) :-
+	enumerate(X),
+	enumerate_list_(Xs).
 
 %
 % Definition of "small" interval based on width and precision value (defaults to clpBNR_default_precision)
@@ -270,9 +265,22 @@ enumerate_([X|Xs]) :-
 small(V) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	small(V,P).
+	
 small(V,P) :- 
-	range(V,[L,H]),
-	chk_small(L,H,10**(-P)).
+	Err is 10**(-P),
+	small_(V,Err).
+	
+small_(V,Err) :- 
+	getValue(V,(L,H)), !,
+	chk_small(L,H,Err).
+small_(L,Err) :-
+	is_list(L),
+	small_list_(L,Err).
+	
+small_list_([],_).
+small_list_([X|Xs],Err) :-
+	small_(X,Err),
+	small_list_(Xs,Err).
 	
 chk_small(L,H,Err) :- H-L < Err, !. 
 chk_small(L,H,Err) :- (H-L)/sqrt((L**2+H**2)/2) < Err.  % from CLIP?
@@ -303,7 +311,7 @@ global_minimum(Exp,Z,P) :- ground(Exp), !,
 global_minimum(Exp,Z,P) :-
 	term_variables(Exp,Xs),                      % vars to search on
 	{Z==Exp},                                    % Steps 1. - 4.
-	ranges_([Z|Xs],[(Zl,Zh)|XVs]),               % construct initial box
+	box_([Z|Xs],[(Zl,Zh)|XVs]),                  % construct initial box
 	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).        % and start iteration
 	
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
@@ -318,14 +326,15 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-          % termination criteria (Step 12.) met
 	{Zl=<Z, Z=<Zh}.  % no minimizer narrowing, may be many optima
 
-continue_MS(Zl,Zh,P,_,_,_) :-                      % w(Y) termination criteria
-	(Zh-Zl)/max(1,min(abs(Zl),abs(Zh))) > 10**(-P),  % fail if narrow enough
+continue_MS(Zl,Zh,P,_,_,_) :-                    % w(Y) termination criteria
+	Err is 10**(-P),
+	\+chk_small(Zl,Zh,Err),                      % fail continue_MS if narrow enough
 	!.
 continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
 	build_box_MS(Xs,XVs,T/T),
-	SP is min(6,P+2), % ?? heuristic
-	simplesolveall_(Xs,SP),	                     % validate solution
-	!, fail.  % no narrowing escapes
+	SErr is 10**(-min(6,P+2)), % ?? heuristic
+	simplesolveall_(Xs,SErr),                    % validate solution
+	!, fail.                                     % no narrowing escapes
 continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
@@ -334,7 +343,7 @@ eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-            % Step 7., calculate F(V) and s
 	nb_setval(eval_MS_,[]),                      % [] means failure to evaluate
 	buildConstraint_(XConstraint,T/T,Agenda),
 	build_box_MS(Xs,XVs,Agenda),
-	ranges_([Z|Xs],[(Zl,Zh)|NXVs]),              % copy Z and Xs solution bounds
+	box_([Z|Xs],[(Zl,Zh)|NXVs]),                 % copy Z and Xs solution bounds
 	nb_setval(eval_MS_,Zl-(Zh,NXVs)),            % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-
@@ -363,14 +372,11 @@ select_min(n(L,R,Min),Min,R) :- var(L), !,
 select_min(n(L,R,KData),Min,n(NewL,R,KData)) :-
 	select_min(L,Min,NewL).
 
-%
-% some possible general purpose routines
-%
-% construct list of interval bounds
-ranges_([],[]).
-ranges_([X|Xs],[R|Rs]) :-
+% construct box from interval bounds
+box_([],[]).
+box_([X|Xs],[R|Rs]) :-
 	getValue(X,R),
-	ranges_(Xs,Rs).
+	box_(Xs,Rs).
 
 % find widest interval and its midpoint
 widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
@@ -398,13 +404,15 @@ splitsolve(X) :-
 	splitsolve(X,P).
 
 splitsolve(X,P) :-
-	interval(X), !,               % if single interval, put it into a list
-	splitsolve([X],P).
-splitsolve(X,P) :-
 	number(X), !.                 % already a point value
-splitsolve(X,P) :-                % assume list
+splitsolve(X,P) :-
+	interval(X), !,               % if single interval, put it into a list
+	Err is 10**(-P),
+	simplesolveall_([X],Err).
+splitsolve(X,P) :-                % assumed to be a list
 	flatten_list(X,[],XF),        % flatten before iteration
-	simplesolveall_(XF,P).
+	Err is 10**(-P),
+	simplesolveall_(XF,Err).
 
 % flatten list(s) using difference lists
 flatten_list(V,Tail,[V|Tail])   :- var(V), !.
@@ -414,20 +422,29 @@ flatten_list([H|T], Tail, List) :- !,
 	flatten_list(T, Tail, HTail).
 flatten_list(N,Tail,[N|Tail]).
 
-simplesolveall_(Xs,P) :-
-	ranges_(Xs,XBs),
-	widest_MS(Xs,XBs,X,Xmid),  % fails if Xs=[]
-	interval_object(X,Type,XVal,_),   %getValue(X,[Xl,Xh]),
-	choice_generator_(Type,X,XVal,Xmid,P,Choices),
+simplesolveall_(Xs,Err) :-
+	select_wide_(Xs,D1,X),
+	interval_object(X, Type, (Xl,Xh), _),
+	midpoint_(Xl,Xh,Xmid),
+	choice_generator_(Type,X,(Xl,Xh),Xmid,Err,Choices),
 	!,
-	Choices,  % generate alternatives
-	simplesolveall_(Xs,P).
-simplesolveall_(Xs,P).  % terminated
+	Choices,              % generate alternatives
+	simplesolveall_(Xs,Err).
+simplesolveall_(Xs,Err).  % terminated
+
+select_wide_([X],_,X) :- !.       % select last remaining element
+select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
+	(var(D1) -> delta(X1,D1) ; true),
+	delta(X2,D2),
+	(D1 >= D2
+	 -> select_wide_([X1|Xs],D1,X)
+	 ;  select_wide_([X2|Xs],D2,X)
+	).
 	
-%	bisect_interval(real,X,[Xl,Xh],Xmid,P,({X=<pt(Xmid)};{pt(Xmid)=<X})) :-
-choice_generator_(real,X,(Xl,Xh),Xmid,P,bisect_interval_(real,X,Xmid)) :-
-	(Xh-Xl)/max(1,min(abs(Xl),abs(Xh))) > 10**(-P).
-choice_generator_(integer,X,(Xl,Xh),Xmid,_,enumerate(X)):-            % enumerate narrow integers
+%	bisect_interval(real,X,[Xl,Xh],Xmid,Err,({X=<pt(Xmid)};{pt(Xmid)=<X})) :-
+choice_generator_(real,X,(Xl,Xh),Xmid,Err,bisect_interval_(real,X,Xmid)) :-
+	\+ chk_small(Xl,Xh,Err), !.  % choice_generator_ fails if X is small real
+choice_generator_(integer,X,(Xl,Xh),_,_,enumerate(X)):-            % enumerate narrow integers
 	Xh-Xl =< 16, !.
 choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
 
@@ -546,14 +563,12 @@ xpsolve_each_([X|Xs],Us,Err) :-
 %
 
 splitinterval_(real,X,V,Err,({X =< SPt};{SPt =< X})) :-
-	%	getValue(X,V),
 	splitinterval_real_(V,Pt,Err), !,           % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 
 splitinterval_(integer,X,V,_,({X =< Pt};{Pt < X})) :-   % try to split and on failure use enumerate/1 .
-	%	getValue(X,V),
 	splitinterval_integer_(V,Pt), !.
-splitinterval_(integer,X,_,_,enumerate_([X])).           % failed to split, so enumerate
+splitinterval_(integer,X,_,_,enumerate(X)).             % failed to split, so enumerate
 
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
@@ -580,9 +595,8 @@ split_real_hi(X,(Pt,H),NPt,Err) :-         % search upper range for a split poin
 %
 % splitinterval_integer_ and splitinterval_real_ require ! at point of call.
 %
-	
 splitinterval_integer_((L,H),0) :-
-	L < 0, H > 0.                     % contains 0 but not 0 
+	L < 0, H > 0.                     % contains 0 but not bounded by 0 
 splitinterval_integer_((-1.0Inf,H),Pt) :-
 	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
 splitinterval_integer_((L,-1.0Inf),Pt) :-
@@ -591,8 +605,7 @@ splitinterval_integer_((L,H),Pt) :-
 	H-L >= 16,                        % don't split ranges smaller than 16
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
-
-splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on 0.
+splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on (precisely) 0.
 	L < 0, H > 0, !,                  % cut in case error criteria fails
 	(H-L) > E.                        % fail if width is less than error criteria, overflow is OK
 
@@ -606,19 +619,17 @@ splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
 	Pt < 1.0Inf.                          % Pt must be finite
 
 splitinterval_real_((L,H),Pt,E) :-    % finite L,H, positive or negative but not split, Pt\=0.
-	splitMean_(L,H,Pt),
-	Pt =\= 0,                         % if calculated split point zero, underflow occurred -> fail
-	(H-L) > max(abs(Pt),1)*E.         % fail if width is less than relative error, overflow is OK
+	\+ chk_small(L,H,E),              % only split if not small 
+	splitMean_(L,H,Pt), !.
 
 %splitinterval_real_([L,H],Pt,E) :-
 %	writeln('FAIL'([L,H],Pt,E)),fail.
 
 % (approx.) geometric mean of L and H (same sign)
-splitMean_(L,H,M) :- L>0, !, M is sqrt(L)*sqrt(H).       % all > 0
-splitMean_(L,H,M) :- H<0, !, M is -sqrt(-L)*sqrt(-H).    % all < 0
-
-splitMean_(L,H,M) :- L=:=0, !, M is min(H/2, sqrt( H)).  % L endpoint is 0
-splitMean_(L,H,M) :- H=:=0, !, M is max(L/2,-sqrt(-L)).  % H enpdoint is 0
+splitMean_(L,H,M) :-  L >=0, !,  % positive range
+	(L=:=0 -> M is min(H/2, sqrt( H)) ; M is sqrt(L)*sqrt(H)).
+splitMean_(L,H,M) :-             % negative range
+	(H=:=0 -> M is max(L/2,-sqrt(-L)) ; M is -sqrt(-L)*sqrt(-H)). 
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

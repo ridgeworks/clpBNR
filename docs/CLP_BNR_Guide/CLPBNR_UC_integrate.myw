@@ -179,11 +179,11 @@ The accuracy is considerably improved, although it took about 5 times longer due
 
 ##### Paratrooper Example
 
-"A falling paratrooper (and his parachute) weigh 200 lb. The parachute causes an opposing force to act on the paratrooper due to air resistance which is proportional to his velocity. If the downward velocity when the parachute opens is 40 ft./sec., and the air resistance is 80 lb. when the velocity is 20 ft./sec., find the paratrooper's downward velocity at 1 sec., 5 sec. and 10 sec. after the parachute opens."
+"*A falling paratrooper (and his parachute) weigh 200 lb. The parachute causes an opposing force to act on the paratrooper due to air resistance which is proportional to his velocity. If the downward velocity when the parachute opens is 40 ft./sec., and the air resistance is 80 lb. when the velocity is 20 ft./sec., find the paratrooper's downward velocity at 1 sec., 5 sec. and 10 sec. after the parachute opens.*"
  
 (This example and others in this section are taken from [Applied Differential Equations, 2nd Ed., M.R. Spiegel].)
 
-From Netwon's Second Law of Motion ({`F=ma`}), the motion of the paratrooper can be described as:
+From Newton's Second Law of Motion ({`F=ma`}), the motion of the paratrooper can be described as:
 
 math>	W/g*(dv)/dt = W-beta*v
 Isolating the derivative:
@@ -222,7 +222,7 @@ eg
 	B = 4,
 	W = 200,
 	Vf:: 49.9... .
-With a sufficiently small step size, the use of `absolve` is unnecessary. ``Ctrl` can also be used to improve the accuracy for the 5 sec. case:
+With a sufficiently small step size, the use of `absolve` is unnecessary. `Ctrl` can also be used to improve the accuracy for the 5 sec. case:
 eg
 	﻿?- G= 32, B=4, W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (5,Vf), real(0,_), 10).
 	G = 32,
@@ -233,7 +233,7 @@ Of course there's a tradeoff between a smaller step size and compute time. But t
  
 ##### Brine Tank Example
 
-"A tank is filled with 10 gal. of brine in which is dissolved 5 lb. of salt. Brine containing 3 lb. of salt per gal. enters the tank at 2 gal./min. and the well stirred mixture leaves at the same rate. How much salt is present after 10 min.? After 30 min.?"
+"*A tank is filled with 10 gal. of brine in which is dissolved 5 lb. of salt. Brine containing 3 lb. of salt per gal. enters the tank at 2 gal./min. and the well stirred mixture leaves at the same rate. How much salt is present after 10 min.? After 30 min.?*"
  
 If {`A`} is the amount of salt in the tank, {`dA//dt`} is the rate of change of this amount of salt, which is equal to the difference between the rate that salt enters and leaves: {`dA//dt = 2*3 - 2*(A//10)`} or `d(A)=6-A/5`. Initial condition: `A(0)=5`, so after 10 minutes:
 eg
@@ -311,7 +311,7 @@ Supporting systems of simultaneous permits solving of more complicated first ord
 
 ##### Cannon Example
 
-"A shell is fired from a cannon which has a muzzle velocity of 160 ft./sec. and is inclined at an angle of 60˚ to the horizontal. Determine the position and velocity of the shell after it is in flight for 2 and 4 sec."
+"*A shell is fired from a cannon which has a muzzle velocity of 160 ft./sec. and is inclined at an angle of 60˚ to the horizontal. Determine the position and velocity of the shell after it is in flight for 2 and 4 sec.*"
 
 From Newton's second law, {`dv_x//dt = 0`} and {`dv_y//dt = -g`}. Also {`dx//dt = v_x`} and {`dy//dt = v_y`}. Initial conditions are {`x(0)=0, y(0)=0, v_x(0) = 160 cos(pi//3), v_y(0) = 160 sin(pi//3)`} so:
 eg
@@ -376,7 +376,7 @@ eg
 
 ##### Vibrating Mass Example
 
-"The displacement {`x`} of a vibrating mass from it's equilibrium position is given by the differential equation {`(d^2x)/(dt^2)+3*dx/dt+5*x = cos 2*t`} where {`x=0`} and {`dx//dt=4`} when {`t=0`}. Find {`x`} and {`dx//dt`} at {`t=3`}."
+"*(The displacement {`x`} of a vibrating mass from it's equilibrium position is given by the differential equation {`(d^2x)/(dt^2)+3*dx/dt+5*x = cos 2*t`} where {`x=0`} and {`dx//dt=4`} when {`t=0`}. Find {`x`} and {`dx//dt`} at {`t=3`}.)*"
 eg
 	﻿?- integrateV([d(X1)=cos(2*T)-3*X1-5*X, d(X)=X1], T, (0,[4,0]), (0.3,[X1f,Xf]), [real,real]).
 	X1f:: 1.310...,
@@ -384,7 +384,7 @@ eg
 
 ##### Rocket Example
 
-"A rocket has a mass of 25,000 kg. of which 20,000 kg. is fuel. The rocket's exhaust velocity is 400 m./sec. (relative to the rocket) requiring a loss of 1000 kg. of fuel per sec. The rocket starts on the ground and travels vertically upward with the only external force being gravity. Find the velocity and height of the rocket after 15, 20, and 30 sec."
+"*A rocket has a mass of 25,000 kg. of which 20,000 kg. is fuel. The rocket's exhaust velocity is 400 m./sec. (relative to the rocket) requiring a loss of 1000 kg. of fuel per sec. The rocket starts on the ground and travels vertically upward with the only external force being gravity. Find the velocity and height of the rocket after 15, 20, and 30 sec.*"
 
 Rockets work through Newton's second law of motion, i.e., the time rate of change in momentum is equal to the force acting on the object. This is expressed by the differential equation {`F=M*(dV)/dt - e_v*(dM)/dt`}. where {`M`} is the mass of the rocket(and fuel) and  {`V`} and {`e_v`} are the velocities of the rocket and expelled gas respectively. For an initial mass of {`M_0`} and an burn rate of {`b`}, the mass of the rocket as a function of time is {`M_0-b*t`} so:
 

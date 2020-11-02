@@ -94,7 +94,7 @@ In more complicated examples, it may not be obvious what the additional constrai
 	X:: 0.8931356... ;
 	false.
 
-Note that all of these examples produce multiple solutions that are produced by backtracking in the top-leval listener (just like any other top level query). `solve/1` is one of several predicates in CLP(BNR) which "search" for solutions.
+Note that all of these examples produce multiple solutions that are produced by backtracking in the top-level listener (just like any other top level query). `solve/1` is one of several predicates in CLP(BNR) which "search" for solutions.
 
 Here is the current set of operators and functions supported in this version:
 
@@ -110,7 +110,7 @@ Here is the current set of operators and functions supported in this version:
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
 
-Further explanation and examples can be found at [BNR Prolog Papers][bnrpp] and in the [Guide to CLP(BNR)][clpBNR_UG] (a work in progress).
+Further explanation and examples, including a complete reference section, can be found in the [Guide to CLP(BNR)][clpBNR_UG]. Examples include problems in finite domains, and finding roots, global optima, and boundary value solutions to differential equations. Additional background material is available at [BNR Prolog Papers][bnrpp].
 
 [ia1]:         http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.44.6767
 [ia2]:         http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
@@ -121,53 +121,25 @@ Further explanation and examples can be found at [BNR Prolog Papers][bnrpp] and 
 [clpBNR_UG]:   https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
 [BNRParchive]: https://github.com/ridgeworks/BNRProlog-Source-Archive
 
-### Engineering Considerations
-
-Intervals are narrowed through a constraint propgation mechanism. When a new constraint is added, existing constraints must be checked and any intervals in those constraints may be narrowed. This iterative process normally continues until no further changes in interval values occur; the constraint network is now again in a stable state, and further constraints can now be added. Depending on the specific network, this could happen very quickly or take a very long time, particularly given the high precision of 64 bit floating point numbers.
-
-A simple example example is the quadratic equation `{X**2-2*X+1 == 0}` which has a single root at `X=1`. This will converge very, very slowly on the solution, in fact so slowly that few people will have the patience to wait for it, particularly when it be be easily solved by factoring the left hand side in a few seconds. To mitigate against this apparent non-termination, there is an internal limit on the number of narrowing operations that will executed after the addition of a constraint. Once this limit is exceeded, only intervals which narrow by a significant degree will cause the effects to be propagated to the other constraints. This stays in effect until the pending queue is emptied and the network is deemed stable. As a result, the intervals may not be narrowed to the full extent defined by the constraint network, but they will still contain and solutions and they will be generated in a reasonable time.
-
-The default value for the iteration limit is 3,000, and can be controlled by the Prolog flag `clpBNR_iteration_limit`. To demonstrate the effect, here's the query from the above paragraph:
-
-	?- clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	SS = [userTime(0.04670699999996941), gcTime(0.003), globalStack(293320/1048544), trailStack(45776/264168), localStack(2432/118648), inferences(178237), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
-	X:: 1.00... .
-
-So the interval bounds have narrowed to about 3 decimal places of precision using the default value. The `clpStatistics` shows that the maximum number of iterations has exceeded the default, indicating the iteration limiter has been activated (with an additional two narrowing operations required to clear the queue. To show the effects of increasing the limit:
-
-	?- set_prolog_flag(clpBNR_iteration_limit,100000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	SS = [userTime(1.5168969999999717), gcTime(0.101), globalStack(1030800/1048544), trailStack(341808/526312), localStack(2432/118648), inferences(5925487), narrowingOps(100001), narrowingFails(0), node_count(5), max_iterations(100001/100000)],
-	X:: 1.000... .
-
-A small increase in precision has been achieved, but it still exceeded the limit and took significantly longer. Decreasing the limit has the opposite effect:
-
-	?- set_prolog_flag(clpBNR_iteration_limit,1000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
-	SS = [userTime(0.015356999999994514), gcTime(0.001), globalStack(670376/1048544), trailStack(233712/264168), localStack(2432/118648), inferences(59737), narrowingOps(1001), narrowingFails(0), node_count(5), max_iterations(1001/1000)],
-	X::real(0.9921663400256505, 1.0083828203198095).
-
-Generally, the default provides adequate precision for most problems, and in many cases, limiting isn't even activated. When the problem requires additional precision and `clpStatistics` indicates limiting has occurred, the limit can be adjusted using the Prolog flag. Keep in mind that any positive answer is conditional since it indicates that there is no contradiction detected at the level of precision used in the arithmetic operations. This is true whether or not limiting is activated.
-
-There is a second Prolog flag defined, `clpBNR_default_precision`, which affects the precision of answers returned from search predicates, e.g., `solve/1`. These predicates typically split intervals into sub-ranges to search for solutions and this flag determines how small the interval can get before splitting fails. The value of the flag roughly specifies the number of digits of precision. The default value is 6, which is adequate for most purposes. In some cases the solver supports an additional argument to override the default value for the scope that call.
-
 ## Getting Started
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.2 or greater is required.
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.2.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.3.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.2.zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.3.zip')]).
 	Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.2
+	Installed version:      0.9.3
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.2.zip" (34,710 bytes) Y/n? 
+	Install "clpBNR-0.9.3.zip" (34,710 bytes) Y/n? 
 	
 	?- use_module(library(clpBNR)).
 	
-	*** clpBNR v0.9.2alpha ***
+	*** clpBNR v0.9.3alpha ***
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
@@ -232,6 +204,3 @@ This package sets the SWI-Prolog arithmetic flags as follows:
 	set_prolog_flag(float_undefined,nan),
 
 This package will not work as intended if these flag values are not respected.
-
-
-More documentation including many real world examples may be found in [Guide to CLP(BNR)][clpBNR_UG] (under construction). 

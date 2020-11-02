@@ -24,14 +24,14 @@
 %
 % API function for executing primitives
 %
-% evalNode(+primitive_name, ?persistence_flag, +list_of_inputs, ?list_of_outputs)
+% evalNode(+primitive_name, ?persistence_flag, +$(inputs..), -$(outputs..))
 %
 evalNode(Op, P, Is, R) :-
-	g_inc(evalNode),  % count of primitive calls
+	g_inc(evalNode),          % count of primitive calls
 	narrowing_op(Op, P, Is, R),
 	!.
 evalNode(Op, _, _, _):-
-	g_inc(evalNodeFail),  % count of primitive call failures
+	g_inc(evalNodeFail),      % count of primitive call failures
 	debugging(clpBNR, true),  % fail immediately unless debug=true
 	current_node_(Node),
 	debug_clpBNR_('Fail ~w',Node),
@@ -41,8 +41,8 @@ sandbox:safe_global_variable(evalNode).
 sandbox:safe_global_variable(evalNodeFail).
 
 clpStatistics :-
-	g_zero(evalNode),
-	g_zero(evalNodeFail),
+	g_assign(evalNode,0),
+	g_assign(evalNodeFail,0),
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(narrowingOps(C)) :- g_read(evalNode,C).
@@ -58,7 +58,7 @@ goal_expansion(H >  RHS, H > NegMaxFloat) :-
 	current_prolog_flag(float_max,MaxFloat),
 	NegMaxFloat is -MaxFloat.  % NegMaxFloat is nexttoward( -1.0Inf,0).
 %
-% non-empty inteval test, L=<H, infinte point values not permitted
+% non-empty inteval test, L=<H, infinte point values should fail
 %
 non_empty((L,H)) :- non_empty(L,H).
 non_empty(L,H) :-
@@ -95,15 +95,17 @@ intCase(s, (L,H)).                       % split
 	non_empty(Zl,Zh).
 
 %
-% wrap repeating interval onto a prime cylinder of width W, return projected interval and "mulipliers" to re-project
+% wrap repeating interval onto a prime cylinder of width W and
+% return projected interval and "mulipliers" to re-project
+% Note: fails if interval wider than W so beware of outward rounding on ranges, e.g., 
+%	range of [-pi/2,pi/2] on tan argument actually spans 3 cylinders (-1 to 1).
 %
-wrap_((Xl,Xh), W, (MXl,MXh), (Xpl,Xph)) :-  % project onto cylinder from -W/2 to W/2, fails if interval wider than W.
-	FMl is Xl/W, FMh is Xh/W,
-	MXl is round(FMl), MXl \= -1.0Inf,
-	MXh is round(FMh), MXh \=  1.0Inf,  % fail if unable to calculate MXl,MXh, e.g., due to infinite bound(s)
+wrap_((Xl,Xh), W, (MXl,MXh), (Xpl,Xph)) :-  % project onto cylinder from -W/2 to W/2
+	MXl is round(Xl/W),
+	MXh is round(Xh/W),
 	MXh-MXl =< 1, Xh-Xl =< W,  % MX check first to avoid overflow
 	Xpl is Xl - (MXl*W), Xph is Xh-(MXh*W).
-	
+
 %
 % unwrap projected interval back to original range
 %
@@ -175,46 +177,69 @@ ne_int_(Z, X, Z).
 
 % Z==(X=<Y)  % (Z boolean)
 
-narrowing_op(le, P, $((1,1), X, (Yl,Yh)), $((1,1), (NXl,NXh), (NYl,NYh))):-  % true case, possible narrowing
+narrowing_op(le, P, $(Z, X, Y), New) :-
+	(Z=(1,1)
+	 -> le_true(X,Y,New,P)             % Z true
+	  ; (Z=(0,0)
+	  	 -> le_false(X,Y,New,P)        % Z false
+	  	  ; le_bool(X,Y,New,P)         % Z unknown
+	  	)
+	).
+le_true(X, (Yl,Yh), $((1,1), (NXl,NXh), (NYl,NYh)), P) :-
 	^(X, (-1.0Inf,Yh), (NXl,NXh)),           % NewX := (Xl,Xh) ^(NI,Yh)
 	^((Yl,Yh), (NXl,1.0Inf), (NYl,NYh)),     % NewY := (Yl,Yh) ^(Xl,PI)
-	!,
 	(NXh =< NYl -> P=p ; true).              % will? always be true
 
-narrowing_op(le, p, $(Z, (Xl,Xh), (Yl,Yh)), $(NewZ, (Xl,Xh), (Yl,Yh))):-    % persistent case, set Z, X,Y unchanged
-	(Yh  < Xl -> Z1=(0,0)
-	;Xh =< Yl -> Z1=(1,1)
-	), !,
-	^(Z, Z1, NewZ).
-
-narrowing_op(le, P, $((0,0), X, Y), $((0,0), NewX, NewY)):-                 % (not le) not closed, i.e., integer op?
-	narrowing_op(lt, P, $((1,1), Y, X), $((1,1), NewY, NewX)), !.
-
-narrowing_op(le, _, $(Z,X,Y), $(NewZ,X,Y)) :- ^(Z,(0,1),NewZ).              % Z can be 0 or 1, narrow if necessary
+le_false(X, Y, $((0,0), NewX, NewY), P) :-
+	lt_true(Y,X,$(_,NewY,NewX),P).
+	
+le_bool((Xl,Xh), (Yl,Yh), $(NewZ, (Xl,Xh), (Yl,Yh)), P) :-
+	(Yh  < Xl
+	 -> (NewZ=(0,0), P=p)           % false persistant 
+	  ; (Xh =< Yl
+	  	 -> (NewZ=(1,1), P=p)       % true persistant
+		  ; NewZ=(0,1)              % indefinite boolean
+		)
+	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==(X<Y)  % (Z boolean) generally unsound on reals but possibly useful for minima/maxima
 
-%	Note: More expensive than necessary for Type integer, but we don't know that here.
-narrowing_op(lt, P, $((1,1), X, (Yl,Yh)), $((1,1), (NXl,NXh), (NYl,NYh))):-
-	YhD is nexttoward(Yh,-1.0Inf),
-	^(X, (-1.0Inf,YhD), (NXl,NXh)),     % NewX := (Xl,Xh) ^(NI,YhD)
-	XlD is nexttoward(NXl,1.0Inf),
-	^((Yl,Yh), (XlD,1.0Inf), (NYl,NYh)),      % NewY := (Yl,Yh) ^(Xl,PI)
-	!,
-	(NXh < NYl -> P=p ; true).                % will? always be true*/
+narrowing_op(lt, P, $(Z, X, Y), New) :-
+	(Z=(1,1)
+	 -> lt_true(X,Y,New,P)                   % Z true
+	  ; (Z=(0,0)
+	  	 -> lt_false(X,Y,New,P)              % Z false
+	  	  ; lt_bool(X,Y,New,P)               % Z unknown
+	  	)
+	).
 
-narrowing_op(lt, p, $(Z, (Xl,Xh), (Yl,Yh)), $(NewZ, (Xl,Xh), (Yl,Yh))):-     % persistent case, set Z, X,Y unchanged
-	(Yh =< Xl -> Z1=(0,0)
-	;Xh <  Yl -> Z1=(1,1)
-	), !,
-	^(Z, Z1, NewZ).
+lt_true( X, (Yl,Yh), $((1,1), (NXl,NXh), (NYl,NYh)), P) :-
+	next_lt_(Yh,-1,YhD),                      % YhD is next downward value from Yh
+	^(X, (-1.0Inf,YhD), (NXl,NXh)),           % NewX := (Xl,Xh) ^(NInf,YhD)
+	next_lt_(NXl,1,NXlU),                     % NXlU is next upward value from NXl
+	^((Yl,Yh), (NXlU,1.0Inf), (NYl,NYh)),     % NewY := (Yl,Yh) ^(NXlU,PInf)
+	(NXh < NYl -> P=p ; true).                % will? always be true
+	
+lt_false(X, Y, $((0,0), NewX, NewY), P) :-
+	le_true(Y,X,$(_,NewY,NewX),P).
+		
+lt_bool((Xl,Xh), (Yl,Yh), $(NewZ, (Xl,Xh), (Yl,Yh)), P) :-
+	(Yh  =< Xl
+	 -> (NewZ=(0,0), P=p)           % false persistant 
+	  ; (Xh < Yl
+	  	 -> (NewZ=(1,1), P=p)       % true persistant
+		  ; NewZ=(0,1)              % indefinite boolean
+		)
+	).
 
-narrowing_op(lt, P, $((0,0), X, Y), $((0,0), NewX, NewY)):-   % if Z false, Y=<X must be true
-	narrowing_op(le, P, $((1,1), Y, X), $((1,1), NewY, NewX)), !.
-
-narrowing_op(lt, _, $(Z,X,Y), $(NewZ,X,Y)) :- ^(Z,(0,1),NewZ).  % else just narrow Z to Bool if necessary
+% Note: can't narrow an infinite bound, minimize change to bound
+% Repeat, not sound on reals (uses nexttoward, missing values between floats)
+next_lt_( 1.0Inf, _,  1.0Inf) :- !.
+next_lt_(-1.0Inf, _, -1.0Inf) :- !.
+next_lt_(V, -1, NV) :- NV is max(V-1,nexttoward(V,-1.0Inf)).  % integers will get sorted out with `integral`
+next_lt_(V,  1, NV) :- NV is min(V+1,nexttoward(V, 1.0Inf)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -422,8 +447,8 @@ intersect_regions_(Z,X,NewZ) :-
 
 % NZ := Z ^ -X (unary minus)
 -((Xl,Xh), (Zl,Zh), (NZl,NZh)) :-
-	NZl is max(Zl,-Xh), NZh is min(Zh,-Xl).  % no empty check required
-%	NZl =< NZh.  % no infinity/overflow check required
+	NZl is max(Zl,-Xh), NZh is min(Zh,-Xl),
+	NZl =< NZh.  % no infinity/overflow check required
 
 %
 % abs(X) cases
@@ -439,11 +464,6 @@ absCase(s, (Xl,Xh), (Zl,Zh), (NZl,NZh)) :- NZl is max(Zl,0),   NZh is min(Zh,max
 narrowing_op(minus, _, $((Zl,Zh),(Xl,Xh)), $((NZl,NZh),(NXl,NXh))) :-
 	NZl is max(Zl,-Xh), NZh is min(Zh,-Xl),    % NewZ := Z ^ -X, no empty check required
 	NXl is max(Xl,-NZh), NXh is min(Xh,-NZl).  % NewX := X ^ -Z, no empty check required
-/*
-narrowing_op(minus, _, $(Z,X), $(NewZ, NewX)) :-
-	-(X,Z,NewZ),            % NewZ := Z ^ -X
-	-(NewZ,X,NewX).         % NewX := X ^ -Z
-*/
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

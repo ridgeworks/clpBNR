@@ -2,7 +2,7 @@
 title>	A Guide to CLP(BNR)
 centreblock>
 	**Constraint Logic Programming over Booleans, Integers and Reals**
-	**Version 0.9.2, October 2020**
+	**Version 0.9.3, November 2020**
 
 The word "constraint" is used in a variety of contexts from everyday life to physics, mathematics, and other sciences with much the same intuitive meaning, even when the formalization is different. A bead on a wire, a weight on a string, a beaker open to the atmosphere, a space mission limited by onboard fuel, a desert ecology limited by the lack of water are all examples of constrained systems.
 
@@ -20,7 +20,15 @@ This version of CLP(BNR) was largely based on the original, but has also incorpo
 
 While largely compatible with the original CLP(BNR), this version has some differences, partly mandated its implementation as a module on top of SWIP and partly to improve its usability. Specifics of these changes will be covered in the relevant sections of this document.
 
-This document is not focused on either the theoretical underpinnings of CLP(BNR) or on other CLP systems over other domains; these are adequately covered by the existing academic literature and relevant Web sites. Rather the focus is on the practical details of how Prolog programmers can use this version of CLP(BNR) to solve real problems.
+This document is not focused on either the theoretical underpinnings of CLP(BNR) or on other CLP systems over other domains; these are adequately covered by the existing academic literature and relevant Web sites. Rather the focus is on the practical details of how Prolog programmers can use this version of CLP(BNR) through numerous, hopefully useful, examples. For any particular problem, CLP(BNR) may not be the optimal approach (depending on the definition of "optimal") but the example should provide insight on how to use mathematical constraints that can be applied to other problem domains.
+
+aside>	Aside: This document was authored using "MyWord", a web publishing application loosely described as a user extensible  light weight markup langauge (think MarkDown). See [MyWord] for more information. 
+
+##### Acknowledgements
+The original CLP(BNR) on BNR Prolog using interval arithmetic was developed by Bill Older, John Rummell, and Andre Vellino ca. 1990. Fredéric Benhamou extended it to finite domains during a sabbatical in to BNR's Computing Research Lab in 1993. Additional capabilities from the larger CLP community have been incorporated and are referenced in the relevant sections of this User Guide.
+
+This version of CLP(BNR) would not have been possible without an active SWI-Prolog development community led by 
+Jan Wielemaker.  In particular, the addition of IEEE compatible  floating point arithmetic (non-numbers, rounding modes) and native support for rational numbers resulted in a greatly simplified and more efficient implementation.
 
 TOC>	{#id TableOfContents}`        `**Contents**
 
@@ -28,8 +36,9 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	CLPBNR_Module.myw
 	CLPBNR_SynSem.myw
 	CLPBNR_PrgCons.myw
-	CLPBNR_DevTools.myw
 	CLPBNR_UsingConstraints.myw
+	CLPBNR_Reference.myw
+	CLPBNR_DevTools.myw
 	CLPBNR_Appendices.myw
 &
 	[BNR Prolog Papers] <- link https://ridgeworks.github.io/BNRProlog-Papers
@@ -40,6 +49,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	[Numerica]          <- link https://www.sciencedirect.com/science/article/pii/S0004370298000538
 	[Interval Arithmetic: from Principles to Implementation] <- link http://fab.cba.mit.edu/classes/S62.12/docs/Hickey_interval.pdf
 	[SWI-Prolog]        <- link https://www.swi-prolog.org/
+	[MyWord]            <- link https://github.com/ridgeworks/MyWord
 
 	@import MyWordDocStyle.mmk pkgs/demo.mmk pkgs/toc.mmk pkgs/asciimath.mmk pkgs/tsv.mmk
 	{` .. `}      <- <math class = my_math display=inline> asciimath

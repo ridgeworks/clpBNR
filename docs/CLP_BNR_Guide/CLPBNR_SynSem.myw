@@ -2,7 +2,7 @@
 
 #### Prolog Arithmetic
 
-In executing a pure logic program, the result is independent of the order in which the statements (goals) are executed. This principal is violated by how arithmetic is traditionally implemented in Prolog systems. For example:
+In executing a pure logic program, the result is independent of the order in which the statements (goals) are executed. This principal (*monotonicity*) is violated by how arithmetic is traditionally implemented in Prolog systems. For example:
 eg
 	?- X=0, Y is X+1.
 	X = 0,
@@ -23,6 +23,8 @@ eg
 	?- Y #= X+1, X=0.
 	Y = 1,
 	X = 0.
+aside>	Aside: To achieve full monotonic behaviour requires the ability to write `?- Exp = X+1, Y #= Exp.` as `?- Y #= Exp, Exp = X+1.` which CLP(FD) supports as an option. CLP(BNR) does not support this option, i.e., once the constraint is applied to a variable, that variable is constrained to being a number so unifying with a symbolic expression will fail.
+
 To extend CLP into the domain of real numbers, two additional (and related) problems arise. First the set of real numbers has an infinite number of members many of which cannot be represented by the common floating point or rational number representations. Second, the computer based implementation of floating point arithmetic is unsound due to the decimal to binary conversion (e.g., `1.1` does not have a precise representation in IEEE float point format) and to rounding errors in evaluating floating point expressions. For example:
 eg
 	?- X is 1.1*1.1.
@@ -134,7 +136,7 @@ A constraint defines a relationship that must hold, i.e., evaluate to *true*. Fo
 
 aside> Aside: Since real values are represented by closed ranges defined by numbers which can be implemented as a computer data type (floating point, integer, or rational), the other inequalities (`<`, `>`, and `<>`) are incomplete, and therefore should, in general, be avoided. For example, the constraint {`X<Y`} means that any real values less than the (representable) lower bound of {`Y`} will be included in {`X`}. And since the (representable) upper bound of {`X`} must be less than the lower bound of {`Y`}, there are real values between the two that aren't in either {`X`} or {`Y`}. Any solutions in this "twilight zone" will never be found, hence the incompleteness of `<` (and by analogy `>` and `<>`) on `real` intervals.
 
-The left and right hand sides of the (in)equality can be any arithmetic expression using intervals and numbers (constants). (A complete list of supported functions is in the [Appendix TBD].) By convention, CLP(BNR) uses the same operators and semantics as the underlying Prolog arithmetic. for example:
+The left and right hand sides of the (in)equality can be any arithmetic expression using intervals and numbers (constants). (A complete list of supported functions is in "`clpBNR` Reference"). By convention, CLP(BNR) uses the same operators and semantics as the underlying Prolog arithmetic. for example:
 eg
 	?- {X**2==3}.
 	﻿X::real(-1.7320508075688776,1.7320508075688776).
@@ -482,8 +484,18 @@ eg
 	?- [X,Y]::real,{X or (Y+42)}.
 	X::boolean,
 	Y::real(-42,-41).
-However, it's often useful to combine boolean and numeric constraints as we'll see later.
-
+All the comparision relations are also boolean expressionsfacilitationg the expression of non-differentiable functions by combining boolean and numeric operations. For example, an alternative to the builtin `abs/1`:
+eg
+	﻿?- {Abs == ((X>=0) + (X=<0)* -1) *X}, X = 10.
+	Abs = X, X = 10.
+	
+	?- {Abs == ((X>=0) + (X=<0)* -1) *X}, X = -10.
+	Abs = 10,
+	X = -10.
+	
+	?- {Abs == ((X>=0) + (X=<0)* -1) *X}, X = 0.
+	Abs = X, X = 0.
+  
 <#TableOfContents>
 
 #### Controlling Constraint Propogation
@@ -526,6 +538,55 @@ eg
 	- `node_count` : size of the constraint network
 	- `max_iterations` : high water mark of iteration count/`clpBNR_iteration_limit`
 ```
+
+<#TableOfContents>
+
+#### Inconsistent Constraints
+
+In an ideal world, an inconsistent constraint (or mutually inconsistent constraints) should just fail as quickly as possible. In practice, detecting inconsistency may not be simple. The CLP(BNR) constraint compiler can detect some simple inconsistencies within a single constraint:
+eg
+	﻿?- {X==X+1}.
+	false.
+However:
+eg
+	﻿?- X::real, {X==Y+1,X==Y}.
+	X::real(-1.0e+16, 1.0e+16),
+	Y::real(-1.0e+16, 1.0e+16).
+This is valid in the context that positive results may or may not contain a solution. But consider:
+eg
+	﻿?- X::real(-1e2,1e2), {X==Y+1,X==Y}.
+	false.
+	
+	﻿?- X::real(-1e3,1e3),{X==Y+1,X==Y}.
+	X::real(-251.0000000000001, 251.0000000000001),
+	Y::real(-251.0000000000001, 250.0000000000001).
+This somewhat confusing behaviour is a product of the throttling behaviour described above. The fixed point iteration is causing some narrowing but the throttling mechanism kicks in before it visibly affects the interval bounds. In the first case the mechansim is not triggered before failure. In the second case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.)
+
+The alternative to this behaviour is the appearance of non-termination; it will take a long time to narrow a wide domain by incremental steps (size `1` in the example above). (The fixed point iteration can be shown to terminate but, at some point, practical considerations must take precedence.)
+
+Another interesting example of an inconsistent constraint (using `integer`'s because `>` is unsound over `real`'s)`:
+eg
+	﻿?- [X,Y]::integer, {Y>abs(X), X==Y}.
+	X::integer(375, 72057594037927559),
+	Y::integer(375, 72057594037927560).
+Throttling has terminated the fixed point iteration. If the initial domains are small enough:
+eg
+	﻿?- [X,Y]::integer(-10,10), {Y>abs(X), X==Y}.
+	false.
+
+Throttling only affects a single constraint addition, so one way to overcome its effects one of the solvers can be used to impose additional constraints via searching:
+eg
+	﻿?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}.
+	X::integer(428, 572),
+	Y::integer(429, 572).
+	
+	?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}, enumerate(X).
+	false.
+	
+	?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}, absolve(X).
+	false.
+
+As shown, inconsistent constraints can fail if the conditions are right, or may result in somewhat ambiguous answers. While they may be the result of incorrect constraint formulation, it's often difficult to discern when this is the case (unlike the examples above). Unfortunately, they don't always result in immediate failure so recognizing the symptoms can be important.
 
 <#TableOfContents>
 

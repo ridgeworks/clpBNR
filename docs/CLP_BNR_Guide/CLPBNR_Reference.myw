@@ -1,0 +1,513 @@
+### `clpBNR` Reference
+
+#### Intervals and Domains
+
+`clpBNR` intervals are attributed variables representing compact sets of real numbers. This set is defined by a *domain* consisting of the numeric type, a lower bound and an upper bound, and represented by the term `Type(Lower,Upper)`. This term is the *DomainSpec* of the interval. The sets of numbers include the bounds' values, so these are closed sets.
+
+The `Type` is the functor of the domain and can be either `real` or `integer`, representing compact sets of either real or integer numbers. The bounds of intervals of type `integer` will always be integers. Any operation which results in an non-integer bound of an `integer` interval will cause the bounds to be rounded inwards to the next integer value. A pseudo interval type of `boolean` is also supported but is just a synonym for `integer(0,1)`. Note that bounds can be infinite (represented by ±`inf` or IEEE infinities) for either type.
+
+Operations on intervals always narrow the range between `Lower` and `Upper` or do not result in any change to the bounds. If the condition `Lower =:= Upper` becomes true, the interval variable is unified with the value of the bounds. (This usually can't happen with `real` intervals with floating point bounds due to conservative rounding.) Any operation resulting in an empty set (`Lower > Upper` or infinte point value) will fail.
+
+The `clpBNR` attribute output using `write` (and associated predicates) on terms containing intervals is the domain of the interval if the `attribute` option is `portray`, i.e., `attribute(portray)`. Never use `attribute(write)` with terms containing intervals; this causes an infinte loop and usually SWI-Prolog crashes.
+
+Initial bounds are specified using the `::` operator.
+
+#### Constraints
+
+A `clpBNR` constraint is a boolean expression (i.e, evaluates to *true* or *false*). Boolean operators include equality (`==`) and the inequalities (`=<, <, <>` etc.), and (`and, or, not` etc.). (The full set of operators supported in `clpBNR` is listed below.) Any constraint which evaluates to false causes a Prolog failure at that point.
+
+`clpBNR` contains a fixed point iterator. Any change in an interval value will cause any constraints on the interval to be re-evaluated, possibly resulting in the narrowing of other intervals and triggering more re-evaluations. This process terminates when no further changes occur, or when the internal throttling mechanism is activated (see below). A stable state does not imply there is a solution in that state, but if there is a solution, it is contained in the "box" defined by the domains of the intervals. On the other hand, a failure does imply there is no solution in the domains of the constrained intervals.
+
+Constraints can be incrementally added. This is the process by which the initial domains are narrowed to a useful answer (given the proviso above) or failure occurs (no solution found).
+
+Constraints are syntactically defined using `{ ... }` brackets. (Note that `::` domain specifications are also a form of "constraint".)
+
+#### Environment Flags
+
+`clpBNR` defines three new Prolog environment flags:
+* `clpBNR_iteration_limit` - number of primitive fixed point operations before throttling, default:`3000` 
+* `clpBNR_default_precision` - approximate digits of precision required, default:`6` (see below for more info).
+* `clpBNR_verbose` - top level output detail for intervals, e.g., include constraints, default:`false`
+Intervals are narrowed through a constraint propagation mechanism. When a new constraint is added, existing constraints must be checked and any intervals in those constraints may be narrowed. This iterative process normally continues until no further changes in interval values occur; the constraint network is now again in a stable state, and further constraints can now be added. Depending on the specific network, this could happen very quickly or take a very long time, particularly given the high precision of 64 bit floating point numbers.
+
+A simple example example is the quadratic equation `{X**2-2*X+1 == 0}` which has a single root at `X=1`. This will converge very, very slowly on the solution, in fact so slowly that few people will have the patience to wait for it. To mitigate against this apparent non-termination, the flag `clpBNR_iteration_limit` specifies an internal limit on the number of narrowing operations that will executed after the addition of a constraint. Once this limit is exceeded, only intervals which narrow by a significant degree will cause the effects to be propagated to the other constraints. This stays in effect until the pending queue is emptied and the network is deemed stable. As a result, the intervals may not be narrowed to the full extent defined by the constraint network, but they will still contain any solutions and they will be generated in a reasonable time.
+
+The default value for the iteration limit is 3,000, and can be controlled by the Prolog flag `clpBNR_iteration_limit`. To demonstrate the effect, here's the example query from above:
+eg
+	?- clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
+	SS = [userTime(0.04670699999996941), gcTime(0.003), globalStack(293320/1048544), trailStack(45776/264168), localStack(2432/118648), inferences(178237), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
+	X:: 1.00... .
+So the interval bounds have narrowed to about 3 decimal places of precision using the default value. The `clpStatistics` shows that the maximum number of iterations has exceeded the default, indicating the iteration limiter has been activated (with an additional narrowing operation required to clear the queue). To show the effects of increasing the limit:
+eg
+	?- set_prolog_flag(clpBNR_iteration_limit,100000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
+	SS = [userTime(1.5168969999999717), gcTime(0.101), globalStack(1030800/1048544), trailStack(341808/526312), localStack(2432/118648), inferences(5925487), narrowingOps(100001), narrowingFails(0), node_count(5), max_iterations(100001/100000)],
+	X:: 1.000... .
+A small increase in precision has been achieved, but it still exceeded the limit and took significantly longer. Decreasing the limit has the opposite effect:
+eg
+	?- set_prolog_flag(clpBNR_iteration_limit,1000),clpStatistics,X::real,{X**2-2*X+1 == 0},clpStatistics(SS).
+	SS = [userTime(0.015356999999994514), gcTime(0.001), globalStack(670376/1048544), trailStack(233712/264168), localStack(2432/118648), inferences(59737), narrowingOps(1001), narrowingFails(0), node_count(5), max_iterations(1001/1000)],
+	X::real(0.9921663400256505, 1.0083828203198095).
+Generally, the default provides adequate precision for most problems, and in many cases, limiting isn't even activated. When the problem requires additional precision and `clpStatistics` indicates limiting has occurred, the limit can be adjusted using the Prolog flag. Keep in mind that any positive answer is conditional since it indicates that there is no contradiction detected at the level of precision used in the arithmetic operations. This is true whether or not limiting is activated.
+
+The `clpBNR_default_precision` flag defines a *small* interval in terms of the number of digits in common between the lower and upper bound. Among other uses, it controls the termination of searches in predicates like `solve` and `global_minimum` (see predicate descriptions below for details).
+ 
+In addition to the flags defined by `clpBNR`, several of the SWI-Prolog arithmetic flags must be configured to ensure correct operation:
+*	`prefer_rationals = true`
+*	`float_overflow = infinity`
+*	`float_zero_div = infinity`
+*	`float_undefined = nan`
+
+Rational numbers are supported (as precise bounds) but will be converted to floats if their size becomes excessive. This can be configured using the following predefined flags:
+*	`max_rational_size`, default=`16`
+*	`max_rational_size_action`, default=`float`
+The defaults will convert any rational bound whose size is greater than 16 bytes to to a floating point value. Note that this doesn't apply to integer bounds which are unlimited (as per SWI Prolog configuration).
+
+#### Predicate Description Conventions
+
+Many predicates accept a list of intervals as an argument. In most cases if the list has just one element, the interval can supplied without the list container; exceptions are otherwise noted. Also, any element of the list may be a list. This also applies to a list of constraints.
+
+*	*Intervals* - a single interval or a list of *Intervals*
+*	*Constraints* - a single constraint, a sequence of comma-separated *Constraints*, or a list of *Constraints*
+*	*DomainSpec* - a domain of the form `Type(Lower,Upper)`; on input (+ mode), `Type` by itself implies default bounds
+*	*Exp* - a valid `clpBNR` expression (see [{ +Constraints }]).  
+
+.pred	*+Intervals* **::** *?DomainSpec*
+The `::` infix operator is used to associate one or more intervals with a domain. If the domain is a variable it will be unfied with the domain of interval(s); in this case all intervals must have exactly the same domain, so this is really meant to query the domain of a single interval. This predicate can also be used to narrow the bounds of an existing interval provide the specified domain is intersects with domain; the new value is the intersection. `integer` can be applied to `real` intervals, but not vice versa since that would widen the domain.
+
+The bounds can be omitted (just specify type) in which case the default bounds will be used. Defaults will also be used if any of the bounds' values are variables. Valid bounds values include any numeric expression, including `inf`. Infinte bounds should be avoided since they inhibit convergence of the fixed point iteration, but they can result from the evaluation of constraints, e.g., divide by an interval containing `0`.
+
+Examples:
+eg
+	﻿﻿?- X::real, N::integer(1,10), N::Ndom.
+	 Ndom = integer(1, 10),
+	 X::real(-1.0e+16, 1.0e+16),
+	 N::integer(1, 10).
+	
+	﻿?- [X,[Y,Z]]::integer(0,_).
+	X::integer(0, 72057594037927935),
+	Y::integer(0, 72057594037927935),
+	Z::integer(0, 72057594037927935).
+	
+	﻿?- X::real, X::integer(-3r2,3r2).
+	X::integer(-1, 1).
+	
+	﻿?- X::real, X::integer(-1r2,1r2).
+	X = 0.
+	
+	﻿?- X::real(-2*pi,2*pi).
+	X::real(-6.283185307179587, 6.283185307179587).
+	
+	﻿?- X::Dom.
+	Dom = real(-1.0e+16, 1.0e+16),
+	X::real(-1.0e+16, 1.0e+16).
+	
+	﻿?- X::real(-inf,inf).
+	X::real(-1.0Inf, 1.0Inf).
+	
+	﻿?- X::real(-10,10), X::real(20,99).
+	false.
+Any rational bound value (includes integers) will be treated as a precise value; any floating point value is assumed to be imprecise and will be rounded outward:
+eg
+	﻿?- X::real(0.5,1.5), writeln(X).
+	_3720772{real(0.49999999999999994,1.5000000000000002)}
+	X::real(0.49999999999999994, 1.5000000000000002).
+	
+	?- X::real(1r2,3r2), writeln(X).
+	_3722412{real(1r2,3r2)}
+	X::real(0.5, 1.5).
+	
+	﻿?- X::real(pi,pi), writeln(X).
+	_3725610{real(3.1415926535897927,3.1415926535897936)}
+	X:: 3.14159265358979... .
+Note that the top level prints rational bounds other than integers as floats for readability. For the same reason, if an interval with floating point bounds is sufficiently narrow, the top level presents it in "ellipsis" format.
+
+.pred	**{** *+Constraints* **}**
+Apply constraints specifed by *Constraints*. A single constraint is a boolean expression which must evaluate to *true*; otherwise failure occurs. This can occur when the constraint is initially applied or when one or more of the interval variable's domain changes. Any non-interval variable in the constraints will be converted to an interval (`clpBNR` attributed variable).
+
+Operators and functions that can be used to compose constraints include:
+* equalities and inequalties - boolean operators `==, =:=, is, =<, >=, <, >, <>`
+* arithmetic - numeric operators `+, -, *, /, **` (`-` is used as prefix minus and infix subtraction)
+* logic - boolean operators `and, or, ~, nand, nor, xor`
+* set inclusion - boolean operators `=>, <=`
+* numeric functions - `abs/1, sqrt/1, min/2, max/2, exp/1, log/1, sin/1, cos/1, tan/1, asin/1, acos/1, atan/1`
+
+Notes:
+1..
+	* `==`, `=:=`, and `is` have identical semantics, i.e., equivalence. `==` is preferred; the others are included for historical reasons.
+	* Definitions for the additional operators which aren't pre-defined by SWI-Prolog can be found in [Module `clpBNR`]. module definition.
+	* Inequalities `<`, `>`, and `<>` are mathematically sound only on intervals of type `integer` (and, by extension, `boolean`). Care should be taken when used with `real`'s. `<>` may fail or force its arguments to be typed as `integer`.
+	* `log/1` returns logarithms to base {`e`}. 
+	* Types for variables which aren't intervals will have their initial types inferred from the constraint expression. Bounds will set to `±inf` (even for type `integer`).
+eg
+	?- {X>=Y}.
+	Y::real(-1.0Inf, 1.0Inf),
+	X::real(-1.0Inf, 1.0Inf).
+	
+	?- Cs=[X>=0,X=<10],{Y==X,Cs}.
+	Cs = [X>=0, X=<10],
+	Y::real(0, 10),
+	X::real(0, 10).
+	
+	﻿?- {A and B, C or D}.
+	A = B, B = 1,
+	C::boolean,
+	D::boolean.
+	
+	﻿?- Y::real(0.5,2.5),{X<>Y}.
+	Y::integer(1, 2),
+	X::integer(-1.0Inf, 1.0Inf).
+	
+	﻿?- {X<>1}.
+	X::integer(-1.0Inf, 1.0Inf).
+	
+	﻿?- {X<>1.5}.
+	false.
+
+The interval arithmetic system operates with values but some symbolic analysis done when the constraint is built to simplify constraint expressions. However many "identity" expressions will not be recognized:
+eg
+	﻿?- {Y==X-X}.
+	Y = 0.
+	
+	﻿?- {Y==exp(log(X)), Z==sin(X)**2+cos(X)**2}.
+	Y::real(0.0, 1.0Inf),
+	X::real(0.0, 1.0Inf),
+	Z::real(0, 2).
+	
+	﻿?- {Y==exp(log(X)), Z==sin(X)**2+cos(X)**2, X==pi/4}.
+	Y:: 0.78539816339744...,
+	X:: 0.785398163397448...,
+	Z:: 1.00000000000000... .
+
+.pred	**absolve**(*+Intervals*), **absolve**(*+Intervals, ++Integer*)
+**absolve** narrows one or more *Intervals* by "nibbling" bounds from the outside in until sub-ranges at the boundaries cannot be eliminated. The *Integer* "precision" argument (default value determined by flag `clpBNR_default_precision`) is the limit on the number of steps performed and controls the size of the sub-range, which is successively halved at each step. Unlike the rest of the **solve** family, **absolve** is deterministic.
+
+Examples of **splitsolve** can be found in earlier sections of this User Guide. **absolve** is sometimes used to eliminate "false positives" when splitting of intervals terminates due to precision limits or throttling terminates a fixed point iteration.
+
+.pred	**clpStatistic**(*+Statistic*), **clpStatistics**, **clpStatistics**(*--Statistics*)
+**clpStatistics** provides a facility to collect statistics related to `clpBNR` operation. **clpStatistics/0** resets the internal statistical counters and **clpStatistics/1** unifies *Statistics* with a list of the current statistics. **clpStatistic/1** unifies *Statistic* with a single `clpBNR` statistic. `clpBNR` statistics include:
+*	﻿`userTime(T)` - `T` = runtime (seconds)
+*	`gcTime(GCT)` - `GCT` = time spent in garbage collection (seconds)
+*	`globalStack(Gused/Gsize)` - `Gsize` = global stack size (bytes), `Gused` = global stack used (bytes),
+*	`trailStack(Tused/Tsize)` - `Tsize` = trail stack size (bytes), `Tused` = trail stack used (bytes),
+*	`localStack(Lused/Lsize)` - `Lsize` = local stack size (bytes), `Lused` = local stack used (bytes),
+*	`inferences(LI)` - `LI` = logical inferences
+*	`narrowingOps(NOps)` - `NOps` = narrowing operations attempted
+*	`narrowingFails(NFs)` - `NFs` = narrowing operation failures causing backtracking
+*	`node_count(NC)` - `NC` = number of narrowing operations in the constraint network
+*	`﻿max_iterations(FPIter/FPlimit)` - `FPIter` = maximum number of fixed point operations for single added constraint or unification, `FPLimit` - current throttling limit (see flag `clpBNR_iteration_limit`)
+Examples:
+	﻿?- clpStatistics,{Y==exp(log(X)), Z==sin(X)**2+cos(X)**2, X==pi/4},clpStatistics(SS).
+	SS = [userTime(0.0005590000000097461), gcTime(0.0), globalStack(35288/131040), trailStack(3944/133096), localStack(1992/118648), inferences(1606), narrowingOps(19), narrowingFails(0), node_count(10), max_iterations(19/3000)],
+	Y:: 0.78539816339744...,
+	X:: 0.785398163397448...,
+	Z:: 1.00000000000000... .
+	
+	﻿?- clpStatistics,X::real,{X**4-4*X**3+4*X**2-4*X+3==0},solve(X),absolve(X),clpStatistics(SS).
+	SS = [userTime(0.07313299999999856), gcTime(0.002), globalStack(47392/262112), trailStack(6032/133096), localStack(7944/118648), inferences(254936), narrowingOps(5402), narrowingFails(52), node_count(44), max_iterations(2253/3000)],
+	X:: 1.00000000... ;
+	SS = [userTime(0.29128800000000865), gcTime(0.011), globalStack(176824/262112), trailStack(24936/133096), localStack(7944/118648), inferences(993947), narrowingOps(22086), narrowingFails(120), node_count(43), max_iterations(3007/3000)],
+	X:: 3.00000000... ;
+	false.
+	
+	﻿?- clpStatistics,X::real,{X**2-2*X+1==0},clpStatistic(max_iterations(Time)).
+	Time = 3001/3000,
+	X:: 1.00... .
+
+.pred	**delta**(*+Interval, -Number*)
+*Number* is unified with the width (span) of an interval or a number (width is 0). Numbers are supported in case an interval has been narrowed to, and unified with, a point value. **delta/1** can also be used in a static arithmetic expression, i.e., in loaded code rather than dynamically constructed. (Uses `library(arithmetic)`.) 
+eg
+	?- X::real(1,10), delta(X,D), D1 is delta(X).
+	﻿D = D1, D1 = 9,
+	X::real(1, 10).
+	
+	?- delta(42,D).
+	D = 0.
+	
+	﻿?- X::real(0,inf), delta(X,D).
+	D = 1.0Inf,
+	X::real(0, 1.0Inf).
+	
+	?- delta(X,D).
+	false.
+
+.pred	**domain**(*+Interval, -DomainSpec*)
+Succeeds if *DomainSpec* can be unified with the domain of interval *Interval*:
+eg
+	﻿?- X::real, domain(X,D).
+	D = real(-1.0e+16, 1.0e+16),
+	X::real(-1.0e+16, 1.0e+16).
+	
+	?- N::integer(-1,_), domain(N,D).
+	D = integer(-1, 72057594037927935),
+	N::integer(-1, 72057594037927935).
+	
+	?- B::boolean, domain(B,D).
+	D = boolean,
+	B::boolean.
+	
+	?- B::boolean, domain(B,integer(L,H)).
+	L = 0,
+	H = 1,
+	B::boolean.
+	﻿?- domain(X,D).
+	false.
+	
+	?- domain(42,D).
+	false.
+ 
+.pred	**enumerate**(*+Intervals*)
+If *Intervals* is a single interval of type `integer`, it is unified with each value in its range, ordered from the lower to upper bound, non-deterministicly (next value generated on backtracking). If *Intervals* is a list of `integer` intervals, each member of the list is enumerated in list order. Any *Intervals* which are not `integer` intervals are skipped. (`enumerate/1` is semantically equivalent to `clpfd:label/1`).
+
+.pred	**global_maximum**(*+Exp, -Interval*), **global_maximum**(*+Exp, -Interval, ++Integer*)
+**global_maximum** unifies *Interval* with the global maximum of expression *Exp* - see **global_minimum**.
+
+.pred	**global_minimum**(*+Exp, -Interval*), **global_minimum**(*+Exp, -Interval, ++Integer*)
+**global_minimum** unifies *Interval* with an interval containing the global minimum of expression *Exp*. *Exp* is an expression of variables using the supported functions of interval arithmetic (see [{ +Constraints }]). This predicate uses the "Moore-Skelboe" algorithm with **splitsolve** to perform a directed search to find the global minimum of *Exp* over the range of its variables. The search stops when the range of the minumum value (*Interval*) meets the precision criteria; the default is defined by the flag `clpBNR_default_precision`, but can be overridden with the third optional argument.
+
+**global_minimum** will generate (and impose) the minimum value, but is not guaranteed to narrow the expression variables (the *minimizers*) accordingly since there generally may be more than one set. To generate the minimizers, a further "solving" step is necessary. While **global_minimum** is deterministic, the solving step may not be. The following example has a global mimimum of `6` at `X=0` and `X=3`:
+eg
+	﻿?- X::real(0,_),global_minimum(X**3-6*X**2+9*X+6,Z).
+	X::real(0, 6.000000066174462),
+	Z:: 6.00000... .
+	
+	﻿?- X::real(0,_),global_minimum(X**3-6*X**2+9*X+6,Z),solve(X),absolve(X).
+	X::real(0, 6.61744676417839e-8),
+	Z:: 6.00000... ;
+	X:: 0.0000001...,
+	Z:: 6.000001... ;
+	X:: 0.0000001...,
+	Z:: 6.000001... ;
+	X:: 0.000000...,
+	Z:: 6.000002... ;
+	X:: 2.9991083...,
+	Z:: 6.00000... ;
+	X:: 2.999108...,
+	Z:: 6.00000... ;
+	X:: 3.00...,
+	Z:: 6.00000... ;
+	X:: 3.000891...,
+	Z:: 6.00000... ;
+	false.
+Other examples of finding global optima can be found in earlier sections of this User Guide.
+
+As is the case in general, any *Interval* result does not guarantee there is a global minimum in the interval; only that if there is a global minimum, it is contained in the interval.
+
+Finding global optima via a general search can be computationally expensive; limit ranges and use other constraints to sharpen the results and prune the search space as much as possible.
+
+.pred	**interval**(*@Term*)
+Succeeds if *Term* is an interval, i.e., a variable with a `clpBNR` attribute.
+eg
+	﻿?- interval(X).
+	false.
+	
+	?- X::real,interval(X).
+	X::real(-1.0e+16, 1.0e+16).
+	
+	?- X::real,X=42.0,interval(X).
+	false.
+
+.pred	**list**(@Term)
+Equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>). (Supported for historical reasons.) 
+
+.pred	**lower_bound**(*+Interval*)
+Unifies *Interval* with its lower bound; equivalent to `range(Interval,[L,_]), Interval=L`. (Supported for historical reasons.)
+eg
+	﻿?- X::real(1,10),lower_bound(X).
+	X = 1.
+	
+	?- lower_bound(42).
+	true.
+	
+	?- lower_bound(X).
+	false.
+
+.pred	**median**(*+Interval, -Number*)
+*Number* is unified with the *median* of an interval or a number. Numbers are supported in case an interval has been narrowed to, and unified with, a point value. *median* is a floating point value defined as follows: if *Interval* contains 0, the median is `0.0`, else it is a number which divides the interval in two, such that each half contains the same number of floating point values. Infinities are treated as their closest floating point value. Note that floating point values are biased towards 0, i.e, there are as many floating point values between 0.0 and 1.0 as there are between 1.0 and `inf` (actually more die to sub-normals).The **median** value is sometimes used to select a point to split an interval in bifurcating searches.
+
+`**median**` can also be used in a static arithmetic expression (see [**delta/2**]). 
+eg
+	﻿?- X::real, median(X,M).
+	M = 0.0,
+	X::real(-1.0e+16, 1.0e+16).
+	
+	﻿?- X::real(0,inf),median(X,M).
+	M = 2.980232238769531e-8,
+	X::real(0, 1.0Inf).
+	
+	?- X::real(-inf,-1),median(X,M).
+	M = -1.3407807929942596e+154,
+	X::real(-1.0Inf, -1).
+	
+	﻿?- M is median(42).
+	M = 42.0.
+
+.pred	**midpoint**(*+Interval, -Number*)
+*Number* is unified with the *midpoint* of an interval or a number. Numbers are supported in case an interval has been narrowed to, and unified with, a point value. The *midpoint* of an interval is the average of the lower and upper bounds. Infinite bounds are rounded inward to the largest finite value. A symmetric interval (`-Lower =:= Upper`) has a precise *midpoint* of `0`. Unlike *median* which always is a floating point value, the midpoint of an interval with precise bounds will be a precise value.
+**midpoint** can also be used in a static arithmetic expression (see [**delta/2**]). 
+eg
+	﻿?- X::real, midpoint(X,M).
+	M = 0,
+	X::real(-1.0e+16, 1.0e+16).
+	
+	?- X::real(0,1), midpoint(X,M).
+	M = 1r2,
+	X::real(0, 1).
+	
+	?- X::real(-1.0,10.0), midpoint(X,M).
+	M = 4.500000000000001,
+	X::real(-1.0000000000000002, 10.000000000000002).
+	
+	?- M is midpoint(-42).
+	M = -42.
+
+.pred	**partial_derivative**(*+Exp, --Var, -Exp*)
+**partial_derivative** symbolically unifies the third argument with the partial derivative of the first argument with respect to the variable *Var*. To succeed, the functions in *Exp* must be a differentiable member of the functions supported by [{ +Constraints }]. For example, `min, max, abs,` and the boolean functions are non-differentiable and including any of them will cause **partial_derivative** to fail. A best-effort attempt is made to simplify the derivative expression, e.g., by removing any `0*Exp` sub-expressions:
+eg
+	﻿?- partial_derivative(X**2-2*X+1,X,D).
+	D = 2*X-2.
+	
+	?- partial_derivative(X**2-2*X+1,Y,D).
+	D = 0.
+	
+	﻿?- partial_derivative(sin(X)**2+X,X,D).
+	D = 2*cos(X)*sin(X)+1.
+	
+	?- partial_derivative(sin(X)**2+cos(X)**2,X,D).
+	D = 0.
+This predicate is largely independent of CLP over intervals. It is included for its general utility and its usefulness in constructing redundant constraints, e.g. meta-level contractors.
+
+.pred	**print_interval**(*@Term*), **print_interval**(*+Output, @Term*)
+Outputs *Term* with enclosed intervals printed as a more readable **::** declaration with simple renamed interval variables. For the arity two version, *Output* can be any of the options supported by the `format` predicates.
+Examples:
+	﻿?- X::real,print_interval(X).
+	V0::real(-1.0e+16,1.0e+16)
+	X::real(-1.0e+16, 1.0e+16).
+	
+	﻿?- [X,Y,Z]::boolean,print_interval(f(X,[Y|Z])).
+	f(V0::boolean,[V1::boolean|V2::boolean])
+	X::boolean,
+	Y::boolean,
+	Z::boolean.
+	
+	﻿?- N::integer(-1,1),print_interval(string(S),N).
+	S = V0::integer(-1,1),
+	N::integer(-1, 1).
+
+.pred	**range**(*+Interval, -List*)
+*List* is unified with the list `[Lower,Upper]` where `Lower` and `Upper` are the bounds of *Interval*. **range** can also be used to define an interval if the first argument is a variable. It cannot be used to narrow an existing interval, but it can be used to test its bounds:
+eg
+	﻿?- N::integer, range(N,R).
+	R = [-72057594037927936, 72057594037927935],
+	N::integer(-72057594037927936, 72057594037927935).
+	
+	?- range(X,R).
+	R = [-1.0e+16, 1.0e+16],
+	X::real(-1.0e+16, 1.0e+16).
+	
+	?- range(X,[-1,1]).
+	X::real(-1, 1).
+	
+	?- range(1.0,R).
+	R = [1.0, 1.0].
+	
+	﻿?- N::real(-1,1), range(N,[_,1]).
+	N::real(-1, 1).
+	
+	﻿?- Y::real,{X == 1/Y}, range(X,[_,inf]).
+	Y::real(-1.0e+16, 1.0e+16),
+	X::real(-1.0Inf, 1.0Inf).
+
+.pred	**small**(*+Intervals*), **small**(*+Intervals, ++Integer*)
+Succeeds if all *Intervals* are "small" based on the optional precision value in the second argument (defaults to precision value define by flag `clpBNR_default_precision`). The precison value roughly corresponds to the number of leading decimal digits of the lower and upperbounds that agree. Numeric values (point intervals), by definition, are small.
+eg
+	﻿?- {X==0.0}, small(X).
+	X:: 0.0000000000000000... .
+	
+	?- [X,Y]::real, {1==X+2*Y, Y-3*X==0}, small([X,Y]).
+	X:: 0.142857142857142...,
+	Y:: 0.428571428571428... .
+	
+	﻿?- small(42).
+	true.
+	
+	﻿?- X::real,small(X).
+	false.
+	
+	﻿?- small(X).
+	false.
+
+.pred	**splitsolve**(*+Intervals*), **splitsolve**(*+Intervals, ++Integer*)
+**splitsolve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). Each interval is split at its midpoint.
+ 
+If the *Intervals* list length is greater than one, the widest interval is split at each step. **splitsolve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
+
+The second argument can be used to override the current global precision value (flag `clpBNR_default_precision`).
+
+A fundamental issue with **splitsolve** is that it may create several solutions in the neighbourhood of a single solution value when the solution is too small to split but too large to eliminate it from a possible solution space. Using a higher precision value usually doesn't help. Instead try adding additional redundant constraints, e.g., Taylor series expansions.
+
+**splitsolve** is frequently used with **global_minimum** and **global_minimum** to find global minimizers/maximizers:
+eg
+	﻿?- X::real(0,pi),global_maximum(X**2*sin(X),Z).
+	X::real(2.2877547452163918, 3.1415926535897936),
+	Z:: 3.94530... .
+	
+	﻿?- X::real(0,pi),global_maximum(X**2*sin(X),Z),splitsolve(X).
+	X:: 2.28837...,
+	Z:: 3.94530... .
+Other examples using **splitsolve** can be found in earlier sections of this User Guide.
+
+.pred	**solve**(*+Intervals+*), **solve**(*+Intervals, ++Integer*)
+Like **splitsolve**, **solve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). **solve** is intended only for cases where a fixed point is a join of several smaller fix points.  If a point in the interval can be found which is not a solution, the  problem can be decomposed into two smaller problems. This is applied recursively until the interval becomes "small" or no split point can be found.
+
+If the *Intervals* list length is greater than one, the leftmost interval in the list is split. Like **splitsolve**, **solve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
+eg
+	﻿?- [X,Y]::real, {X+Y==2,X-Y==0}.
+	X::real(-9.999999999999998e+15, 1.0e+16),
+	Y::real(-9.999999999999998e+15, 1.0e+16).
+	
+	﻿﻿?- [X,Y]::real, {X+Y==2,X-Y==0}, solve([X,Y]).
+	 X:: 1.00000000...,
+	 Y:: 1.00000000... .
+	
+	?- [X,Y]::integer, {X+Y==2,X-Y==0}, solve([X,Y]).
+	X = Y, Y = 1.
+Other examples using **solve** can be found in earlier sections of this User Guide.
+
+.pred	**upper_bound**(*+Interval*)
+Unifies *Interval* with its upper bound; equivalent to `range(Interval,[_,H]), Interval=H`. (Supported for historical reasons.)
+eg
+	﻿?- X::real(1,10),upper_bound(X).
+	X = 10.
+	
+	?- upper_bound(42).
+	true.
+	
+	?- upper_bound(X).
+	false.
+
+.pred	**watch**(*+Intervals, ++Atom*)
+**watch** enables the monitoring of one or more intervals when the `clpBNR` debug topic is enabled (see [Development Tools for CLP(BNR)]). *Atom* specifies an action to occur when any of the intervals change in value; supported actions include:
+*	`log` - log the change in the debug output stream
+*	`trace` - log the change and enter the debugger.
+*	`none` - remove any currently enabled actions
+Actions must be applied after the interval has been created and exist only for the lifetime of that interval:
+eg
+	﻿?- debug(clpBNR), X::real,watch(X,log),{X>=0},X=42.
+	% Add {_12100{real(-1.0e+16,1.0e+16)}>=0}
+	% Set value of _12100{real(-1.0e+16,1.0e+16)} to (0,1.0e+16)
+	% Unify _?{real(0,1.0e+16)} with 42
+	X = 42.
+Note that in the unification case the original interval variable has been lost (unify hook is called after unification occurs) so the variable "name" is replaced with `_?`.
+
+<#TableOfContents>
+
+&
+	[Module `clpBNR`] <- link #toc3Module_clpBNR
+	[{ +Constraints }] <- link #toc4**_**_*+Constraints*_**_**
+	[**delta/2**] <- link #toc4**delta**(*+Interval,_-Number*)
+	[Development Tools for CLP(BNR)] <- link #toc3Development_Tools_for_CLP(BNR)
+	.pred .. <- pred 4
+	// cloned from x-markup.mmk header definition with added "style" attribute
+	pred       :: (c, level) =>
+	              `<h${level} class=pred${level} style="margin:1; outline:solid; outline-width:thin; padding-left
+	              :4px; font-weight:normal" id='toc${level}${c.trim().replace(/[^\w$-@.&!*(),]/g, '_')}'>${markit('prose', c)}</h${level}>`

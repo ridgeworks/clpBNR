@@ -12,7 +12,7 @@ eg
 	false.
 Sheer volume makes this approach infeasible for narrowing operations, so this must be debugged at the package source level using standard tools. Hopefully this is seldom necessary.
 
-In addition, it is possible to set interval watch points which generate a trace of changes of that interval using the `watch/2` predicate:
+In addition, it is possible to set interval watch points which generate a trace of changes of that interval using [**watch/2**]:
 eg
 	?- debug(clpBNR).
 	true.
@@ -50,11 +50,14 @@ eg
 	% Set value of _9682{real(0.14285714285714282,0.1428571428571429)} to (0.14285714285714285,0.14285714285714288)
 	﻿X = X:: 0.1428571428571428...,
 	Y = Y:: 0.428571428571428... .
-`watch/2` will also take a list of intervals the first argument, and the second argument can be be one of `none`, `log`, or `trace` actions. Action `trace` outputs the standard log message and then invokes the debugger.
 
-Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when the constraints on intervals are useful. For the most part, these shpuld be captured in the `% Add ...` debug output.
+Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when the constraints on intervals are useful. For the most part, these should be captured in the `% Add ...` debug output.
+
+Finally, use [**clpStatistics**] to get a general idea of performance and narrowing operation counts.
 
 <#TableOfContents>
 
 &
 	[`debug` topic] <- link https://www.swi-prolog.org/pldoc/man?section=debug
+	[**watch/2**] <- link #toc4**watch**(*+Intervals,_++Atom*)
+	[**clpStatistics**] <- link #toc4**clpStatistics**(),_**clpStatistic**(*+Statistic*),_**clpStatistics**(*--Statistics*)

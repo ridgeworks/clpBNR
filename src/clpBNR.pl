@@ -114,9 +114,8 @@ current_node_(Node) :-  % look back to find current Op being excuted for debug m
 % statistics
 %
 
-% zero/assign,increment/read global counter
-g_zero(G)      :- nb_setval(G,0).
-g_assign(G,V)  :- nb_setval(G,V).
+% assign,increment/read global counter (assumed to be ground value so use _linkval)
+g_assign(G,V)  :- nb_linkval(G,V).
 g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
 g_incb(G)      :- nb_getval(G,N), N1 is N+1, b_setval(G,N1).    % undone on backtrack
 g_read(G,C)    :- nb_getval(G,C).
@@ -311,16 +310,20 @@ arithmetic:evaluable(median(X),user).
 
 median(Int, Med) :-
 	getValue(Int,(L,H)),
-	FL is roundtoward(float(L), to_negative),
-	FH is roundtoward(float(H), to_positive),
+	median_bound_(lo,L,FL),
+	median_bound_(hi,H,FH),
 	median_(FL,FH,Med), !.
+	
+median_bound_(lo,B,FB) :- B=:=0, FB is nexttoward(B,1.0).
+median_bound_(lo,-1.0Inf,FB) :- FB is nexttoward(-1.0Inf,0.0).
+median_bound_(lo,B,FB) :- FB is roundtoward(float(B), to_negative).
+
+median_bound_(hi,B,FB) :- B=:=0, !, FB is nexttoward(B,-1.0).
+median_bound_(hi,1.0Inf,FB) :- FB is nexttoward(1.0Inf,0.0).
+median_bound_(hi,B,FB) :- FB is roundtoward(float(B), to_positive).
 
 median_(B,B,B).                          % point interval
 median_(L,H,0.0) :- L < 0.0, H > 0.0.    % contains 0 (handles (-inf,inf)
-median_(0.0,H,M) :- H =  1.0Inf -> M is  sqrt(nexttoward(1.0Inf,0)) ; M is  sqrt(H).   % H must be positive
-median_(L,0.0,M) :- L = -1.0Inf -> M is -sqrt(nexttoward(1.0Inf,0)) ; M is -sqrt(-L).  % L must be negative
-median_(-1.0Inf,H,M) :- M is -sqrt(nexttoward(1.0Inf,0))*sqrt(-H).   % H must be non-zero, negative
-median_(L,1.0Inf,M) :- M is sqrt(L)*sqrt(nexttoward(1.0Inf,0)).      % L must be non-zero, positive
 median_(L,H,M)   :- M is copysign(sqrt(abs(L))*sqrt(abs(H)),L).      % L and H have same sign
 
 %
@@ -439,9 +442,8 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-    % unifying two i
 
 % awkward monitor case because original interval gone
 monitor_unify_(IntDef, Update) :-  % debbuging, manufacture temporary interval
-	IntDef=interval(Type,(L,H),_,_),
-	Dom =.. [Type,L,H],
-	check_monitor_('_?'::Dom, Update, IntDef).  % pseudo interval for monitoring purposes
+	put_attr(Temp,clpBNR,IntDef),
+	check_monitor_(Temp, Update, IntDef).
 
 % if both real, result type is real, else one is integer so result type integer
 mergeType_(real, real, real) :- !.
@@ -514,13 +516,14 @@ build_(Var, Var, VarType, Agenda, Agenda) :-              % implicit interval cr
 	int_decl_(VarType,UI,Var).
 build_(Num, Num, _, Agenda, Agenda) :-                    % rational numeric value is precise
 	rational(Num), !.
-build_(Num, Int, _, Agenda, Agenda) :-                    % floating point constant, may not be precise
+build_(Num, Int, VarType, Agenda, Agenda) :-              % floating point constant, may not be precise
 	float(Num), !,
-	int_decl_(real,(Num,Num),Int).                        % will be fuzzed, so not a point
+	int_decl_(VarType,(Num,Num),Int).                     % may be fuzzed, so not a point
 build_(pt(Num), Num, _, Agenda, Agenda) :-                % point value, must be a number
 	number(Num), !.
-build_(Exp, Num, VarType, Agenda, Agenda) :-              % ground Exp (including pi and e)
-	ground(Exp),       
+build_(Exp, Num, VarType, Agenda, Agenda) :-              % pre-compile ground Exp (including pi and e)
+	ground(Exp),
+	safe_(Exp),                                           % must be rounding "safe"      
 	catch(L is roundtoward(Exp,to_negative), _, fail),    % rounding only affects float evaluation
 	(rational(Num)
 	 ->	L=Num   % precise answer, else create an interval
@@ -537,8 +540,20 @@ build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
 	build_(Arg,Obj,Type,Agenda,NxtAgenda),
 	build_args_(ArgsR,Objs,Types,NxtAgenda,NewAgenda).
 
-constraint_(C) :- nonvar(C), C =..[Op|_], fmap_(Op,_,_,_,[boolean|_]), !.  %  a constraint must evaluate to a boolean
+% only called when argument is ground
+safe_(E) :- atomic(E), !.  % all atomics, including []
+safe_([A|As]) :- !,
+	safe_(A),
+	safe_(As).
+safe_(F) :- 
+	F =.. [Op|Args],
+	\+memberchk(Op,[**,sin,cos,tan,asin,acos,atan]),        % unsafe operations due to rounding
+	safe_(Args).
 
+%  a constraint must evaluate to a boolean 
+constraint_(C) :- nonvar(C), C =..[Op|_], fmap_(Op,_,_,_,[boolean|_]), !.
+
+%  map constraint operator to primitive/arity/types
 fmap_(+,    add,   ZXY,     ZXY,     [real,real,real]).
 fmap_(-,    add,   [Z,X,Y], [X,Z,Y], [real,real,real]).     % note subtract before minus 
 fmap_(*,    mul,   ZXY,     ZXY,     [real,real,real]).
@@ -578,8 +593,8 @@ fmap_(acos,cos,   [Z,X],    [X,Z],   [real,real]).
 fmap_(tan, tan,   ZX,       ZX,      [real,real]).
 fmap_(atan,tan,   [Z,X],    [X,Z],   [real,real]).
 
-% reverse map from Op and Args
-remap_(Op,$(1,X,Y),C) :- constraint_(Op), !,
+% reverse map from Op and Args (used by "verbose" top level output to reverse compile constraints)
+remap_(Op,$(Z,X,Y),C) :- constraint_(Op), Z==1, !,  % simplification for constraints
 	C=..[Op,X,Y]. 
 remap_(Op,$(Z,X,Y),Z==C) :- !,
 	C=..[Op,X,Y].
@@ -603,7 +618,7 @@ addNode_([Arg|Args],Node) :-
 	addNode_(Args,Node).
 
 clpStatistics :-
-	g_zero(clpBNR_node_count_),  % reset/initialize node count to 0
+	g_assign(clpBNR_node_count_,0),  % reset/initialize node count to 0
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(node_count(C)) :-
@@ -625,7 +640,7 @@ stable_(Agenda) :-
 
 stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
 	g_read(clpBNR_iterations_,Cur),         % maintain "low" water mark (can be negative)
-	(OpsLeft<Cur -> nb_linkval(clpBNR_iterations_,OpsLeft);true).  % nb_linkval OK for numbers
+	(OpsLeft<Cur -> g_assign(clpBNR_iterations_,OpsLeft);true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
 	doNode_(Args, Op, P, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
@@ -753,7 +768,7 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 % end of reset chain succeeds. Need cut since predicate is "discontiguous".
 clpStatistics :- !.
 
-clpBNR_version_("0.9.2").
+clpBNR_version_("0.9.3").
 
 :- initialization((
 	% restore "optimise" flag
