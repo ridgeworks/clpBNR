@@ -125,7 +125,7 @@ Further explanation and examples, including a complete reference section, can be
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.2 or greater is required.
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.3.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.4.zip`. Once installed, it can be loaded with `use_module/1`. For example:
 
 	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.4.zip')]).
 	Verify package status (anonymously)
@@ -135,7 +135,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	Installed version:      0.9.4
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.4.zip" (35,985 bytes) Y/n? 
+	Install "clpBNR-0.9.4.zip" (36,039 bytes) Y/n? 
 	
 	?- use_module(library(clpBNR)).
 	
