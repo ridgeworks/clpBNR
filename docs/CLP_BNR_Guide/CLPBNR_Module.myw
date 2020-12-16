@@ -39,6 +39,7 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		global_minimum/3,      % global_minimum/2 with definable precision
 		global_maximum/2,      % find interval containing global minimums for an expression
 		global_maximum/3,      % global_maximum/2 with definable precision
+		nb_setbounds/2,        % non-backtracking set bounds (use with branch and bound)
 		partial_derivative/3,  % differentiate Exp wrt. X and simplify
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected

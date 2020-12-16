@@ -60,6 +60,7 @@
 	global_minimum/3,      % global_minimum/2 with definable precision
 	global_maximum/2,      % find interval containing global minimums for an expression
 	global_maximum/3,      % global_maximum/2 with definable precision
+	nb_setbounds/2,        % non-backtracking set bounds (use with branch and bound)
 	partial_derivative/3,  % differentiate Exp wrt. X and simplify
 	clpStatistics/0,       % reset
 	clpStatistic/1,        % get selected
@@ -94,7 +95,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 % SWIP optimise control - set flag to true for compiled arithmetic
 %
 :-  (current_prolog_flag(optimise,Opt),
-	 nb_setval(clpBNR_temp,Opt),  % save current value to restore on :- initialization/1
+	 nb_setval('clpBNR:temp',Opt),  % save current value to restore on :- initialization/1
 	 set_prolog_flag(optimise,false)
 	).
 %
@@ -102,7 +103,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 %
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
 
-:-set_prolog_flag(optimise,true).
+:- set_prolog_flag(optimise,true).
 
 current_node_(Node) :-  % look back to find current Op being excuted for debug messages
 	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
@@ -118,26 +119,26 @@ current_node_(Node) :-  % look back to find current Op being excuted for debug m
 g_assign(G,V)  :- nb_linkval(G,V).
 g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
 g_incb(G)      :- nb_getval(G,N), N1 is N+1, b_setval(G,N1).    % undone on backtrack
-g_read(G,C)    :- nb_getval(G,C).
+g_read(G,V)    :- nb_getval(G,V).
 
 :- discontiguous 
 	clpBNR:clpStatistics/0, clpBNR:clpStatistic/1, 
 	sandbox:safe_global_variable/1.
 
-sandbox:safe_global_variable(userTime_).
-sandbox:safe_global_variable(inferences_).
-sandbox:safe_global_variable(gc_time_).
+sandbox:safe_global_variable('clpBNR:userTime').
+sandbox:safe_global_variable('clpBNR:inferences').
+sandbox:safe_global_variable('clpBNR:gc_time').
 
 clpStatistics :-
 	% garbage_collect,  % ? do gc before time snapshots
-	statistics(cputime,T), g_assign(userTime_,T),   % thread based
-	statistics(inferences,I), g_assign(inferences_,I),
-	statistics(garbage_collection,[_,_,G,_]), g_assign(gc_time_,G),
+	statistics(cputime,T), g_assign('clpBNR:userTime',T),   % thread based
+	statistics(inferences,I), g_assign('clpBNR:inferences',I),
+	statistics(garbage_collection,[_,_,G,_]), g_assign('clpBNR:gc_time',G),
 	fail.  % backtrack to reset other statistics.
 
-clpStatistic(userTime(T)) :- statistics(cputime,T1), g_read(userTime_,T0), T is T1-T0.
+clpStatistic(userTime(T)) :- statistics(cputime,T1), g_read('clpBNR:userTime',T0), T is T1-T0.
 
-clpStatistic(gcTime(G)) :- statistics(garbage_collection,[_,_,G1,_]), g_read(gc_time_,G0), G is (G1-G0)/1000.0.
+clpStatistic(gcTime(G)) :- statistics(garbage_collection,[_,_,G1,_]), g_read('clpBNR:gc_time',G0), G is (G1-G0)/1000.0.
 
 clpStatistic(globalStack(U/T)) :- statistics(globalused,U), statistics(global,T).
 
@@ -145,7 +146,7 @@ clpStatistic(trailStack(U/T)) :- statistics(trailused,U), statistics(trail,T).
 
 clpStatistic(localStack(U/T)) :- statistics(localused,U), statistics(local,T).
 
-clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read(inferences_,I0), I is I1-I0.
+clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('clpBNR:inferences',I0), I is I1-I0.
 
 
 :- include(ia_primitives).  % interval arithmetic relations via evalNode/4.
@@ -191,6 +192,15 @@ finite_interval(integer, (L,H)) :-  %% SWIP:
 
 % Empty (L>H)
 %empty_interval([L,H]) :- universal_interval([H,L]).
+
+%
+%  non-backtracking set bounds for use with branch and bound
+%
+nb_setbounds(Int, [L,U]) :- 
+	get_attr(Int, clpBNR, Def),
+	Def = interval(_, Val, _, _),
+	^(Val,(L,U),NewVal),          % new range is intersection (from ia_primitives)
+	nb_setarg(2, Def, NewVal).
 
 %
 % get current value
@@ -416,20 +426,20 @@ applyType_(integer, real, Int, Agenda, NewAgenda) :- !,     % narrow real to int
 		 linkNodeList_(NodeList, Agenda, NewAgenda)
 		)
 	).
-applyType_(Type,IType,Int, Agenda, Agenda).                       % anything else: no change
+applyType_(Type,IType,Int, Agenda, Agenda).                 % anything else: no change
 
 %
 % this goal gets triggered whenever an interval is unified, valid for a numeric value or another interval
 %
 attr_unify_hook(interval(Type,(L,H),Nodelist,Flags), V) :-     % unify an interval with a numeric
-	(Type=integer -> integer(V) ; number(V)), !,        % check that V is consistent with Type
-	L=<V, V=<H,              % in range
+	(Type=integer -> integer(V) ; number(V)),   % check that V is consistent with Type
+	L=<V, V=<H, !,                              % and in range
 	(debugging(clpBNR,true) -> monitor_unify_(interval(Type,(L,H),_,Flags), V) ; true),
 	linkNodeList_(Nodelist, T/T, Agenda),
 	stable_(Agenda).         % broadcast change
 
-attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-    % unifying two intervals
-	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)),  %%SWIP attribute def.
+attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two intervals
+	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)), !,  %%SWIP attribute def.
 	mergeType_(Type1, Type2, NewType),  % unified Type=integer if either is an integer
 	^(V1,V2,V),                         % unified range is intersection (from ia_primitives),
 	mergeNodes_(Nodelist2,Nodelist1,Newlist),  % unified node list is a merge of two lists
@@ -439,6 +449,12 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-    % unifying two i
 	put_attr(Int,clpBNR,interval(NewType,V,Newlist,Flags)),
 	linkNodeList_(Newlist, T/T, Agenda),
 	stable_(Agenda).         % broadcast change
+
+attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of range
+	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
+	debugging(clpBNR, true),  % fail immediately unless debug=true
+	debug_clpBNR_('Failed to unify ~w::~w with ~w',[Type,Val,V]),
+	fail.
 
 % awkward monitor case because original interval gone
 monitor_unify_(IntDef, Update) :-  % debbuging, manufacture temporary interval
@@ -507,31 +523,31 @@ buildConstraint_(C,Agenda,NewAgenda) :-
 %
 % build a node from an expression
 %
-build_(Int, Int, VarType, Agenda, NewAgenda) :-           % existing interval object
+build_(Int, Int, VarType, Agenda, NewAgenda) :-         % existing interval object
 	interval_object(Int, Type, _, _), !,
-	applyType_(VarType, Type, Int, Agenda, NewAgenda).    % coerces exsiting intervals to required type
-build_(Var, Var, VarType, Agenda, Agenda) :-              % implicit interval creation.
+	applyType_(VarType, Type, Int, Agenda, NewAgenda).  % coerces exsiting intervals to required type
+build_(Var, Var, VarType, Agenda, Agenda) :-            % implicit interval creation.
 	var(Var), !,
 	universal_interval(UI),
 	int_decl_(VarType,UI,Var).
-build_(Num, Num, _, Agenda, Agenda) :-                    % rational numeric value is precise
+build_(Num, Num, _, Agenda, Agenda) :-                  % rational numeric value is precise
 	rational(Num), !.
-build_(Num, Int, VarType, Agenda, Agenda) :-              % floating point constant, may not be precise
+build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constant, may not be precise
 	float(Num), !,
-	int_decl_(VarType,(Num,Num),Int).                     % may be fuzzed, so not a point
-build_(pt(Num), Num, _, Agenda, Agenda) :-                % point value, must be a number
+	int_decl_(VarType,(Num,Num),Int).                   % may be fuzzed, so not a point
+build_(pt(Num), Num, _, Agenda, Agenda) :-              % point value, must be a number
 	number(Num), !.
-build_(Exp, Num, VarType, Agenda, Agenda) :-              % pre-compile ground Exp (including pi and e)
+build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile ground Exp (including pi and e)
 	ground(Exp),
-	safe_(Exp),                                           % must be rounding "safe"      
-	catch(L is roundtoward(Exp,to_negative), _, fail),    % rounding only affects float evaluation
-	(rational(Num)
-	 ->	L=Num   % precise answer, else create an interval
-	 ;	(H is roundtoward(Exp,to_positive), int_decl_(VarType,(L,H),Num))  
+	safe_(Exp),                                         % safe to evaluate 
+	L is roundtoward(Exp,to_negative),                  % rounding only affects float evaluation
+	(float(L)                                           % not precise -> interval 
+	 -> (H is roundtoward(Exp,to_positive), int_decl_(VarType,(L,H),Num))                                           % if precise use L
+	 ;	Num=L                                           % else use precise value
 	), !.
-build_(Exp, Z, _, Agenda, NewAgenda) :-                   % deconstruct to primitives
+build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primitives
 	Exp =.. [F|Args],
-	fmap_(F,Op,[Z|Args],ArgsR,Types), !,                  % supported arithmetic op
+	fmap_(F,Op,[Z|Args],ArgsR,Types), !,                % supported arithmetic op
 	build_args_(ArgsR,Objs,Types,Agenda,ObjAgenda),
 	newNode_(Op,Objs,ObjAgenda,NewAgenda).
 
@@ -546,8 +562,9 @@ safe_([A|As]) :- !,
 	safe_(A),
 	safe_(As).
 safe_(F) :- 
+	current_arithmetic_function(F),                     % evaluable by is/2
 	F =.. [Op|Args],
-	\+memberchk(Op,[**,sin,cos,tan,asin,acos,atan]),        % unsafe operations due to rounding
+	\+memberchk(Op,[**,sin,cos,tan,asin,acos,atan]),    % unsafe operations due to rounding
 	safe_(Args).
 
 %  a constraint must evaluate to a boolean 
@@ -609,7 +626,7 @@ newNode_(Op, Objs, Agenda, NewAgenda) :-
 	NewNode = node(Op, P, 0, Args),  % L=0
 	addNode_(Objs,NewNode),
 	% increment count of added nodes, will be decremented on backtracking/failure
-	g_incb(clpBNR_node_count_),
+	g_incb('clpBNR:node_count'),
 	linkNode_(Agenda, NewNode, NewAgenda).
 
 addNode_([],_Node).
@@ -618,11 +635,11 @@ addNode_([Arg|Args],Node) :-
 	addNode_(Args,Node).
 
 clpStatistics :-
-	g_assign(clpBNR_node_count_,0),  % reset/initialize node count to 0
+	g_assign('clpBNR:node_count',0),  % reset/initialize node count to 0
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(node_count(C)) :-
-	g_read(clpBNR_node_count_,C).
+	g_read('clpBNR:node_count',C).
 
 % extend list with X
 newmember([X|Xs],N) :- 
@@ -639,8 +656,8 @@ stable_(Agenda) :-
 	!.  % achieved stable state with empty Agenda -> commit.
 
 stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
-	g_read(clpBNR_iterations_,Cur),         % maintain "low" water mark (can be negative)
-	(OpsLeft<Cur -> g_assign(clpBNR_iterations_,OpsLeft);true).
+	g_read('clpBNR:iterations',Cur),        % maintain "low" water mark (can be negative)
+	(OpsLeft<Cur -> g_assign('clpBNR:iterations',OpsLeft);true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
 	doNode_(Args, Op, P, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
@@ -649,15 +666,15 @@ stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	stableLoop_(NewAgenda,RemainingOps).
 
 % support for max_iterations statistic
-sandbox:safe_global_variable(clpBNR_iterations_).
+sandbox:safe_global_variable('clpBNR:iterations').
 
 clpStatistics :-
 	current_prolog_flag(clpBNR_iteration_limit,L), 
-	g_assign(clpBNR_iterations_,L),  % set "low" water mark to upper limit
+	g_assign('clpBNR:iterations',L),  % set "low" water mark to upper limit
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(max_iterations(O/L)) :-
-	g_read(clpBNR_iterations_,Ops),
+	g_read('clpBNR:iterations',Ops),
 	current_prolog_flag(clpBNR_iteration_limit,L),
 	O is L-Ops.  % convert "low" water mark to high water mark
 
@@ -768,23 +785,23 @@ clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 % end of reset chain succeeds. Need cut since predicate is "discontiguous".
 clpStatistics :- !.
 
-clpBNR_version_("0.9.3").
+clpBNR_version_("0.9.4").
 
 :- initialization((
 	% restore "optimise" flag
-	(nb_current(clpBNR_temp,Opt) 
-	 -> (nb_delete(clpBNR_temp), set_prolog_flag(optimise,Opt))
+	(nb_current('clpBNR:temp',Opt) 
+	 -> (nb_delete('clpBNR:temp'), set_prolog_flag(optimise,Opt))
 	 ; true
 	),
 
 	clpBNR_version_(Version), format("*** clpBNR v~walpha ***\n\n",[Version]),
 	(current_prolog_flag(bounded,true)
-	 -> write("Error: This version requires unbounded integers and rationals.\n")
+	 -> write("Error: clpBNR requires unbounded integers and rationals.\n")
 	 ;  true
 	),
 	(current_prolog_flag(float_overflow,_)
 	 -> true
-	 ;  write("Error: This version requires support for IEEE arithmetic.\n")
+	 ;  write("Error: clpBNR requires support for IEEE arithmetic.\n")
 	),
 	
 	% Set required arithmetic flags

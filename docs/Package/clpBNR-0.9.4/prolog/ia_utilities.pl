@@ -283,7 +283,10 @@ small_list_([X|Xs],Err) :-
 	small_list_(Xs,Err).
 	
 chk_small(L,H,Err) :- H-L < Err, !. 
-chk_small(L,H,Err) :- (H-L)/sqrt((L**2+H**2)/2) < Err.  % from CLIP?
+chk_small(L,H,Err) :-                 % from CLIP?
+	ErrH is Err*sqrt((L**2+H**2)/2),  % guaranteed to be a float
+	ErrH \= 1.0Inf,                   % overflow check
+	(H-L) < ErrH.
 
 %
 %  global_minimum(Exp,Z) - Z is an interval containing one or more global minimums of Exp.
@@ -340,14 +343,14 @@ continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(False,_,_,_,_,[]) :- False == false, !.  % if false positive return "fail" result
 eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-            % Step 7., calculate F(V) and save
-	nb_setval(eval_MS_,[]),                      % [] means failure to evaluate
+	nb_setval('clpBNR:eval_MS',[]),                      % [] means failure to evaluate
 	buildConstraint_(XConstraint,T/T,Agenda),
 	build_box_MS(Xs,XVs,Agenda),
 	box_([Z|Xs],[(Zl,Zh)|NXVs]),                 % copy Z and Xs solution bounds
-	nb_setval(eval_MS_,Zl-(Zh,NXVs)),            % save solution in format for Z tree
+	nb_setval('clpBNR:eval_MS',Zl-(Zh,NXVs)),            % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-
-	nb_getval(eval_MS_,FV).                      % retrieve solution ([] on failure)
+	nb_getval('clpBNR:eval_MS',FV).                      % retrieve solution ([] on failure)
 
 build_box_MS([],[],Agenda) :-
 	stable_(Agenda).
@@ -695,29 +698,29 @@ pd(log(U),X,DX) :-               % DX = DU/U
 
 pd(exp(U),X,DX) :-               % DX = exp(U)*DU
 	pd(U,X,DU),
-	pd_tryeval(exp(U),ExpU),
+	pd_exp(U,ExpU),
 	pd_mul(ExpU,DU,DX).
 
 pd(sqrt(U),X,DX) :-              % DX = DU/(2*sqrt(U))
 	pd(U,X,DU),
-	pd_tryeval(sqrt(U),SqrtU),
+	pd_sqrt(U,SqrtU),
 	pd_mul(2,SqrtU,DXD),
 	pd_div(DU,DXD,DX).
 
 pd(sin(U),X,DX) :-               % DX = cos(U)*DU
 	pd(U,X,DU),
-	pd_tryeval(cos(U),CosU),
+	pd_cos(U,CosU),
 	pd_mul(CosU,DU,DX).
 
 pd(cos(U),X,DX) :-               % DX = -sin(U)*DU
 	pd(U,X,DU),
-	pd_tryeval(sin(U),SinU),
+	pd_sin(U,SinU),
 	pd_mul(SinU,DU,DSU),
 	pd_minus(DSU,DX).
 
 pd(tan(U),X,DX) :-               % DX = DU/cos(U)**2
 	pd(U,X,DU),
-	pd_tryeval(cos(U),CosU),
+	pd_cos(U,CosU),
 	pd_pow(CosU,2,DXD),
 	pd_div(DU,DXD,DX).
 
@@ -725,7 +728,7 @@ pd(asin(U),X,DX) :-              % DX = DU/sqrt(1-U**2)
 	pd(U,X,DU),
 	pd_pow(U,2,USQ),
 	pd_sub(1,USQ,USQ1),
-	pd_tryeval(sqrt(USQ1),DXD),
+	pd_sqrt(USQ1,DXD),
 	pd_div(DU,DXD,DX).
 
 pd(acos(U),X,DX) :-              % DX = -DU/sqrt(1-U**2) = -D(asin(U))
@@ -739,15 +742,17 @@ pd(atan(U),X,DX) :-              % DX = DU/(1+U**2)
 	pd_div(DU,USQ1,DX).
 
 
-pd_minus(DU,DX)  :- pd_tryeval(-DU,DX).
+% optimizations
+% also facilitates compiled arithmetic, avoids using catch/3 for instantiation errors
+pd_minus(DU,DX)  :- ground(DU) -> DX is -DU  ; DX = -DU.
 
 pd_add(DU,DV,DV) :- DU==0, !.
 pd_add(DU,DV,DU) :- DV==0, !.
-pd_add(DU,DV,DX) :- pd_tryeval(DU+DV,DX).
+pd_add(DU,DV,DX) :- ground((DU,DV)) -> DX is DU+DV ; DX = DU+DV.
 
 pd_sub(DU,DV,DX) :- DU==0, !, pd_minus(DV,DX).
 pd_sub(DU,DV,DU) :- DV==0, !.
-pd_sub(DU,DV,DX) :- pd_tryeval(DU-DV,DX).
+pd_sub(DU,DV,DX) :- ground((DU,DV)) -> DX is DU-DV ; DX = DU-DV.
 
 pd_mul(DU,DV,0)  :- DU==0, !.
 pd_mul(DU,DV,0)  :- DV==0, !.
@@ -755,23 +760,27 @@ pd_mul(DU,DV,DV) :- DU==1, !.
 pd_mul(DU,DV,DU) :- DV==1, !.
 pd_mul(DU,DV,DX) :- DU== -1, !, pd_minus(DV,DX).
 pd_mul(DU,DV,DX) :- DV== -1, !, pd_minus(DU,DX).
-pd_mul(DU,DV,DX) :- pd_tryeval(DU*DV,DX).
+pd_mul(DU,DV,DX) :- ground((DU,DV)) -> DX is DU*DV ; DX = DU*DV.
 
 pd_div(DU,DV,0)  :- DU==0, !.
 pd_div(DU,DV,0)  :- DV==0, !, fail.
 pd_div(DU,DV,DU) :- DV==1, !.
 pd_div(DU,DV,DU) :- DV== -1, !, pd_minus(DU,DX).
-pd_div(DU,DV,DX) :- pd_tryeval(DU/DV,DX).
+pd_div(DU,DV,DX) :- ground((DU,DV)) -> DX is DU/DV ; DX = DU/DV.
 
 pd_pow(DU,DV,0)  :- DU==0, !.
 pd_pow(DU,DV,1)  :- DV==0, !.
 pd_pow(DU,DV,1)  :- DU==1, !.
 pd_pow(DU,DV,DU) :- DV==1, !.
-pd_pow(DU,DV,DX) :- pd_tryeval(DU**DV,DX).
+pd_pow(DU,DV,DX) :- ground((DU,DV)) -> DX is DU**DV ; DX = DU**DV.
 
+pd_exp(DU,DX)    :- ground(DU) -> DX is exp(DU)  ; DX = exp(DU).
 
-pd_tryeval(Exp,DX) :-  % DX is Exp or DX=Exp
-	catch(DX is Exp, error(instantiation_error, _), DX=Exp).
+pd_sqrt(DU,DX)   :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
+
+pd_sin(DU,DX)    :- ground(DU) -> DX is sin(DU)  ; DX = sin(DU).
+
+pd_cos(DU,DX)    :- ground(DU) -> DX is cos(DU)  ; DX = cos(DU).
 
 %
 % safe declarations must be after the predicate definitions

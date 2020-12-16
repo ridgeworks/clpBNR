@@ -1,0 +1,273 @@
+#### Timing Analysis of Digital Circuits
+
+Interface timing verification is the problem of verifying that the interfaces of various system components in a digital circuit can be connected and operate correctly. Each interface is given as a collection of events and constraints relating the occurrence times of these events. Verifying correct operation by exhaustive simulation is generally impractical, so some form of analytical approach is required. Even this simplistic description of the problem suggest that a CLP approach based on intervals (timing windows) might be advantageous.
+
+A common example in the literature, e.g., [Solving linear, min and max constraint systems using CLP based on relational interval arithmetic], is the read cycle of a 8086 CPU in "Minimum" system configuration to a 2716 EPROM. From the [8086 Datasheet], the hardware configuration looks like:
+[8086ReadCircuit]
+Although this example is common in academic papers, the specifics of the circuit being analysed are unclear. So rather than rely on the intermediate timing graph from the papers, the approach described here goes back to the original information in the component datasheets:
+*..
+	* CPU : [8086 Datasheet]
+	* EPROM : [2716 Datasheet]
+	* Address Latch : [8282 Datasheet]
+	* Bus Transceiver : [8286 Datasheet]
+The timing characteristics of the devices typically are compose of a wave diagram and a table of timing values whose labels refer to the wave diagram. In this particular case the 8086 wave diagram for a read operation is:
+[8086ReadWave]
+The actual table of timing values is available in the 8086 datasheet and won't be reproduced here, but the relevant values will be used in the code below.
+
+In addition, a common solution in the literature is to optimize the separation of event times which can be an NP-complete problem. However, the underlying objective is to prove that the timing specification is consistent and all timing requirements are met when components are inter-connected. So the solution described below directly tackles these objectives in a (hopefully) more transparent way while provided additional diagnostic information when these objectives aren't met.
+
+For the purposes of timing analysis, capturing the circuit properties can be broken down into two steps. The first step is to identify the timing events and give them a label and a type. The type of event is necessary because any particular event may be dependent on more than one "parent" event. In some cases these are simple constraints which must be mutually satisified, but in others the event may depend on the earliest or latest parent. The names corresponding to these types are `lin` (mutual constraints), `min` (earliest parent), and `max` (latest parent).
+
+The events themselves are things like clocks, address available on CPU address bus, etc. For the purposes of this example, some signals and associated events will be ignored, e.g., M/IO, Status controls, etc. The events are declared in a list containing elements of the form: `Type(Label)`:
+.pl
+	events([
+		lin(c1),     % **Reference** falling edge of clock 1 (T1)
+		lin(c2),     % falling edge of clock 2 (T2)
+		lin(ce),     % falling edge of final clock in the cycle (T4)
+		lin(a1),     % address available from CPU
+		lin(a2),     % address unavailable from CPU
+		lin(r1),     % read strobe (RD) falling edge
+		lin(r2),     % read strobe (RD) rising edge
+		lin(l1),     % address latch (ALE) rising edge
+		lin(l2),     % address latch (ALE) falling edge
+		max(mA1),    % address available to EPROM
+		lin(r1),     % read strobe (RD) falling edge
+		lin(r2),     % read strobe (RD) rising edge
+		max(d1),     % data available from EPROM
+		min(d2),     % data unavailable from EPROM
+		lin(rD1),    % data available to CPU
+		lin(rD2)     % data unavailable to CPU
+	]).
+The first event in the list is designated as the *reference* event and is assigned time value 0. All other event times are relative to the reference event time. 
+
+For analysis purposes, a "net list" is created from the event list by adding an event time represented by an `integer` interval representing the earliest and latest time that the event can occur:
+.pl
+	% Create Net list from list of event names
+	label_events([], []).
+	label_events([Ev|Events], [ev(Type,Name,Time)|Net]) :-
+		Ev =.. [Type,Name],
+		Time::integer,
+		label_events(Events, Net).
+The second step in defining a network for analysis is to apply constraints to the event times based on the information in the component datasheets. There are actually two kinds of timing relationships. The first kind deals with causal relationships, e.g., "the address from the CPU becomes valid between 10 and 100 ns. after the leading edge of clock 1". (A value of 0 is assumed if no minimum time is given; an unspecified maximum can be represented by a variable.) These are "hard" constraints specified by the component manufacturer.
+
+The second kind of constraint defines setup and hold times between components; these will be called "hazards" since violating these relationships indicate the circuit as defined fails to meet the timing requirements specified in the datasheets. These are design constraints used to validate correct circuit operation and, unlike hard constraints, cannot be used to used to narrow other event times.
+
+A causal relationship (hard constraint) will be represented by a rule of the form `timing(Ev1,Ev2,[Min,Max])` which says event `Ev2` will follow parent event `Ev1` by a time interval between `Min` and `Max` ns. (or whatever common timing unit is implied). A hazard is represented by a rule of the form `hazard(Ev,SEv+ST,HEv-HT)` where `ST` is the setup time between `SEv` and `Ev` and `HT` is the hold time between `Ev` and `HEv`. 
+
+The address latch is a simple component that requires both kinds of timing relationships:
+.pl
+	% 8282 Octal Latch
+	timing(a1,mA1,[0,35]).    % TIVOV (Input to Output Delay)
+	timing(l1,mA1,[0,55]).    % TIVOV (Input to Output Delay)
+	
+	hazard(l2,a1+0,a2-25).    % TIVSL/TSLIX (Input to Strobe Setup/Hold Time)
+The `timing` rules capture the delay between the inputs `a1` (address start) and `l1` (latch start) and the output (`mA1`). The `hazard` rule indicates the setup/hold requirements for `l2` (latch end) on the address from the CPU.
+
+To facilitate experimentation, two additional rules to define the clock characteristics and wait cycles are added. (For simplicity, the circuitry to correctly control the insertion of wait cycles has been assumed.) The complete set of timing information is below; the comments refer to timing labels in the datasheets:
+.pl
+	:- discontiguous timing/3,hazard/3.  % info for SWIP compiler
+	% 8086 CPU
+	clock_period(TCLCL,TCLCH,TCHCL) :-  % Clock Period, Clock Low Duration, Clock High Duration
+		% Minimum values: 200 ns, 118 ns., 69 ns. from datasheet
+		TCLCL=200, LL=118, HL=69,
+		LH is TCLCL-HL, HH is TCLCL-LL,
+		TCLCH=[LL,LH], TCHCL=[HL,HH].
+	wait_cycles(0).     % number of wait cycles injected between T3 and T4
+	
+	timing(c1,c2,[T,T]) :-    % T2 clock begin
+		clock_period(T,_,_).
+	timing(c2,ce,[T,T]) :-    % Tend (T4) clock begin
+		clock_period(C,_,_), wait_cycles(W), T is C*(2+W).
+	timing(c1,a1,[10,110]).   % TCLAV (Address Valid Delay)
+	timing(c1,l1,[0,80]).     % TCLLH (ALE Start)
+	timing(l1,l2,[L,H]) :-    % TLHLL=TCLCH-20 (ALE End)
+		clock_period(_,[LL,LH],_), L is LL-20, H is LH-20.
+	timing(a1,l2,[L,H]) :-    % TAVAL=TCLCH-60
+		clock_period(_,[LL,LH],_), L is LL-60, H is LH-60.
+	timing(c1,l2,[L,H]) :-    % =TCLCH+TCHLL
+		clock_period(_,[L,LH],_), H is LH+85.
+	timing(c2,a2,[10,80]).    % TCLAX/TCLAZ (Address Hold Time, Address Float Delay)
+	timing(c2,r1,[10,165]).   % TCLRL (Read Active Delay)
+	timing(ce,r2,[10,150]).   % TCLRH (Read Inactive Delay)
+	
+	hazard(ce,rD1+30,rD2-10). % TDVCL/TCLDX (End Clock to Data Setup/Hold)
+	
+	% 8282 Octal Latch
+	timing(a1,mA1,[0,35]).    % TIVOV (Input to Output Delay)
+	timing(l1,mA1,[0,55]).    % TIVOV (Input to Output Delay)
+	
+	hazard(l2,a1+0,a2-25).    % TIVSL/TSLIX (Input to Strobe Setup/Hold Time)
+	
+	% 2716 EPROM
+	timing(mA1,d1,[0,450]).   % tACC (Address to Output Delay)
+	timing(r1,d1,[0,120]).    % tOE (Output Enable to Output Delay)
+	timing(r2,d2,[0,100]).    % tOH/tOF (Output Disable to [Output Float])
+	
+	% 8286 Data Transceiver
+	timing(d1,rD1,[0,35]).    % TIVOV (Input to Output Delay)
+	timing(d2,rD2,[0,35]).    % TIVOV (Input to Output Delay)
+Note that the `l2` event (end of address latch enable) is specified in the datasheet by three separate timing relationships relative to `l1`, `a1`, and `c1`. These will just be treated as three independent constraints (`l2` is event type `lin`) resulting in the narrowest possible event time for `l2` (see below).
+
+This example just has two hazards to consider: address/control for loading the address latch and data available to the 8086 CPU.
+
+aside> Aside: some published papers use the term "produced timing" for `timing/3` constraints and "required timing" for hazards. One might be tempted to also treat hazards as constraints. While this may be possible, it's difficult to diagnose problems since failure could be caused by either inconsistent `timing` definitions (rare) or unsatisfied requirements (the common case). Hence, the approach described here separates *definition* and *verification* into two distinct steps.
+
+The process of timing analysis requires that the network be defined, which will include checking that the `timing` rules are consistent. The second step validates the circuit by checking the hazard conditions.
+
+The pocess of defining the network involves creating the `Net` list and setting the reference event time to 0. The constraints implied by the `timing` rules are then applied. Any failure is an indication that the timing rules are inconsistent (an event time interval is empty) and a diagnostic message is output.
+.pl
+	define_network(Evs, Net) :-
+		label_events(Evs, Net),  % from above
+		Net = [ev(_,_,0)|_],     % designate the first event to be the reference event at T=0
+		constrain_net_(Net,Net).
+	
+	% Apply timing constraints to each Net list entry
+	% Note the use of memberchk/2 to access event information in Net list.
+	constrain_net_([], _).
+	constrain_net_([ev(Type,Ev,TEv)|Ds], Net) :-  % for each target event in the list
+		% findall ancestors and keep time and edge delta
+		findall(delta_(Par,Range),timing(Par,Ev,Range),TLs),
+		% constrain based on event type, ouput dignostic on failure, but continue processing
+		(constrain_type(TLs,Type,TEv,Net) -> 
+			true
+		; 
+			writeln(timing_INCONSISTENCY(ev(Type,Ev),TLs))
+		),
+		constrain_net_(Ds,Net).
+		
+	constrain_type([],_,_,_) :- !.
+	constrain_type([delta_(Par,[L,U])|TLs],lin,TEv,Net) :- !,  % lin event
+		memberchk(ev(_,Par,ParTime),Net),
+		Delta::integer(L,U),
+		{TEv == ParTime + Delta},
+		constrain_type(TLs,lin,TEv,Net).
+	constrain_type(TLs,Type,TEv,Net) :-                         % max/min event
+		min_max(TLs,Type,Ms,Net),
+		{TEv == Ms}.
+		
+	% collect a min/max expression; must be at least one item
+	min_max([delta_(Par,[L,U])],Type,ParTime+Delta,Net) :- !,
+		memberchk(ev(_,Par,ParTime),Net),  % single argument
+		Delta::integer(L,U).
+	min_max([TL|TLs],Type,MinMax,Net) :-
+		MinMax =.. [Type,Delta,More],
+		min_max([TL],Type,Delta,Net),  % argument 1
+		min_max(TLs,Type,More,Net).    % argument 2
+Constraints on `lin` event times are simply `{TEv == ParTime+Delta}` where `Delta` is an interval defined by the value in `timing` rules. Constraints on `min/max` events are the `min/max` of all parents `Delta` constraints. (Since `min/max` is arity two, a nested chain of `min/max` expressions must be constructed if there are more than two parent events.)
+
+To confirm that all the requirements are met, the `verify` step (Step 3) checks that no `hazard` violation has occurred. A violation is detected when the event time window intersects with interval time defined by the setup and hold specifications in the `hazard` definition. For this example, a violation will be reported to the Prolog console.
+.pl
+	verify(Net) :-  % for each hazard, check setup and hold times
+		forall(hazard(Ev,Setup,Hold), verify_(Net,Ev,Setup,Hold)).
+	
+	verify_(Net,Ev,SEv+ST,HEv-HT) :-
+		memberchk(ev(_,Ev,ETime),Net),                  % reference event time
+		memberchk(ev(_,SEv,STime),Net),                 % setup event time
+		memberchk(ev(_,HEv,HTime),Net),                 % hold event time
+		(\+({(ETime<STime+ST) or (ETime>HTime-HT)})     % assume integers so <,> are complete
+		 ->	true    % no violation
+		 ;	(print_interval(verify_FAIL(event(Ev,ETime),setup(SEv,STime+ST),hold(HEv,HTime-HT))),
+			 nl
+			)
+		).
+	verify_(Net,Ev,SEv+ST,HEv-HT) :-
+		memberchk(ev(_,Ev,ETime),Net),                  % reference event time
+		memberchk(ev(_,SEv,STime),Net),                 % setup event time
+		memberchk(ev(_,HEv,HTime),Net),                 % hold event time
+		(\+({(ETime<STime+ST) or (ETime>HTime-HT)}) ->  % assume integers so <,> are complete
+			true    % no violation
+		;
+			print_interval(verify_FAIL(event(Ev,ETime),setup(SEv,STime+ST),hold(HEv,HTime-HT))), nl,
+		).
+Note that Prolog negation (`\+`) is used in checking the hazard timing, i.e., success means the event did not fall into either the setup or hold window. This ensures that other event times are not changed (narrowed). `print_interval` is used to output embedded intervals in as their domains.
+
+Analysing the timing operation of a nominal circuit (5 Mhz. clock, 0 wait states):
+eg
+	?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
+	﻿verify_FAIL(event(ce,600),setup(rD1,integer(210,630)+30),hold(rD2,integer(610,885)-10))
+	
+	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(max,d1,integer(210,595)),ev(min,d2,integer(610,850)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(610,885))]
+	
+	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
+	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 600), ev(lin, a1, _5040), ev(lin, a2, _5054), ev(lin, r1, _5068), ev(lin, r2, _5082), ev(lin, l1, _5096), ev(lin, l2, _5110), ev(max, mA1, _5124), ev(lin, r1, _5138), ev(lin, r2, _5152), ev(max, d1, _5166), ev(min, d2, _5180), ev(lin, rD1, _5194), ev(lin, rD2, _5208)],
+	_5040::integer(47, 110),
+	_5110::integer(118, 181),
+	_5096::integer(7, 80),
+	_5124::integer(47, 145),
+	_5166::integer(210, 595),
+	_5194::integer(210, 630),
+	_5068::integer(210, 365),
+	_5054::integer(210, 280),
+	_5082::integer(610, 750),
+	_5180::integer(610, 850),
+	_5208::integer(610, 885),
+	_5138::integer(210, 365),
+	_5152::integer(610, 750).
+A timing violation has been detected; the data read from the EPROM via the transceiver arrives too late to meet the setup requirements of the CPU. If the source is modified to inject a wait state (`wait_cycles(1)`), the violation is avoided:
+eg
+	﻿?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
+	
+	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,800),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(810,950)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(810,950)),ev(max,d1,integer(210,595)),ev(min,d2,integer(810,1050)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(810,1085))]
+	
+	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
+	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 800), ev(lin, a1, _26858), ev(lin, a2, _26872), ev(lin, r1, _26886), ev(lin, r2, _26900), ev(lin, l1, _26914), ev(lin, l2, _26928), ev(max, mA1, _26942), ev(lin, r1, _26956), ev(lin, r2, _26970), ev(max, d1, _26984), ev(min, d2, _26998), ev(lin, rD1, _27012), ev(lin, rD2, _27026)],
+	_26858::integer(47, 110),
+	_26928::integer(118, 181),
+	_26914::integer(7, 80),
+	_26942::integer(47, 145),
+	_26984::integer(210, 595),
+	_27012::integer(210, 630),
+	_26886::integer(210, 365),
+	_26872::integer(210, 280),
+	_26900::integer(810, 950),
+	_26998::integer(810, 1050),
+	_27026::integer(810, 1085),
+	_26956::integer(210, 365),
+	_26970::integer(810, 950).
+Another alternative is to use 0 wait states but relax the clock frequency specified in `clock_period/3`, e.g., to 220 ns. :
+eg
+	﻿?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
+	
+	Net=[ev(lin,c1,0),ev(lin,c2,220),ev(lin,ce,660),ev(lin,a1,integer(27,110)),ev(lin,a2,integer(230,300)),ev(lin,r1,integer(230,385)),ev(lin,r2,integer(670,810)),ev(lin,l1,integer(0,80)),ev(lin,l2,integer(118,201)),ev(max,mA1,integer(27,145)),ev(lin,r1,integer(230,385)),ev(lin,r2,integer(670,810)),ev(max,d1,integer(230,595)),ev(min,d2,integer(670,910)),ev(lin,rD1,integer(230,630)),ev(lin,rD2,integer(670,945))]
+	
+	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
+	Net = [ev(lin, c1, 0), ev(lin, c2, 220), ev(lin, ce, 660), ev(lin, a1, _26598), ev(lin, a2, _26612), ev(lin, r1, _26626), ev(lin, r2, _26640), ev(lin, l1, _26654), ev(lin, l2, _26668), ev(max, mA1, _26682), ev(lin, r1, _26696), ev(lin, r2, _26710), ev(max, d1, _26724), ev(min, d2, _26738), ev(lin, rD1, _26752), ev(lin, rD2, _26766)],
+	_26598::integer(27, 110),
+	_26668::integer(118, 201),
+	_26654::integer(0, 80),
+	_26682::integer(27, 145),
+	_26724::integer(230, 595),
+	_26752::integer(230, 630),
+	_26626::integer(230, 385),
+	_26612::integer(230, 300),
+	_26640::integer(670, 810),
+	_26738::integer(670, 910),
+	_26766::integer(670, 945),
+	_26696::integer(230, 385),
+	_26710::integer(670, 810).
+This example is a natural fit between the problem's event timing windows and the underlying CLP/intervals model, necessitating only 50 lines of code plus the circuit description. In reality, most of the work is mapping the timing information in the datasheets' waveform diagrams and timing tables. Execution times for analysing this admittedly simple circuit is a few milliseconds because of the simple nature of the constraints which can be easily narrowed by the fixed point iteration mechanism. Where large numbers of events are required, it's usually possible to de-construct the circuit into sub-circuits which can be analysed independently. To verify correct operation of the whole circuit, recombine the individual results with the same techniques used at the component level in this simple example.
+
+This example can be easily adapted to other memory devices by replacing the EPROM timing information with the corresponding information of the devices, e.g., [2142-3] static RAM (capable of running at the designated CPU clock speed without wait states):
+.pl
+	% 2142-3 Static Ram
+	timing(mA1,d1,[0,300]).   % tACC (Address to Output Delay)
+	timing(r1,d1,[20,100]).   % tOE (Output Enable to Output Delay)
+	timing(r2,d2,[0,80]).     % tOH/tOF (Output Disable to [Output Float])
+Analysis of write cycles would require additional events since the data originates from the CPU and the relevant hazard relates to the data setup and hold times of the static RAM.
+
+See also [Design and Implementation of a Static Timing Analyzer using CLP(BNR)] for a more in-depth treatment of this subject.
+
+<#TableOfContents>
+
+&
+	// [timing_graph] <- image images/timing80286_2716.png width=50% height=50% style="margin-left:200px"
+	// [Min-Max_Inequalities] <- linkhttps://www.researchgate.net/publication/220652141_Min-Max_Inequalities_and_the_Timing_Verification_Problem_with_Max_and_Linear_Constraints
+	[Solving linear, min and max constraint systems using CLP based on relational interval arithmetic] <- link https://www.sciencedirect.com/science/article/pii/S0304397596001983
+	[8086 Datasheet] <- link supplemental/8086-datasheet.pdf target="_blank"
+	[2716 Datasheet] <- link supplemental/2716-datasheet.pdf target="_blank"
+	[8282 Datasheet] <- link supplemental/8282-datasheet.pdf target="_blank"
+	[8286 Datasheet] <- link supplemental/8286-datasheet.pdf target="_blank"
+	[2142-3] <- link supplemental/2142-datasheet.pdf target="_blank"
+	[8086ReadCircuit] <- image images/EgMinConfig.png width=50% height=50% style="margin-left:200px"
+	[8086ReadWave] <- image images/EgWaveforms.png width=50% height=50% style="margin-left:200px"
+	[Design and Implementation of a Static Timing Analyzer using CLP(BNR)] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/StaticTimingAnalyzer/StaticTimingAnalyzer.html

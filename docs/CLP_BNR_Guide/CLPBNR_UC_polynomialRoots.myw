@@ -1,0 +1,147 @@
+#### Solving Polynomial Equations in one Variable
+
+Finding the roots of a univariate polynomial equation is the same as asking what is the value of `X` given the constraint `{P(X)==0}`. (Some of this section was covered earlier in "Constraints on Real Intervals".) A simple quadratic with two real roots (1 and 3):
+eg
+	?- X::real,{X**2-4*X+3 == 0}.
+	﻿X::real(0.9999999999999998,3.0000000000000027).
+The interval result must include both roots. To produce a single value, the problem must be further constrained:
+eg
+	?- X::real(2,_),{X**2-4*X+3 == 0}.
+	﻿X:: 3.00000000000000... .
+or to find both:
+eg
+	?- X::real,{X**2-4*X+3 == 0},({X=<2};{X>=2}).
+	﻿X:: 1.000000000000000... ;
+	X:: 3.00000000000000... .
+Since we're looking for point solutions, `solve/1` is useful rather than guess at addtional constraints to isolate roots:
+eg
+	?- X::real,{X**2-4*X+3 ==0},solve(X).
+	﻿X:: 1.000000000000000... ;
+	X:: 3.00000000000000... .
+	
+Formulas exist for solving equations of low degree, so this may hardly seem to be worth the trouble, but this same technique works for pretty much any polynomial:
+eg
+	?- X::real,{17*X**256+35*X**17-99*X == 0},solve(X).
+	﻿X:: 0.﻿0000000000000000... ;
+	X:: 1.00502789289401... .
+
+	?- X::real,{35*X**256-14*X**17+X == 0},solve(X).
+	﻿X:: -0.847943660827315... ;
+	X:: 0.﻿0000000000000000... ;
+	X:: 0.847943660827315... ;
+	X:: 0.995842494200498... .
+A fourth degree polynomial equation with two real roots:
+eg
+	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
+	﻿X:: 1.000000... ;
+	X:: 1.0000000... ;
+	X:: 3.000000... ;
+	X:: 3.000000... ;
+	false.
+What happened here? The two roots (`X=1` and `X=3`) produced four answers. `solve` works by splitting intervals into pieces and discarding those pieces which provably do not contain solutions. Pieces which *may* contain solutions are split again, and the process is repeated. However to keep execution and time space under control, there is a minimum size interval which can be split as determined by the Prolog environment flag `clpBNR_default_precision` (default value=6) which roughly approximates the number of digits of precision. More precise answers can only be achieved by the basic fixed point iteration driven by the interval primitive operations (as indicated by the first example), or by changing the default precision (Prolog flag `clpBNR_default_precision`). 
+eg
+	﻿?- set_prolog_flag(clpBNR_default_precision,7).
+	true.
+	
+	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
+	﻿X:: 1.00000000... ;
+	X:: 3.0000000... ;
+	false.
+The flip side says that the precision limit can cause the iteration to terminate without disproving that a solution exists, which is the case for the second and fourth solution.
+
+The CLP(BNR) predicate `absolve` can be used to alleviate this problem (at a cost in performance). It "nibbles" away at the boundaries of an interval that fail to contain a solution and often removes these "false positives":
+eg
+	﻿?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X),absolve(X).
+	﻿X:: 1.00000000... ;
+	X:: 3.00000000... ;
+	false.
+But it is data dependant; sometimes both mechanisms togther are insufficent, as in this polynomial equation with roots at 0, 3, 4, and 5:
+eg
+	﻿?- set_prolog_flag(clpBNR_default_precision,7),X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X).
+	X:: 0.﻿0000000000000000... ;
+	X:: 3.00000000... ;
+	X:: 4.0000000... ;
+	X:: 4.00000000... ;
+	X:: 5.00000000... ;
+	false.
+The underlying cause of the generation of false positives is the multiple occurence of `X` in the constraint set (the *dependency* problem discussed previously) which limits the narrowing possible via fixed point iteration. In addition, the shape of the polynomial in the vicinity of the X axis may mean a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0. And to make matters worse, it can take a considerable amount of work to generate these false positives.
+
+The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parobala. `solve` (and `absolve`) can spend a lot of time in the vicinity of the solution (in this case, {`x=1`}) trying to disprove solutions in small intervals of `X`:
+eg
+	?- X::real,{X**2-2*X+1==0}.
+	X:: 1.00... .
+
+	?- X::real,{X**2-2*X+1==0},solve(X),absolve(X).
+	﻿X:: 0.99999524... ;
+	X:: 0.999997233... ;
+	X:: 0.999997700... ;
+	X:: 0.99999799... ;
+	X:: 0.999998106... ;
+	X:: 0.999998414... ;
+	X:: 0.9999985... ;
+	X:: 0.9999986... ;
+	X:: 0.9999986... ;
+	X:: 0.9999987... ;
+	X:: 0.9999987... ;
+	X:: 0.9999988... ;
+			.
+			.
+			.
+	﻿X:: 0.9999994... ;
+	X:: 0.9999995... ;
+	X:: 0.999999... ;
+	X:: 0.9999996... ;
+	X:: 0.9999997... ;
+	X:: 0.9999997... ;
+	X:: 0.9999998... ;
+	X:: 0.9999998... ;
+	X:: 0.999999... ;
+	X:: 1.000000... ;
+	X:: 1.0000001... ;
+	X:: 1.0000001... ;
+	X:: 1.0000002... ;
+	X:: 1.000000... ;
+	X:: 1.0000003... ;
+	X:: 1.0000004... ;
+	X:: 1.0000004... ;
+	X:: 1.0000005... ;
+	X:: 1.0000005... ;
+			.
+			.
+			.
+	﻿X:: 1.0000010... ;
+	X:: 1.0000011... ;
+	X:: 1.0000011... ;
+	X:: 1.0000012... ;
+	X:: 1.0000012... ;
+	X:: 1.0000013... ;
+	X:: 1.0000014... ;
+	X:: 1.0000014... ;
+	X:: 1.0000015... ;
+	X:: 1.000001808... ;
+	X:: 1.000001922... ;
+	X:: 1.00000257... ;
+	X:: 1.00000365... ;
+	false.
+Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while, even using `absolve`, generating many, many false positives. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
+
+Of course had the constraint been entered in a factored form (eliminating the dependancy issue),  it takes just a few operations to converge (no solve necessary):
+eg
+	?- {(X-1)**2==0}.
+	X = 1.
+By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints. This will be explored further in [Constructing Metalevel Contractors].
+One thing to remember: using `**` for n^th roots isn't symmetric, consistent with the conventional mathematical convention that even roots are always positive values.
+eg
+	﻿?- {Y==X**2},Y=4.
+	Y = 4,
+	X::real(-2, 2).
+	
+	?- {Y**1r2==X},Y=4.
+	Y = 4,
+	X = 2.
+These are mathematically equivalent but only the first form results in `X` containing both positive and negative square roots.
+
+<#TableOfContents>
+
+&
+	[Constructing Metalevel Contractors] <- link #toc4Constructing_Metalevel_Contractors

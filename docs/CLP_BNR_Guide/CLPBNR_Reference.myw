@@ -360,6 +360,22 @@ eg
 	?- M is midpoint(-42).
 	M = -42.
 
+.pred	**nb_setbounds**(*+Interval, +List*)
+**nb_setbounds** is an extra-logical primitive to intersect the bounds defined by *List*, containing two numeric values, with the current bounds of *Int*. This operation is *not* undone during backtracking and should be used with extreme care. It's primary (only?) use is controlling the the upper/lower bound within a branch-and-bound predicate; an example from the User Guide:
+.pl
+	min_ratchet(Goal,Objective) :- 
+		{Objective <= Bound},              % define "bound" constraint (must be inclusion to avoid back flow)
+		Goal,                              % generate a solution
+		nb_setval('$min_ratchet', Goal),   % save solution
+		range(Objective,[_,UB]),
+		range(Bound,[LB,_]),
+		NUB is UB-1,                       % assume integer values
+		nb_setbounds(Bound,[LB,NUB]),      % set new bound
+		fail.                              % and backtrack
+	min_ratchet(Goal,Objective) :- 
+		catch(nb_getval('$min_ratchet', Goal),_,fail),  % retrieve solution
+		nb_delete('$min_ratchet').
+
 .pred	**partial_derivative**(*+Exp, --Var, -Exp*)
 **partial_derivative** symbolically unifies the third argument with the partial derivative of the first argument with respect to the variable *Var*. To succeed, the functions in *Exp* must be a differentiable member of the functions supported by [{ +Constraints }]. For example, `min, max, abs,` and the boolean functions are non-differentiable and including any of them will cause **partial_derivative** to fail. A best-effort attempt is made to simplify the derivative expression, e.g., by removing any `0*Exp` sub-expressions:
 eg

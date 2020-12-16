@@ -27,27 +27,27 @@
 % evalNode(+primitive_name, ?persistence_flag, +$(inputs..), -$(outputs..))
 %
 evalNode(Op, P, Is, R) :-
-	g_inc(evalNode),          % count of primitive calls
+	g_inc('clpBNR:evalNode'),  % count of primitive calls
 	narrowing_op(Op, P, Is, R),
 	!.
 evalNode(Op, _, _, _):-
-	g_inc(evalNodeFail),      % count of primitive call failures
+	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR, true),  % fail immediately unless debug=true
 	current_node_(Node),
 	debug_clpBNR_('Fail ~w',Node),
 	fail.
 
-sandbox:safe_global_variable(evalNode).
-sandbox:safe_global_variable(evalNodeFail).
+sandbox:safe_global_variable('clpBNR:evalNode').
+sandbox:safe_global_variable('clpBNR:evalNodeFail').
 
 clpStatistics :-
-	g_assign(evalNode,0),
-	g_assign(evalNodeFail,0),
+	g_assign('clpBNR:evalNode',0),
+	g_assign('clpBNR:evalNodeFail',0),
 	fail.  % backtrack to reset other statistics.
 
-clpStatistic(narrowingOps(C)) :- g_read(evalNode,C).
+clpStatistic(narrowingOps(C)) :- g_read('clpBNR:evalNode',C).
 
-clpStatistic(narrowingFails(C)) :- g_read(evalNodeFail,C).
+clpStatistic(narrowingFails(C)) :- g_read('clpBNR:evalNodeFail',C).
 
 % SWIP optimization for non_empty/2, replaces nexttoward function call with constant
 goal_expansion(L <  RHS, L < MaxFloat) :-

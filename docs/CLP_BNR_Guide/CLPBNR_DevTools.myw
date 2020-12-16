@@ -60,4 +60,4 @@ Finally, use [**clpStatistics**] to get a general idea of performance and narrow
 &
 	[`debug` topic] <- link https://www.swi-prolog.org/pldoc/man?section=debug
 	[**watch/2**] <- link #toc4**watch**(*+Intervals,_++Atom*)
-	[**clpStatistics**] <- link #toc4**clpStatistics**(),_**clpStatistic**(*+Statistic*),_**clpStatistics**(*--Statistics*)
+	[**clpStatistics**] <- link #toc4**clpStatistic**(*+Statistic*),_**clpStatistics**,_**clpStatistics**(*--Statistics*)

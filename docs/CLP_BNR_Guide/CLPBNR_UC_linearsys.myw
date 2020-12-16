@@ -263,4 +263,5 @@ The use of Gaussian elimination has a dramatic effect on performance; in the cas
 	[SYSTEMS OF LINEAR EQUATIONS AND MATRICES] <- link https://docplayer.net/21711942-The-linear-equations-in-two-variables-studied-in.html
 	[Towards Practical Interval Constraint Solving in Logic Programming] <- link https://pdfs.semanticscholar.org/1dca/e2a910184c4b2f9d770f054168150c6d0bde.pdf
 	[FPconvergance]  <- image images/linearConvergance.png width=50% height=50% style="margin-left:200px"
+	[SimpleCircuit] <- image images/SimpleCircuit.png  width=50% height=50% style="margin-left:200px"
 	[Appendix 1] <- link #toc4Appendix_1_-__linear.pl__Source

@@ -1,0 +1,465 @@
+#### Pruning the Seach Tree - The "Travelling Salesman" Problem
+
+Constraints can be used to prune a potentially large search space by applying appropriate tests while solutions are being generated rather than waiting until the generation is complete. As an example, the "travelling salesman" problem will be used in developing a sequence of constraint based solutions which compare favourably with a "naive", but simple, generate and test solution. This problem has been heavily researched due to its  theoretical and practical importance so the intent is not compare these Prolog solutions with state-of-the-art algorithms, but rather to show how constraints can be used to achieve better solutions to highly combinatorial problems.
+
+The ["travelling salesman" problem] is a well known example of a classical [NP-complete] problem and may be stated as: given {`N`} points in a metric space, find the shortest tour which visits all the points and returns to the starting point, and visits each point exactly once. The input data can be modelled as a database of facts of the form `distance(P1, P2, D)` where `D` is the metric distance between points `P1` and `P2`. For our purposes, the data was taken from [Solution of a Large-Scale Traveling-Salesman Problem] originally published in 1954. It defines a set of points and distances corresponding to one city in each state of the U.S.A. plus Washington, D.C., for a total of 49 points. However, we'll only use the 42 numbered cities for reasons explained in the paper. Here's a small sample ([/*ts_data_USA.pl*/raw data] for the complete set):
+.pl
+	%
+	% distance(CityNum1, CityNum2, Dunits)
+	%    where D units is the distance in miles, less 11, divided by 17 and rounded to nearest integer
+	%
+	distance(C1,C2,D) :-       % distances are symmetrical
+		C1>C2,!,
+		distance(C2,C1,D).
+	
+	distance( 1,  2,   8).
+	distance( 1,  3,  39).
+	distance( 1,  4,  37).
+	distance( 1,  5,  50).
+	distance( 2,  3,  45).
+	distance( 2,  4,  47).
+	distance( 2,  5,  49).
+	distance( 3,  4,   9).
+	distance( 3,  5,  21).
+	distance( 4,  5,  15).
+
+aside>	Aside: Unfortunately this data set seems to violate one of the principles of basic geometry, the so-called "[triangle inequality]". Independent of the definition of "distance" the data should define the shortest path between any two points; otherwise the shortest overall tour length can't be derived from the data. Given a third point, the length of a path visiting all three can't be less than the shortest distance between any two of the points. (It can be equal if one of the points is on the path between the other two.) But the RAND dataset allows this possibilty. For example, the distance from `2` to `4` is `47` but `2` to `1` to `4` is `45`. So there is a shorter path by going through point `1` than the "shortest" defined distance between '2' and '4'. While this questions the validity of the answer (real world shortest tour), it doesn't impact the correctness of the algorithms described below.
+
+A solution for all 42 cities is well beyond the capabilities of any of the algorithms described below so we'll be using a small subset for comparison purposes. Each algorithm will be expressed as a predicate of the form `salesman_XX(Points, Tour, Length)` where `Points` is a list of integers identifying the cities to be used, `Tour` is an ordered list of those integers defining the shortest length tour (returning to the starting point), and `Length` is sum of the  distances between the the points on the tour.
+
+##### A "Naive" Prolog Solution
+
+A simple minded Prolog algorithm is to generate all the possible tours and then select the shortest one. This could be implemented as:
+.pl
+	salesman_P([P1|Ps], [P1|Tour], Length) :-
+		min_search(perm_lengthP(Ps, Tour, P1, P1, 0, Length), Length).
+		
+	perm_lengthP([], [Last], Current, Last, Dist, Length) :-
+		distance(Current, Last, D),
+		Length is Dist + D.
+	perm_lengthP(List, [X|Xs], Current, Last, Dist, Length) :-
+		select(X, List, Newlist),  % from library(lists)
+		distance(Current, X, D),
+		Newdist is Dist + D,
+		perm_lengthP(Newlist, Xs, X, Last, Newdist, Length).
+		
+	min_search(Goal,Objective) :-
+		current_prolog_flag(max_tagged_integer,MaxInt),
+		nb_setval('$min_search',[MaxInt,Goal]),  % initialize
+		Goal,                                    % generate solution(s)
+		nb_getval('$min_search',[Current,_]),
+		Objective < Current,                     % if better than current best, save it
+		nb_setval('$min_search',[Objective,Goal]),
+		fail.
+	min_search(Goal,Objective) :-
+		nb_getval('$min_search',[Objective,Goal]).	% unify goal with best solution
+`perm_lengthP/6` generates all permutations of the list of points generating a tour length for each one. `min_search/2` is a general purpose predicate which takes a generator (`Goal`) to produce solutions (similar to `findall/3`) and then remembers the best one found so far using a global variable (extra-logical feature of SWIP). When the generator finally fails (no more solutions) the best solution is recalled from the global variable. An example using the first 8 cities in the database:
+eg
+	?- findall(P, between(1,8,P), Pts), salesman_P(Pts, Tour, Length).
+	Pts = [1, 2, 3, 4, 5, 6, 7, 8],
+	Tour = [1, 2, 5, 6, 7, 8, 3, 4, 1],
+	Length = 151
+
+For a list of length {`N`}, this will take {`O((n-1)!)`} time to find the best solution. There are 6,227,020,800 possible tours for `N=14` and the naive Prolog solution takes several hours to find the optimum for this size tour.
+
+##### A Constraint Version
+
+It should be fairly obvious that the previous Prolog version ends up generating many solutions that will be discarded because their length exceeds the current best solution. So a simple extension is to use constraints to eliminate (fail) any solution in progress when the length exceeds the currently known best solution:
+.pl
+	salesman_K([P1|Ps], [P1|Tour], Length) :-
+		Length::integer(0,_),
+		min_ratchet(perm_lengthK(Ps, Tour, P1, P1, 0, Length), Length).
+	
+	perm_lengthK([], [Last], Current, Last, Dist, Length) :-
+		distance(Current, Last, D),
+		Length is Dist + D.
+	perm_lengthK(List, [X|Xs], Current, Last, Dist, Length) :-
+		select(X, List, Newlist),  % from library(lists)
+		distance(Current, X, D),
+		Newdist is Dist + D, {Newdist =< Length},  % fail when Newdist exceeds Length
+		perm_lengthK(Newlist, Xs, X, Last, Newdist, Length).
+	
+	%
+	% Find the lowest value of Objective generated by Goal subject to Constraint
+	%
+	min_ratchet(Goal,Objective) :- 
+		{Objective <= Bound},              % define "bound" constraint (must be inclusion to avoid back flow)
+		Goal,                              % generate a solution
+		nb_setval('$min_ratchet', Goal),   % save solution
+		range(Objective,[_,UB]),
+		range(Bound,[LB,_]),
+		NUB is UB-1,                       % assume integer values
+		nb_setbounds(Bound,[LB,NUB]),      % set new bound
+		fail.                              % and backtrack
+	min_ratchet(Goal,Objective) :- 
+		catch(nb_getval('$min_ratchet', Goal),_,fail),  % retrieve solution
+		nb_delete('$min_ratchet').
+Other than replacing `min_search/1` with `min_ratchet/2` the differences between this constraint version and the "naive" version are small: `Length` is constrained to be a positive integer and the accumulated distance (`Newdist`) is constrained to be less than the `Length` for any selection of the next point on the tour.
+
+`min_ratchet` requires further explanation. Like `min_search` its first argument is a generator `Goal`. The second argument, `Objective` is an interval variable which is to be "minimized". A local bounding interval, `Bound`, is used to constrain the search; `Objective` must be a sub-interval interval of `Bound`. When a solution of `Goal` is generated, it is saved and  and the upper bound of `Bound` is reduced to the value of `Objective` corresponding to the solution less 1 (assumes `Objective` is an integer). This requires the use of a special `clpBNR` predicate built for the purpose: `nb_setbounds/2` sets the bounds of the first argument (an interval) to the bounds specified by the second argument (list of two numbers) such that it is not undone on backtracking. When failure causes `Goal` to try and find the next solution the bounding constraint uses the updated upper bound of `Bound`. This continues until no further solutions are found and the second clause of `min_ratchet` retrieves the "best" solution from the global variable. If no solutions are found, `min_ratchet` will fail. Like `min_search`, `min_ratchet` is a general purpose predicate which can be used for all the constraint based algorithms below.
+
+aside>	Aside: In general, use of `nb_setbounds` will invalidate any backtracking `clpBNR` program. It has very limited use cases such as a branch and bound optimization (via side-effect) as shown here. In general, backtracking should remove constraints that have been applied (analogous to unification).
+
+Constraint based algorithms incur additonal overheads to define and enforce the constraints. For performance to be competitive, the additional pruning of the search space enabled by the constraints must more than compensate for this.
+
+Running the same example with `salesman_K`:
+eg
+	?- findall(P, between(1,8,P), Pts), salesman_K(Pts, Tour, Length).
+	Pts = [1, 2, 3, 4, 5, 6, 7, 8],
+	Tour = [1, 2, 5, 6, 7, 8, 3, 4, 1],
+	Length = 151
+
+Before comparing performance, here's a variation using a pre-built sum constraint rather than the explicit distance calculation in `perm_lengthK`. To do this, define a `Distances` list of intervals corresponding to the distances between successive points in the tour. The total length is then the sum of the distances and that defines the `Objective` interval for `min_ratchet`. The final code looks like:
+
+.pl
+	salesman_KT(Pts, [P1|Tour], Length) :-
+		length(Pts,Count),                 % number of points
+		length(Distances,Count),           % list of distances
+		symbolic_sum(Distances,SumD),      % SumD = symbolic sum of distances
+		[Length,Distances]::integer(0,_),  % all are positive integers
+		{Length==SumD},                    % constrain Length to be  sum of distances
+		Pts = [P1|Ps],
+		min_ratchet(perm_lengthKT(Ps, Tour, P1, P1, Distances), Length).
+	
+	symbolic_sum([X],X) :- !.
+	symbolic_sum([X|Xs], X+Sum) :-	symbolic_sum(Xs,Sum).
+	
+	perm_lengthKT([], [Last], Current, Last, [D]) :-
+		distance(Current, Last, D).
+	perm_lengthKT(List, [X|Xs], Current, Last, [D|Ds]) :-
+		select(X, List, Newlist),  % from library(lists)
+		distance(Current, X, D),
+		perm_lengthKT(Newlist, Xs, X, Last, Ds).
+So there's a little more work done in the setup phase, but the generation goal is quite clean and simple, yielding the same result:
+eg
+	?- findall(P, between(1,8,P), Pts), salesman_KT(Pts, Tour, Length).
+	Pts = [1, 2, 3, 4, 5, 6, 7, 8],
+	Tour = [1, 2, 5, 6, 7, 8, 3, 4, 1],
+	Length = 151
+
+How do these compare in terms of execution time? The performance graph for N=8..14 (note that the vertical scale is logarithmic so differences are greater than they appear):
+[chart_PK1]
+As you might expect, the naive version is very fast for short lists of points, but around N=12 they're roughly equivalent and at N=14 the constraint versions are about 3 times faster, and the gap will only get bigger for larger `N`. The two constraint versions are very similar - the symbolic sum version is a little slower, due to firing of an additional constraint during each permutation step, but perhaps slightly more elegant. 
+
+##### An Alternative Constraint Algorithm
+
+Now consider an algorithm based on the observation that the shortest tour will tend to be made up of the shortest point-to-point segments, or legs. For a tour of {`N`} points, there are {`N*(N-1)//2`} possible legs, assuming legs are un-oriented, i.e., the leg from `X` to `Y` is the same as the leg from `Y` to `X`. A "good" heuristic is to construct a tour by picking legs in order of size, i.e., shortest first, subject to the constraint that the legs selected at any point can be used to construct a valid tour. Specifically:
+1..
+	* Any point on the tour can only be "attached" to two selected legs (one in, one out).
+	* The tour must be a single cycle, i.e., a leg should not be selected if it will connect points already connected, unless it is the last leg to be selected.
+
+The first step in implementing a leg based algorithm is to construct a list of legs from the list of points to be included on the tour. A leg will be represented by the term `leg(D, P, Acc, X, Y)` with the following argument semantics:
+*	`D` - integer length of the leg
+*	`P` - boolean indicating whether the leg is selected (`0`=not selected, `1`=selected, `boolean`=eligible for selection)
+*	`Acc` - not used (for now)
+*	`X,Y` - end points of the leg, of the form `pt(Pn, C)`; `Pn` is the point number from the input points list and `C` is a connection variable as described below. 
+
+To enforce the second constraint of a valid tour (no internal cycles), initially all points have different connection variables indicating they're not connected. When a leg is selected its two connected variables are unified; this propagates through all connected points as legs are selected. If the connected state of point `X` is identical (i.e., '`==`') to the connected state of point `Y`, the points are already connected and this leg should not be selected (thus avoiding the creation an inner cycle).
+
+Once the list of legs is constructed, it will be sorted on length (first argument of `leg/5`) so the "good" heuristic can select legs from the head of the list. Then `min_ratchet` will be used with predicate `select_legs` as a generator to find the minimum length. The tour length's upper bound can be constrained by the previous best solution (as in `salesman_K`), but there is also an opportunity to constrain the lower bound. Since the legs are sorted, the minimum length of the tour under construction is the accumulated length plus the lengths of the next `M` legs in the list, where `M` is the number of legs required to complete the tour (equals the number of points in the tour less the number of legs already selected). This minimum length can be used to set a lower bound for the length - if this lower bound ever exceeds the best length calculated so far (the upper bound), the leg selection will fail.
+
+The legs of a generated valid tour will not be ordered as they are selected in the tour, so a final step is required to sequence the legs. The complete implementation:
+.pl
+	salesman_L(Pts, Tour, Length) :-
+		length(Pts,Count),
+		maplist(make_pt, Pts, Pointlist),       % make `pt` terms from points list
+		leg_list(Pointlist, Leglist),           % construct legs list
+		sort(Leglist, Ascending),               % on leg length (distance)
+		setup_leg_constraints(Pts, Leglist),    % 2 legs to any point
+		Length::integer(0,_),                   % Tour length (distance)
+		min_ratchet(select_legs(Count, Ascending, Selected, 0, Length),Length),
+		Pts = [P1|_],                           % sequence the tour from first point
+		sequence_legs(Selected, Tour, P1).
+	
+	make_pt(N, pt(N,Cn)).         % make `pt` structure with Connected variable 
+	
+	% form the list of N*(N-1)/2 legs
+	leg_list([], []).
+	leg_list([C|Cs], DL) :- 
+		leg_from(Cs, C, DL, EL),
+		leg_list(Cs, EL).
+	
+	% legs from list of points to a point
+	leg_from([], P, L, L).
+	leg_from([X|Xs], Y, [leg(D,P,Acc,X,Y)|Ls], E) :-
+		dist(X,Y,D),              % distance between X  and Y
+		P::boolean,               % boolean variable, true if leg part of tour
+		leg_from(Xs, Y, Ls, E).
+	
+	dist(pt(C1,_), pt(C2,_), D) :- distance(C1,C2,D).
+	
+	% constrain number of enabled legs to any one point to be 2
+	setup_leg_constraints([], Legs).
+	setup_leg_constraints([P|Ps], Legs) :-
+		% only two legs including P are allowed (total degree in tour is exactly 2)
+		incident(Legs, P, PNs),  % list of booleans of legs terminating at point P
+		symbolic_sum(PNs, S), {S == 2},
+		setup_leg_constraints(Ps, Legs).
+	
+	incident([], _, []).
+	incident([X|Xs], N, [P|Ys]) :- 
+		incid(X,N,P), !,  % point N is an endpoint of leg X, P is leg enabled 
+		incident(Xs,N,Ys).
+	incident([X|Xs], N, Ys) :- 
+		incident(Xs, N, Ys).
+	
+	incid(leg(D,P,Acc, pt(N,_),_), N, P).
+	incid(leg(D,P,Acc, _,pt(N,_)), N, P).
+	
+	% select legs for the tour
+	select_legs(1, [leg(D,1,Acc,X,Y)|_ ], [leg(D,X,Y)], Length, Total) :- !,  % last leg
+		Total is Length+D.
+	select_legs(N, [leg(D,S,Acc,X,Y)|Ls], [leg(D,X,Y)|Rs], Length, Total) :- 
+		connect_(X,Y),                  % connect X & Y 
+		S=1,                            % mark leg as selected
+		NewLength is Length+D,          % accumulate length
+		estimate(N,Ls,NewLength,Est),   % best estimate for remaining
+		{Est =< Total},                 % must be =< Total
+		N1 is N - 1,                    % number of remaining legs
+		select_legs(N1, Ls, Rs, NewLength, Total).
+	select_legs(N, [leg(_,0,_,_,_)|Ls], R, Length, Total) :-  % else skip leg, force boolean false
+		select_legs(N, Ls, R, Length, Total).
+	
+	connect_(pt(_,C1),pt(_,C2)) :- 
+		C1 \== C2,  % not already connected
+		C1=C2.      % mark as connected (same)
+	
+	estimate(1,_, D,D) :- !.                                 % done
+	estimate(N, [leg(D,S,_,_,_)|Ls], D1, Est) :- S \== 0, !, % if possible leg
+		DD is D1 + D,
+		N1 is N - 1,
+		estimate(N1, Ls, DD, Est).                           % estimate rest
+	estimate(N, [_|Ls], D, Est) :-                           % else skip leg
+		estimate(N, Ls, D, Est).
+	
+	% sequence selected legs into a list of point values
+	sequence_legs([], [P], P) :- !.    % last leg returns to origin ??
+	sequence_legs(List, [P|Ps], P) :-
+		delete_leg(List, leg(D, pt(P,_),pt(Next,_)), Rest), !,
+		sequence_legs(Rest, Ps, Next).
+	
+	delete_leg([X|Xs], Y, Xs) :- 
+		match_leg(X,Y), !.
+	delete_leg([X|Xs], Y, [X|Ys]) :- 
+		delete_leg(Xs,Y,Ys).
+	
+	match_leg(leg(D,A,B), leg(D,A,B)).
+	match_leg(leg(D,A,B), leg(D,B,A)).
+Using the same example as above:
+eg
+	?- findall(P, between(1,8,P), Pts), salesman_L(Pts, Tour, Length).
+	Pts = [1, 2, 3, 4, 5, 6, 7, 8],
+	Tour = [1, 2, 5, 6, 7, 8, 3, 4, 1],
+	Length = 151
+
+It's obvious that a fair amount of code has been added; the "legs" list has to be constructed and sorted, the tour constraints applied, the `select_legs` generator has to apply the connected "loop" check, and finally the tour has to be sequenced. This is clearly not going to be a win for low values of `N`. But it outperforms the point based constraint implementations for `N >= 11` and is faster than the "naive" version by a factor of 5 when `N = 14` (more details below). 
+
+The `Acc` argument of `leg/5` hasn't been used so far, but it will be in this final algorithm to hold the accumulated length of all the legs selected so far:
+.pl
+	acc_constraints([], 0).
+	acc_constraints([leg(D,P,Acc,C1,C2)|Ls], Acc) :-
+		Acc::integer(0,_),
+		{Acc == P*D+Acc1},
+		acc_constraints(Ls, Acc1).
+The accumulator will narrow as legs get selected and their `P` boolean becomes set to `1` or `0`. In the process all the other leg accumulators will narrow accordingly. And as a leg becomes eligible for selection (in the generator goal), an additional "estimate" constraint is added to ensure that accumulated length plus the minimum estimate for the remainder, doesn't exceed the total length constraint.
+
+The implementation in its entirety (omitting code common to `salesman_L`):
+.pl
+	salesman_LA(Pts, Tour, Length) :-
+		length(Pts,Count),
+		maplist(make_pt, Pts, Pointlist),       % make `pt` terms from points list
+		leg_list(Pointlist, Leglist),           % construct legs list
+		sort(Leglist, Ascending),               % on leg length (distance)
+		setup_leg_constraints(Pts, Leglist),    % 2 legs to any point
+		acc_constraints(Ascending, Length),     % define accumulator constraints
+		min_ratchet(select_legsA(Count, Ascending, Selected), Length),
+		Pts = [P1|_],                           % start from first point
+		sequence_legs(Selected, Tour, P1).
+	
+	acc_constraints([], 0).
+	acc_constraints([leg(D,P,Acc,C1,C2)|Ls], Acc) :-
+		Acc::integer(0,_),
+		{Acc == P*D+Acc1},
+		acc_constraints(Ls, Acc1).
+	
+	select_legsA(1, [leg(D,1,Acc,P,Q)|_], [leg(D,P,Q)] ) :- !.
+	select_legsA(N, [leg(D,S,Acc,P,Q)|Ls], R):-
+		%% constrain Acc if leg selectable but not yet determined
+		(var(S) -> (estimate(N, Ls, D, TD), {Acc >= TD}) ; true),  % connect estimate to constraint net
+		sel(S, leg(D,P,Q), N, N1, R, R1),  % ¿leg select?
+		select_legsA(N1, Ls, R1).
+	
+	sel(S, leg(D,P,Q), N, N1,[leg(D,P,Q)|Ls],Ls) :-
+		connect_(P,Q), S=1,  % quick connect test before setting boolean
+		N1 is N - 1.
+	sel(0, Leg, N,N, L,L).   % Leg not selected
+As we saw with `salesman_KT`, the select predicate is a little simpler because it doesn't have to compute the tour length as it selects legs; that's automatically done by the outer accumulator variable returned by `acc_constraints/2`.
+
+So this version entails even more setup overhead before the searching begins. But it can pay off as shown in the following graph comparing all five versions (remember that the vertical scale is logarithmic):
+[chart_PKL1]
+For `N >= 12` the leg based algorithms perform the best, and at `N = 14`, `salesman_LA` is almost 6 times faster than `salesman_P`, over twice as fast as the fastest point based constraint algorithm and about 20% faster than the simpler leg based algorithm (`salesman_L`). And one would expect the differences to grow with larger `N` as suggested by the slopes of the various lines on the chart.
+
+##### Data Sensitivity
+
+It's a fair question to ask whether the performance of these algorithms are sensitive to the input data, particularly given that the cities in the RAND data are numbered in order of the optimal tour. The results given above are based on just using the first `N` cities, i.e., `1,2,3,...,N` . To test data sensitivity, two additional tour groups were generated randomly and then selecting the first `N` points (for comparison with the chart above):
+.tsv	[chart_PKLr1]	[chart_PKLr2]
+The performance of the "naive" algorithm is only dependent on the number of points on the tour, as one would expect. It exhaustively generates all solutions, adds up the distances between the points as ordered and then picks the best tour based on total length. There's no difference in the actual computation cost between each of the three tours.
+
+But the performance of the various constraint based algorithms is clearly dependent on the the input data, as well as the value of `N`. Looking at the implementation, the performance of these algorithms will largely depend on how `Goal` generates many solutions in `min_ratchet`. If a near optimal solution is found early,  more severe pruning can be realized due to the lower upper bound value of `Bound`. On the other hand if each successive solution isn't a big improvement over earlier solutions, it generally takes more solutions to get to the final value. 
+
+For `salesman_K` and `_KT`, the order in which solutions are generated will depend on the order of the cities in the points list, since the generator really just produces permutations of that list; a fortuitous order will end up in short execution times. For example, just sorting the list improves performance by a factor of 3-4 for random tour #2. But it's not obvious what the optimal order will be and, since the leg based algorithms seem to be generally better, this won't be investigated further.
+
+The leg-based algorithms (`salesman_L` and `_LA`) should not be dependent on the points list order since the generation of tours uses a leg list sorted on distance. (There may be a second order effect when legs have the same length.) But there still is a significant difference between the three sample tours. Focusing on a single algorithm (`salesman_LA`) reinforces this point. Although all the tours are exponentially increasing with `N`, for any given `N` there may be almost two orders of magnitude difference between the best and worst case tour. And the best, or worst, case varies with `N`:
+[chart_LAs]
+It's noteworthy that in at least one region on each line the time actually minimally increases or actually decreases as `N` gets larger, presumably because the addition of a point results in a more optimal ordering of solutions. This suggests that there might be a better leg selection than shortest first, but it's not obvious what that might be. What is clear is that there is a significant advantage in performance for leg-based algorithms in general, with the added bonus that sensitivity to the order of the input points list has been eliminated. 
+
+##### Applying Spatial Constraints
+
+To this point, the only thing known about the points is the distance between them. But if the location of the points in some coordinate metric space is also known, additional constraints are possible. For example, one (provable) observation is that one of the shortest tours (there may be multiple such tours) contains no legs which cross another leg on the tour. So once a leg is chosen, and any other legs which cross it are not eligible for selection.
+
+The other consequence of having the coordinates of the points defined is that the distance between points can be calculated from their coordinates rather than relying on a database of distance facts as in the previous examples. [TSPLIB] provides numerous examples of symmetric travelling salesman problems, most of which are far too large to consider in this investigation. But the 14-point "burma" problem is manageable and will be used here; the "`.tsp`" data:
+eg
+	NAME: burma14
+	TYPE: TSP
+	COMMENT: 14-Staedte in Burma (Zaw Win)
+	DIMENSION: 14
+	EDGE_WEIGHT_TYPE: GEO
+	EDGE_WEIGHT_FORMAT: FUNCTION 
+	DISPLAY_DATA_TYPE: COORD_DISPLAY
+	NODE_COORD_SECTION
+	   1  16.47       96.10
+	   2  16.47       94.44
+	   3  20.09       92.54
+	   4  22.39       93.37
+	   5  25.23       97.24
+	   6  22.00       96.05
+	   7  20.47       97.02
+	   8  17.20       96.29
+	   9  16.30       97.38
+	  10  14.05       98.12
+	  11  16.53       97.38
+	  12  21.52       95.59
+	  13  19.41       97.13
+	  14  20.09       94.55
+	EOF
+
+The `EDGE_WEIGHT_TYPE` is `GEO` indicating that the cordinates in the `NODE_COORD_SECTION` are latitude/longitude pairs. This raw data will be mapped to the following Prolog `point/2` facts:
+.pl
+	point(3000,  geo(16.47,       96.10)).
+	point(3001,  geo(16.47,       94.44)).
+	point(3002,  geo(20.09,       92.54)).
+	point(3003,  geo(22.39,       93.37)).
+	point(3004,  geo(25.23,       97.24)).
+	point(3005,  geo(22.00,       96.05)).
+	point(3006,  geo(20.47,       97.02)).
+	point(3007,  geo(17.20,       96.29)).
+	point(3008,  geo(16.30,       97.38)).
+	point(3009,  geo(14.05,       98.12)).
+	point(3010,  geo(16.53,       97.38)).
+	point(3011,  geo(21.52,       95.59)).
+	point(3012,  geo(19.41,       97.13)).
+	point(3013,  geo(20.09,       94.55)).
+
+To verify the results, the following TSPLIB compatible distance function for latitude/longitude pairs on an ideal sphere of radius `6378.388` will be used:
+.pl
+	distance(C1,C2,D) :-
+		point(C1,geo(La1,Lo1)),
+		point(C2,geo(La2,Lo2)), !,
+		degMin_to_radians(La1,La1R),
+		degMin_to_radians(Lo1,Lo1R),
+		degMin_to_radians(La2,La2R),
+		degMin_to_radians(Lo2,Lo2R),
+		RRR is 6378.388,
+		Q1 is cos(Lo1R-Lo2R),
+		Q2 is cos(La1R-La2R),
+		Q3 is cos(La1R+La2R),
+		D is truncate(RRR*acos(0.5*((1+Q1)*Q2 - (1-Q1)*Q3)) + 1).
+		
+	degMin_to_radians(DM,R) :-
+		Deg is truncate(DM),
+		Min is DM-Deg,
+		R is pi*(Deg+5r3*Min)/180.
+
+This clause for `distance/3` is compatible with the `distance/3` predicate used previously as long as there is no conflict with the city "IDs" used previously (hence the `3000-3013` range rather than `1-42` used in the examples using the RAND raw data).
+
+The leg crossing constraints to be inserted into `salesman_LA` can now be defined using the `point/2` facts:
+.pl
+	crosses_constraints([]).
+	crosses_constraints([L0|Ls]) :-
+		crosses_constraints(Ls,L0),
+		crosses_constraints(Ls).
+		
+	crosses_constraints([],_).
+	crosses_constraints([L|Ls],L0) :-
+		cross_constrain(L,L0),
+		crosses_constraints(Ls,L0).
+	
+	cross_constrain(leg(_,S0,_,pt(P0,_),pt(P1,_)),leg(_,S1,_,pt(P2,_),pt(P3,_))) :-
+		\+ adjacent(P0,P1,P2,P3),              % legs don't share an endpoint
+		point(P0,Cs0), point_coordinates(Cs0,X0,Y0), 
+		point(P1,Cs1), point_coordinates(Cs1,X1,Y1),
+		point(P2,Cs2), point_coordinates(Cs2,X2,Y2),
+		point(P3,Cs3), point_coordinates(Cs3,X3,Y3),
+		\+ disjoint_axis(X0,X1,X2,X3),         % optimization: X overlap?
+		\+ disjoint_axis(Y0,Y1,Y2,Y3),         % optimization: Y overlap?
+		[A,B]::real(0,1),
+		{ X0 + A*(X1-X0) == X2 + B*(X3-X2) },  % X intersection 
+		{ Y0 + A*(Y1-Y0) == Y2 + B*(Y3-Y2) },  % Y intersection
+		!,                                     % success, apply constraint
+		{S0 + S1 =< 1}.                        % if legs cross, both can't be selected
+	cross_constrain(_,_).                      % no constraints if legs don't cross
+	
+	point_coordinates(geo(X,Y),X,Y).
+	
+	adjacent(P,_,P,_).
+	adjacent(P,_,_,P).
+	adjacent(_,P,P,_).
+	adjacent(_,P,_,P).	
+	
+	% basic overlap detection
+	disjoint_axis(V0,V1,V2,V3) :- max(V0,V1) < min(V2,V3).
+	disjoint_axis(V0,V1,V2,V3) :- min(V0,V1) > max(V2,V3).
+
+Predicate `crosses_constraints` just does a pairwise check over all the legs using `cross_constrain/2` which for any pair of two legs applies a joint constraint `{S0 + S1 =< 1}` on the the select booleans of the legs if they cross. Therefore if one leg is selected (its boolean is set to `1`), the select boolean of any crossing legs will be forced to `0`.
+
+But the first thing `cross_constrain` does is check whether the legs share an endpoint; if so they can't cross (assuming legs are straight lines). Once the point co-ordinates are established (`X`'s and `Y`'s), a quick check is done to see if there's any overlap in the `X` and `Y` axis; if none, the legs can't cross. This is really an optimization to avoid using the following constraint based intersection test which can be relatively expensive. If there is some overlap, constraints are used to check to see if there is some common `X` and `Y` point on the two legs. (reals `A` and `B` are constrained to allow common `(X,Y)` values which defines a crossing point.)
+
+Matching the published value for the best tour:
+eg
+	﻿?- findall(P,between(3000,3013,P),Pts),salesman_LA(Pts,Tour,Length).
+	Pts = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010, 3011, 3012, 3013],
+	Tour = [3000, 3001, 3013, 3002, 3003, 3004, 3005, 3011, 3006, 3012, 3007, 3010, 3008, 3009, 3000],
+	Length = 3323.
+
+Results from running `salesman_LA` over two examples from TSPLIB (`burma14` and `ulysses16`), with and without crossing constraints, are shown on these charts:
+.tsv	[chart_Burma14]	[chart_Ulysses16]
+As one might expect, the additional cost ({`O(N^4)`}) of setting up the crossing constraints doesn't pay off for low values of `N`. Even for larger `N` the advantage for the `burma14` problem is fairly small (less than a factor of 2). But the payoff on `ulysses16` is quite large even for relatively small values of `N` (factor of 4 or more starting at `N=11`) and getting larger with `N`. In fact, solving the complete problem (16 points) was abandoned after a day for the version without crossing constraints.
+
+##### Summary
+
+The "travelling salesman" is an example of a difficult problem to which constraint based techniques in conjunction with a branch-and-bound mechanism (`min_ratchet`) can be applied to reduce the search space and improve performance compared to conventional generate and test approaches, sometimes by a factor of 10 or more. It's noteworthy that one of the largest improvements came when the problem model was changed from finding the best ordering of {`N`} points to selecting the best combination of {`N*(N-1)//2`} legs (and then sequencing them). This might seem counter-intuitive, particularly considering additional front end setup costs, but the benefits are clear for any significant value of {`N`}. A similar conclusion can be drawn from the addition of leg crossing constraints when spatial information is available; the costs of constraint setup are outweighed by the benefits of search space pruning for larger values of {`N`}. In general, the more constraints that can be applied to enable pruning, the better the performance. 
+
+But the relative effectiveness of any constraint based algorithm may be affected by the heuristic used in generating solutions. Whether that's true, or if such an optimal heuristic can be discerned, is dependent on the problem (and data) under consideration.
+
+<#TableOfContents>
+
+&
+	@import pkgs/tsv.mmk
+	// nested CSS to display side-by-side charts 
+	@css
+		table.my_array tr td { border:none; }
+		table.my_array tr:nth-child(1) td { background:white; }
+	["travelling salesman" problem] <- link https://en.wikipedia.org/wiki/Travelling_salesman_problem
+	[NP-complete] <- link https://en.wikipedia.org/wiki/NP-completeness
+	[Solution of a Large-Scale Traveling-Salesman Problem] <- link https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.606.2752&rep=rep1&type=pdf
+	[/*ts_data_USA.pl*/raw data] <- link supplemental/ts_data_USA.pl
+	[triangle inequality] <- link https://en.wikipedia.org/wiki/Triangle_inequality
+	[chart_PK1] <- image images/P_K_KT_1.png width=40% height=40% style="margin-left:150px"
+	[chart_PKL1] <- image images/P_K_KT_L_LA_1.png width=40% height=40% style="margin-left:150px"
+	// Firefox doesn't like percentages in tables? 40% of 760 = 304
+	[chart_PKLr1] <- image images/P_K_KT_L_LA_R1.png height=304
+	[chart_PKLr2] <- image images/P_K_KT_L_LA_R2.png height=304
+	[chart_LAs] <- image images/Salesman_LA.png width=40% height=40% style="margin-left:150px"
+	[TSPLIB] <- link http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/tsp/
+	[chart_Burma14] <- image images/Burma14_LA.png height=304
+	[chart_Ulysses16] <- image images/Ulysses16_LA.png height=304
