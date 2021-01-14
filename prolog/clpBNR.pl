@@ -794,7 +794,6 @@ clpBNR_version_("0.9.4").
 	 ; true
 	),
 
-	clpBNR_version_(Version), format("*** clpBNR v~walpha ***\n\n",[Version]),
 	(current_prolog_flag(bounded,true)
 	 -> write("Error: clpBNR requires unbounded integers and rationals.\n")
 	 ;  true
