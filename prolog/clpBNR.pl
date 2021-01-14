@@ -91,6 +91,10 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
+:- create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)]).
+:- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
+:- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
+
 %
 % SWIP optimise control - set flag to true for compiled arithmetic
 %
@@ -787,38 +791,53 @@ clpStatistics :- !.
 
 clpBNR_version_("0.9.4").
 
-:- initialization((
-	% restore "optimise" flag
-	(nb_current('clpBNR:temp',Opt)
-	 -> (nb_delete('clpBNR:temp'), set_prolog_flag(optimise,Opt))
-	 ; true
+check_features :-
+	(   current_prolog_flag(bounded,true)
+	->  print_message(error, clpBNR(bounded))
+	;   true
 	),
+	(   current_prolog_flag(float_overflow,_)
+	->  true
+	;   print_message(error, clpBNR(no_IEEE))
+	).
 
-	(current_prolog_flag(bounded,true)
-	 -> write("Error: clpBNR requires unbounded integers and rationals.\n")
-	 ;  true
-	),
-	(current_prolog_flag(float_overflow,_)
-	 -> true
-	 ;  write("Error: clpBNR requires support for IEEE arithmetic.\n")
-	),
-
-	% Set required arithmetic flags
+clp_set_prolog_flags :-
 	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
 	set_prolog_flag(max_rational_size, 16),            % rational size in bytes before ..
 	set_prolog_flag(max_rational_size_action, float),  % conversion to float
 
 	set_prolog_flag(float_overflow,infinity),          % enable IEEE continuation values
 	set_prolog_flag(float_zero_div,infinity),
-	set_prolog_flag(float_undefined,nan),
+	set_prolog_flag(float_undefined,nan).
 
-	once(prolog_stack_property(global,min_free(Free))),  % minimum free cells (8 bytes/cell)
-	(Free < 8196 ->	set_prolog_stack(global,min_free(8196)) ; true),
+set_min_free(Amount) :-
+	(   prolog_stack_property(global,min_free(Free))
+	->  (   Free < Amount
+	    ->	set_prolog_stack(global,min_free(Amount))
+	    ;	true
+	    )
+	;   true
+	).
 
-	% create clpBNR specific flags
-	create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)]),
-	create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]),
-	create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]),
+restore_optimise :-
+	(   nb_current('clpBNR:temp',Opt)
+	->  nb_delete('clpBNR:temp'),
+	    set_prolog_flag(optimise,Opt)
+	;   true
+	).
 
-	clpStatistics     % initialize statistics
-)).
+finish_up :-
+	check_features,
+	clp_set_prolog_flags,
+	set_min_free(8196),
+	restore_optimise,
+	clpStatistics.
+
+:- initialization(finish_up, now).
+
+:- multifile prolog:message//1.
+
+prolog:message(clpBNR(bounded)) -->
+	[ 'clpBNR requires unbounded integers and rationals.'-[] ].
+prolog:message(clpBNR(no_IEEE)) -->
+	[ 'clpBNR requires support for IEEE arithmetic.'-[] ].
