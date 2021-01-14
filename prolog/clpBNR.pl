@@ -95,6 +95,18 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 :- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
 :- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
 
+% Provide exception hooks for the global variables used by this library.
+% This allows running the library in any thread.
+
+user:exception(undefined_global_variable, Var, retry) :-
+        init_gvar(Var, Value),
+        nb_setval(Var, Value).
+
+init_gvar('clpBNR:node_count', 0).
+init_gvar('clpBNR:evalNode', 0).
+init_gvar('clpBNR:evalNodeFail', 0).
+init_gvar('clpBNR:iterations', 0).
+
 %
 % SWIP optimise control - set flag to true for compiled arithmetic
 %
@@ -830,8 +842,7 @@ finish_up :-
 	check_features,
 	clp_set_prolog_flags,
 	set_min_free(8196),
-	restore_optimise,
-	clpStatistics.
+	restore_optimise.
 
 :- initialization(finish_up, now).
 
