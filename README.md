@@ -133,22 +133,26 @@ If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://github.com/ridgeworks/clpBNR.git`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR.git')]).
+	﻿?- pack_install(clpBNR,[url('https://github.com/ridgeworks/clpBNR.git')]).
+	% Cloning into '/Users/rworkman/.local/share/swi-prolog/pack/clpBNR'...
 	Verify package status (anonymously)
-		at "http://www.swi-prolog.org/pack/query" Y/n? 
+		at "https://www.swi-prolog.org/pack/query" Y/n? 
+	% Contacting server at https://www.swi-prolog.org/pack/query ... ok
+	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
-	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
+	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
 	Installed version:      0.9.5
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
-	Install "clpBNR********" (****** bytes) Y/n? 
+	Download URL:           https://github.com/ridgeworks/clpBNR.git
+	Activate pack "clpBNR" Y/n? 
+	true.
 	
-	?- use_module(library(clpBNR)).
-	
-	*** clpBNR v0.9.5alpha ***
+	﻿?- use_module(library(clpBNR)).
+	% *** clpBNR v0.9.5alpha ***.
 	true.
    
-Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.
+Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
 
 The `clpBNR` module declaration is:
 
