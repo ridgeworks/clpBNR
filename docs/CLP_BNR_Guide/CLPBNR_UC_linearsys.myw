@@ -121,32 +121,32 @@ eg
 Using `solve` finds the solution in a few seconds, but there is an arguably missing constraint. We are probably not interested in the case where `Is` is negative, i.e., current flows from the positive terminal of the voltage source to the negative. Adding this constraint reduces the execution time by over a factor of three:
 eg
 	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
-	﻿% 14,300,256 inferences, 3.461 CPU in 3.477 seconds (100% CPU, 4131337 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	% 11,668,722 inferences, 2.882 CPU in 2.890 seconds (100% CPU, 4048864 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
 	I1 = 10,
 	Is:: 10.8282986...,
-	I8:: 0.2592087...,
 	I2:: 0.5690898...,
-	I5:: 0.2572598...,
-	I9:: 0.0389787...,
 	I3:: -0.3118300...,
 	I4:: 0.5320600...,
+	I5:: 0.2572598...,
 	I6:: 0.2962385...,
-	I7:: 0.8282986... .
+	I7:: 0.8282986...,
+	I8:: 0.2592087...,
+	I9:: 0.0389787... .
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),{Is>=0},time(solve(Vs)).
-	﻿% 3,750,130 inferences, 1.011 CPU in 1.016 seconds (100% CPU, 3707978 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	% 2,922,465 inferences, 0.849 CPU in 0.853 seconds (99% CPU, 3442361 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
 	I1 = 10,
 	Is:: 10.828298...,
-	I8:: 0.2592087...,
-	I2:: 0.569089...,
-	I5:: 0.257259...,
-	I9:: 0.0389787...,
+	I2:: 0.5690898...,
 	I3:: -0.3118300...,
-	I4:: 0.532060...,
-	I6:: 0.296238...,
-	I7:: 0.828298... .
+	I4:: 0.5320600...,
+	I5:: 0.2572598...,
+	I6:: 0.2962385...,
+	I7:: 0.828298...,
+	I8:: 0.2592087...,
+	I9:: 0.0389787... .
 This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for solutions for negative `Is`.
 
 ##### Under and Overdetermined Systems

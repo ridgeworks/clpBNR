@@ -307,7 +307,7 @@ eg
 	false.
 
 .pred	**list**(@Term)
-Equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>). (Supported for historical reasons.) 
+{`O(1)`} filter for lists implemented as `list(X) :- compound(X) ->  X=[_|_] ; X==[].`. This is not equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>).
 
 .pred	**lower_bound**(*+Interval*)
 Unifies *Interval* with its lower bound; equivalent to `range(Interval,[L,_]), Interval=L`. (Supported for historical reasons.)

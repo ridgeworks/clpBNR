@@ -55,29 +55,59 @@ distribute_(A,B,Exp) :-  % not always a good thing, e.g., X*(X-1) may be better 
 	simplify(DExp,Exp).
 
 % utility for (in)equality reduction 
-normalize_(A,B,Op,ROp,Exp) :-
+normalize_(A,B,Op,Exp) :-
 	B==0, !,                      % RHS = 0
-	n_build_(Op, A, 0, Exp).
-normalize_(A,B,Op,ROp,Exp) :-
+	simplify(A,AS),
+	num_separate_(AS,LHS,RHS),
+	Exp=..[Op,LHS,RHS].
+normalize_(A,B,Op,Exp) :-
 	A==0, !,                      % LHS = 0
-	n_build_(ROp, B, 0, Exp).
-normalize_(A,B,Op,ROp,Exp) :-
+	simplify(B,BS),
+	num_separate_(BS,RHS,LHS),
+	Exp=..[Op,LHS,RHS].
+normalize_(A,B,Op,Exp) :-
 	occurs_in_(A,B), !,           % RHS is shared var
-	n_build_(Op, A-B, 0, Exp).
-normalize_(A,B,Op,ROp,Exp) :-
+	simplify(A-B,AS),
+	num_separate_(AS,LHS,RHS),
+	Exp=..[Op,LHS,RHS].
+normalize_(A,B,Op,Exp) :-
 	occurs_in_(B,A), !,           % LHS is shared var
-	n_build_(ROp, B-A, 0, Exp).
-normalize_(A,B,Op,ROp,Exp) :-
+	simplify(B-A,BS),
+	num_separate_(BS,RHS,LHS),
+	Exp=..[Op,LHS,RHS].
+normalize_(A,B,Op,Exp) :-
 	compound(A), compound(B),     % LHS and RHS are expressions with shared vars
 	shared_vars_(A,B), !,
-	n_build_(Op, A-B, 0, Exp).
-normalize_(A,B,Op,ROp,Exp) :-     % everything else, leave LHS and RHS alone
-	simplify(B,RHS),
-	n_build_(Op, A, RHS, Exp).
+	simplify(A-B,AS),
+	num_separate_(AS,LHS,RHS),
+	Exp=..[Op,LHS,RHS].
+normalize_(A,B,Op,Exp) :-     % everything else, leave LHS and RHS alone
+	simplify(A,AS),
+	num_separate_(AS,LHS,AN),
+	simplify(B,BS),
+	num_separate_(BS,BS1,BN),
+	N is AN-BN,
+	(N =:= 0 -> RHS=BS1 ; RHS = BS1+N),
+	Exp=..[Op,LHS,RHS].
+
+num_separate_(Exp,Exp,0) :- var(Exp), !.
+num_separate_(A+B,Out,Num) :- !,
+	(number(B) 
+	 -> Num is -B,
+	 	Out=A
+	 ;	num_separate_(A,AOut,Num),
+	 	Out=AOut+B
+	).
+num_separate_(A-B,Out,Num) :- !,
+	(number(B) 
+	 -> Num = B,
+	 	Out=A
+	 ;	num_separate_(A,AOut,Num),
+	 	Out=AOut-B
+	).
+num_separate_(Exp,Exp,0).
 
 occurs_in_(Exp, V) :- var(V), term_variables(Exp,Vs), shared_var_(Vs,V).
-
-n_build_(Op, L, RHS, Exp) :- simplify(L,LHS), Exp=..[Op,LHS,RHS].
 
 shared_vars_(A,B) :-
 	term_variables(A,AVs),
@@ -112,19 +142,19 @@ simplify(A*B,Exp) :-
 
 % simplify equalities and inequalities
 simplify(A==B,Exp) :-
-	normalize_(A,B,==,==,Exp), !.
+	normalize_(A,B,==,Exp), !.
 
 simplify(A=<B,Exp) :-
-	normalize_(A,B,=<,>=,Exp), !.
+	normalize_(A,B,=<,Exp), !.
 
 simplify(A>=B,Exp) :-
-	normalize_(A,B,>=,=<,Exp), !.
+	normalize_(A,B,>=,Exp), !.
 
 simplify(A<B,Exp) :-
-	normalize_(A,B,<,>,Exp), !.
+	normalize_(A,B,<,Exp), !.
 
 simplify(A>B,Exp) :-
-	normalize_(A,B,>,<,Exp), !.
+	normalize_(A,B,>,Exp), !.
 /*
 % simplify "cascaded" divisions A/B/C = (A/B)/C = A*C/B
 simplify(A/B,Exp) :- 
@@ -208,6 +238,7 @@ collect_exp_item_([V|Es],U,Eo,EsNxt) :-
 	collect_exp_item_(Es,S,Eo,EsNxt).
 collect_exp_item_([term(V,N1)|Es],term(U,N2),Eo,EsNxt) :-
 	V==U,
+	(ground(V) -> V =\= 1.0Inf ; true),     % infinities don't obey algebraic rules
 	N is N1+N2,
 	collect_exp_item_(Es,term(V,N),Eo,EsNxt).
 collect_exp_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-  % Note that imprecise floats are not added
@@ -246,7 +277,7 @@ build_Nexp_(Exp, -Exp).                                     % other expression o
 
 
 reduce_exp_item_(V,           +, V)    :- var(V).
-reduce_exp_item_(term(V,0),   +, 0).
+reduce_exp_item_(term(V,0),   +, 0)    :- (ground(V) -> V  =\= 1.0Inf ; true).
 reduce_exp_item_(term(V,1),   +, V).
 reduce_exp_item_(term(V,-1),  -, V).
 reduce_exp_item_(term(V,N),   Op, T)   :- mult_term_(V, N, Op, T).
@@ -351,6 +382,7 @@ collect_term_item_([V|Es],U,Eo,EsNxt) :-
 	collect_term_item_(Es,S,Eo,EsNxt).
 collect_term_item_([elem(V,N1)|Es],elem(U,N2),Eo,EsNxt) :-
 	V==U, 
+	(ground(V) -> V =\= 1.0Inf ; true),    % infinities don't obey algebraic rules
 	N is N1+N2,
 	collect_term_item_(Es,elem(V,N),Eo,EsNxt).
 collect_term_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-

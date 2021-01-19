@@ -36,7 +36,7 @@ Here the binary relation is assumed to be of the form `I -> O`. As an example, h
 	]).
 This says the value of attribute `a` directly determines the values of attributes `b`, `e`, `f`, and `g`. The collective values of attributes `a`, `c`, `d`, and `i` determine the value of attribute `h`, etc.
 
-With this defintion of {`R`}, `closure/3` can be used to ask "What is the set of attributes that can uniquely (directly or indirectly) be determined from the value of `a`?". (the binding of `FDs` has been omitted for clarity.)
+With this defintion of {`R`}, `closure/3` can be used to ask "*What is the set of attributes that can uniquely (directly or indirectly) be determined from the value of `a`?*". (the binding of `FDs` has been omitted for clarity.)
 eg
 	?- fdList(FDs), closure([a], FDs, O).
 	FDs = ....
@@ -407,19 +407,19 @@ eg
 	false.
 
 	?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	﻿M = [_98516, _98522, _98528, _98534, _98540, _98546, _98552, _98558, _98564, _98570],
+	﻿M = [_22872, _22878, _22884, _22890, _22896, _22902, _22908, _22914, _22920, _22926],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.3209630000000061), gcTime(0.002), globalStack(326608/1048544), trailStack(39512/264168), localStack(2432/118648), inferences(1763531), narrowingOps(37429), narrowingFails(73), node_count(300), max_iterations(566/3000)],
-	_98516::integer(0, 10),
-	_98570::integer(0, 10),
-	_98522::integer(0, 10),
-	_98564::integer(0, 10),
-	_98528::integer(0, 10),
-	_98558::integer(0, 10),
-	_98534::integer(0, 10),
-	_98552::integer(0, 10),
-	_98540::integer(0, 10),
-	_98546::integer(0, 10).
+	SS = [userTime(0.22506400000000149), gcTime(0.002), globalStack(52696/524256), trailStack(432/133096), localStack(1992/118648), inferences(1071828), narrowingOps(30406), narrowingFails(73), node_count(190), max_iterations(477/3000)],
+	_22872::integer(0, 10),
+	_22878::integer(0, 10),
+	_22884::integer(0, 10),
+	_22890::integer(0, 10),
+	_22896::integer(0, 10),
+	_22902::integer(0, 10),
+	_22908::integer(0, 10),
+	_22914::integer(0, 10),
+	_22920::integer(0, 10),
+	_22926::integer(0, 10).
 Looking at the statistics for `N=10`, we see that finding the single solution tooke 37429 narrowing operations with 73 failures. In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
 .pl
 	magic_series2(N, Ks) :-
@@ -428,20 +428,20 @@ Looking at the statistics for `N=10`, we see that finding the single solution to
 		magic_(Ks, 0, Ks).
 Now:
 eg
-	?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	﻿M = [_86342, _86348, _86354, _86360, _86366, _86372, _86378, _86384, _86390, _86396],
+	﻿?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_24130, _24136, _24142, _24148, _24154, _24160, _24166, _24172, _24178, _24184],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.11804099999994833), gcTime(0.001), globalStack(276184/1048544), trailStack(15504/526312), localStack(2432/118648), inferences(628928), narrowingOps(11534), narrowingFails(41), node_count(310), max_iterations(560/3000)],
-	_86342::integer(0, 10),
-	_86396::integer(0, 10),
-	_86348::integer(0, 10),
-	_86390::integer(0, 10),
-	_86354::integer(0, 10),
-	_86384::integer(0, 10),
-	_86360::integer(0, 10),
-	_86378::integer(0, 10),
-	_86366::integer(0, 10),
-	_86372::integer(0, 10).
+	SS = [userTime(0.07384200000000085), gcTime(0.001), globalStack(56256/524256), trailStack(848/133096), localStack(1992/118648), inferences(370807), narrowingOps(8854), narrowingFails(41), node_count(199), max_iterations(485/3000)],
+	_24130::integer(0, 10),
+	_24136::integer(0, 10),
+	_24142::integer(0, 10),
+	_24148::integer(0, 10),
+	_24154::integer(0, 10),
+	_24160::integer(0, 10),
+	_24166::integer(0, 10),
+	_24172::integer(0, 10),
+	_24178::integer(0, 10),
+	_24184::integer(0, 10).
 By forcing earlier failure during the enumeration, the redundant constraint reduces the number of narrowing operations by over a factor of 3. This more than outweighs the additional cost of creating and checking that constraint.
 
 One can take this even further by noting that `N` also equals the sum of `M*Mn`:
@@ -458,20 +458,20 @@ One can take this even further by noting that `N` also equals the sum of `M*Mn`:
 		sumProd_(Ks,N1,S).
 leading to further factor of more than 2:
 eg
-	?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	﻿M = [_84802, _84808, _84814, _84820, _84826, _84832, _84838, _84844, _84850, _84856],
+	﻿?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_19282, _19288, _19294, _19300, _19306, _19312, _19318, _19324, _19330, _19336],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.0609150000000227), gcTime(0.002), globalStack(303072/1048544), trailStack(24872/526312), localStack(2432/118648), inferences(296604), narrowingOps(4965), narrowingFails(41), node_count(271), max_iterations(268/3000)],
-	_84802::integer(0, 10),
-	_84856::boolean,
-	_84808::integer(0, 10),
-	_84850::boolean,
-	_84814::integer(0, 5),
-	_84832::integer(0, 2),
-	_84826::integer(0, 2),
-	_84820::integer(0, 3),
-	_84838::boolean,
-	_84844::boolean.
+	SS = [userTime(0.03806300000000107), gcTime(0.0), globalStack(54712/262112), trailStack(3320/133096), localStack(1992/118648), inferences(181736), narrowingOps(3596), narrowingFails(41), node_count(159), max_iterations(244/3000)],
+	_19282::integer(0, 10),
+	_19288::integer(0, 10),
+	_19294::integer(0, 5),
+	_19300::integer(0, 3),
+	_19306::integer(0, 2),
+	_19312::integer(0, 2),
+	_19318::boolean,
+	_19324::boolean,
+	_19330::boolean,
+	_19336::boolean.
 Note that the solution space is considerably reduced (see domains of `M`) even before the enumeration step.
 
 The lesson here is that even though redundant constraints may not be necessary to finding solutions, they can considerably speed up the enumeration process and may even make it unnecessary.
@@ -596,9 +596,9 @@ The program takes as input a list of items of the form `Count*Type` and produces
 
 Note that `pack_/3` will keep adding bins until all constraints can be satisfied with residual amounts of `0`. Failure in enumeration forces this backtracking to occur. When a slotution is found it will be "optimal" in the sense that there are no solutions which use fewer bins. (There may be other solutions that use the same number of bins.) One reason the redundant constraint is effective (reduces the count of `narrowingOps` required by approximately a factor of 4), is that it quickly fails for a small number of bins:
 eg
-	?- clpStatistics,pack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
-	﻿Bins = [red(2*copper), red(3*glass), green(2*plastic, 2*wood), green(2*plastic, 2*wood), blue(1*steel)],
-	SS = [userTime(0.25506900000000066), gcTime(0.001), globalStack(519480/1048544), trailStack(166080/264168), localStack(1992/118648), inferences(1334656), narrowingOps(24803), narrowingFails(431), node_count(280), max_iterations(131/3000)].
+	﻿?- clpStatistics,pack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [red(2*copper), red(3*glass), green(2*plastic, 2*wood), green(2*plastic, 2*wood), blue(1*steel)],
+	SS = [userTime(0.17939600000000056), gcTime(0.002), globalStack(193336/262112), trailStack(34960/133096), localStack(1992/118648), inferences(883248), narrowingOps(21126), narrowingFails(434), node_count(215), max_iterations(113/3000)].
 Also note that only the bin type and contents need be enumerated since the total number of items in the bin is pre-determined by the contents.
 
 There is a symmetry issue since the bins could have been listed in any order. To mitigate against this, the list of bins can be sorted, e.g., by number of items in the bin and type, before enumeration. Because enumeration begins at the low end, it is best to make this an ascending sort.
@@ -620,9 +620,9 @@ There is a symmetry issue since the bins could have been listed in any order. To
 	order_([T1,_,S1], [T2,_,S2]) :- {(T1<T2) or ((T1==T2) and (S1=<S2))}.
 This requires significantly less `narrowingOps` than the first version:
 eg
-	?- clpStatistics,ordpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
-	﻿Bins = [red(2*copper), red(3*glass), green(2*plastic, 2*wood), green(2*plastic, 2*wood), blue(1*steel)],
-	SS = [userTime(0.165559), gcTime(0.0), globalStack(454112/1048544), trailStack(146328/264168), localStack(1992/118648), inferences(869599), narrowingOps(16453), narrowingFails(271), node_count(300), max_iterations(138/3000)].
+	﻿?- clpStatistics,ordpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [red(2*copper), red(3*glass), green(2*plastic, 2*wood), green(2*plastic, 2*wood), blue(1*steel)],
+	SS = [userTime(0.12314200000000142), gcTime(0.001), globalStack(223344/262112), trailStack(40488/133096), localStack(1992/118648), inferences(598449), narrowingOps(14356), narrowingFails(274), node_count(235), max_iterations(134/3000)].
 These solutions are fairly effective for small numbers of bins, but do not scale well when the number of items is large and the bin sizes are small. A different approach uses `setof/3` to generate a sorted list (from smallest to largest capacity) of all the 22 possible bin configurations:
 eg
 	?- setof([S,T,C],(bin(T,C,S),enumerate([T|C])),Bins),length(Bins,BL).
@@ -660,17 +660,17 @@ Backtracking is now confined to the enumeration step, which now is just concerne
 		compress(Xs,Ys).
 This version has excellent performance characteristics with minimal sensitivity to the number of bins required:
 eg
-	?- clpStatistics,fastpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
-	﻿Bins = [1*blue(1*steel), 1*green(2*copper), 1*red(3*glass), 2*green(2*plastic, 2*wood)],
-	SS = [userTime(0.02092900000000064), gcTime(0.001), globalStack(440472/1048544), trailStack(156392/264168), localStack(1992/118648), inferences(95547), narrowingOps(1392), narrowingFails(0), node_count(211), max_iterations(422/3000)].
-
+	﻿?- clpStatistics,fastpack([3*glass,4*plastic,1*steel,4*wood,2*copper],Bins),clpStatistics(SS).
+	Bins = [1*blue(1*steel), 1*green(2*copper), 1*red(3*glass), 2*green(2*plastic, 2*wood)],
+	SS = [userTime(0.015541999999999945), gcTime(0.0), globalStack(105528/262112), trailStack(18312/133096), localStack(1992/118648), inferences(61058), narrowingOps(893), narrowingFails(0), node_count(79), max_iterations(183/3000)].
+	
 	?- clpStatistics,fastpack([32*glass,44*plastic,11*steel,44*wood,230*copper],Bins),clpStatistics(SS).
-	﻿Bins = [11*blue(1*steel), 1*red(2*glass), 10*red(3*glass), 2*green(3*copper), 56*green(4*copper), 22*green(2*plastic, 2*wood)],
-	SS = [userTime(0.029797999999999547), gcTime(0.002), globalStack(496512/524256), trailStack(186120/264168), localStack(1992/118648), inferences(134669), narrowingOps(2242), narrowingFails(0), node_count(211), max_iterations(832/3000)].
-
+	Bins = [11*blue(1*steel), 1*red(2*glass), 10*red(3*glass), 2*green(3*copper), 56*green(4*copper), 22*green(2*plastic, 2*wood)],
+	SS = [userTime(0.019142000000000436), gcTime(0.001), globalStack(254840/262112), trailStack(51088/133096), localStack(1992/118648), inferences(75738), narrowingOps(1285), narrowingFails(0), node_count(79), max_iterations(388/3000)].
+	
 	?- clpStatistics,fastpack([132*glass,414*plastic,1001*steel,414*wood,230*copper],Bins),clpStatistics(SS).
-	﻿Bins = [1001*blue(1*steel), 44*red(3*glass), 2*green(3*copper), 56*green(4*copper), 207*green(2*plastic, 2*wood)],
-	SS = [userTime(0.05003599999999864), gcTime(0.004), globalStack(215240/524256), trailStack(42824/264168), localStack(1992/118648), inferences(221446), narrowingOps(4071), narrowingFails(0), node_count(211), max_iterations(2654/3000)].
+	Bins = [1001*blue(1*steel), 44*red(3*glass), 2*green(3*copper), 56*green(4*copper), 207*green(2*plastic, 2*wood)],
+	SS = [userTime(0.022987999999999786), gcTime(0.001), globalStack(165552/262112), trailStack(31336/133096), localStack(1992/118648), inferences(91253), narrowingOps(1704), narrowingFails(0), node_count(79), max_iterations(808/3000)].
 Note that the number of `narrowingOps` has been drastically reduced (factor of 20) from the previous versions. However, it's not so clear in this case that the first solution found is one with the minimal number of bins. But if one considers the following:
 1..
 	- `enumerate/1` is a depth first enumeration of the list. The last item is fully "enumerated" before backtracking to the second last, etc.
@@ -686,6 +686,7 @@ This example is interesting for a number of reasons:
 <#TableOfContents>
 
 @include
+	CLPBNR_UC_optionTrading.myw
 	CLPBNR_UC_salesman.myw
 	CLPBNR_UC_timingAnalysis.myw
 	CLPBNR_UC_polynomialRoots.myw

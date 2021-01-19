@@ -1,0 +1,225 @@
+#### Options Trading (from CLP({`frR`}))
+
+CLP({`frR`}) was the first implementation of CLP in the domain of real numbers. This section explores a couple of examples (Binomial Option Pricing and Algebraic Combinations) from [Constraint Logic Programming and Option Trading] which described the use of CLP(R) to build components of an expert options analysis system.  From the paper:
+
+>	An option is a contract whose value is contingent upon the value of an underlying asset. We will focus on the most common type of options which are those on common stocks. A *call* option is a contract which gives the owner the right to buy a fixed number of shares (exercising the option) at a fixed price (exercise/strike price) until a certain (maturity/expiration) date. Similarly a *put* option gives the owner the right to sell the share at a fixed price. An option contract is usually in lots of I 00 shares of the underlying stock. The individual who creates or issues the option is known as the seller/writer and the purchaser as the holder/buyer of the option. For example, a call option on "XYZ Jan 50" at a cost of $800 will give the buyer the right to purchase 100 shares of XYZ at $50 a share until January 18, 1988. At any time before this, the holder can sell the call at the current market price, exercise it by paying $5000 for 100 shares of XYZ, or do nothing. If by January 18, the call has not been exercised then it will either expire worthless (because XYZ is below $50) with a loss of $800 or if XYZ is above $50 (say at $60) it will generate a profit of (60-50)*100-800 = $200.
+
+Although CLP({`frR`}) and CLP(BNR) have significant differences syntactically (and, to some degree, semantically), it's a straight forward process to re-implement these examples in CLP(BNR).
+
+##### The Binomial Option Pricing Formula
+
+The [Binomial Formula] is used to determine the value of a put or call option on a stock. It assumes that at the end of a time period the stock will take one of two values, one greater than the current value and one less than the current value. These are represented by two factors: {`u`} and {`d`} where {`0 =< d =< 1 =< u`}. Other values in the model include:
+-	{`S`}, the price of the underlying stock
+-	{`K`}, the option exercise price (strike price)
+-	{`R`}, the risk free interest rate (e.g., 5% = 5.0)
+Considering a call option, if there is an upward movement of stock value (to {`u*S`}), the payoff is the maximum of 0 and the difference between the stock price and the strike price: 
+math>	C^+=max(0,u*S-K)
+Similarly in the case of a downward movement, the payoff is:
+math>	C^(-)=max(0,d*S-K)
+The value of the option is:
+math>	C=(pi*C^+ + (1-pi)*C^-)/(1+R//100)  
+where {`pi`} is the probability of an upward movement. There are various ways of determining a value for {`pi`}, but using a commonly used formula:
+math>	pi = ((1+R//100) - d)/(u-d)
+This also applies to put options except the two payoff values are: 
+math>
+	P^+=max(K-u*S,0), P^(-)=max(K-d*S,0)
+A fairly literal translation of this to CLP(BNR) constraints produces `option_value/8` which can evaluate either type of option:
+.pl
+	option_value(Put_Call,V,S,Pr,R,K,Up,Down) :-
+		[S,K,R]::real(0,_),  % all positive
+		[Pr,Down]::real(0,1), [Rf,Up]::real(1,_),
+		o_sign(Put_Call,Sign),
+		{	 
+		 Oplus == max(0, Sign*(Up*S - K)),
+		 Ominus == max(0, Sign*(Down*S - K)),
+		 Rf == 1+R/100,
+		 Pr == (Rf-Down)/(Up-Down),
+		 V == (Pr*Oplus + (1-Pr)*Ominus)/Rf
+		}.
+	
+	o_sign(call, 1).
+	o_sign(put, -1).
+An example from the paper:
+eg
+	﻿?- S=80, K=80, R=10, Up=1.6, Down=0.5,
+		option_value(call,V,S,Pr,R,K,Up,Down).
+	S = K, K = 80,
+	R = 10,
+	Up = 1.6,
+	Down = 0.5,
+	Pr:: 0.545454545454545...,
+	V:: 23.8016528925620... .
+Using constraints results in a true relational model; the order of the goals is unimportant and, for example, `Up` and `Down` could be calculated from the other values using the same predicate.
+eg
+	﻿?- eval_option(put,1,Up,Down,S,Put,K,R),
+		S=60, K=60, Up=1.15, Down=0.85, R=6.
+	Up = 1.15,
+	Down = 0.85,
+	S = K, K = 60,
+	R = 6,
+	Put:: 2.5471698113207... .
+
+	﻿?- S=80, K=80, R=10, V=23.80,
+		option_value(call,V,S,Pr,R,K,Up,Down),
+		Pr=0.5.
+	S = K, K = 80,
+	R = 10,
+	V = 23.8,
+	Pr = 0.5,
+	Down:: 0.54550000000000...,
+	Up:: 1.654500000000000... .
+
+The binomial model is obtained by iterating this evaluation rule over `N` time periods. At each step a new up and down set of stock and option values are defined for a subsequent step resulting in a binary tree pair, one for stocks and one for options. The values at the terminal leaves of the tree can be calculated directly using the `Oplus/Ominus` constraints from `option_value` and any changes will be propagated back up the tree. 
+
+Assuming a simple `n(V,Left,Right)` and `l(V)` respectively for nodes and leaves of the tree, `eval_option/8` calculates the value of an option after `N` time periods. The same up and down factors and interest rate apply to each period.
+.pl
+	eval_option(Put_Call, N, Up,Down, S, V, K, R) :-
+		Down::real(0,1), Up::real(1,_), [K,R]::real(0,_),
+		{
+		 Rf == 1+R/100,
+		 Pr == (Rf-Down)/(Up-Down)
+		},
+		eval_option_tree(N, Put_Call, Up,Down, Pr, S, V, Stree, Otree, K, Rf).
+	
+	eval_option_tree(0, Put_Call, _Up,_Down, _Pr, S, V, l(S), l(V), K, _R) :-
+		o_sign(Put_Call,Sign),
+		{V == max(0, Sign*(S-K))} , !.
+	eval_option_tree(N,Put_Call, Up, Down, Pr, S, V, n(S,SLeft,SRight), n(V,CLeft,CRight), K, Rf) :-
+		N>0,
+		[OUp,ODown]::real(0,_),
+		{
+		 SUp == Up*S, SDown == Down*S,
+		 V == (Pr*OUp + (1-Pr)*ODown)/Rf
+		},
+		N1 is N-1,
+		eval_option_tree(N1,Put_Call,Up,Down,Pr,SDown,ODown,SLeft, CLeft, K,Rf),
+		eval_option_tree(N1,Put_Call,Up,Down,Pr,SUp,  OUp,  SRight,CRight,K,Rf).
+The values of `Rf` and `Pr` are the same for all nodes, so they're defined just once in `eval_option`; the constraints in `eval_option_tree` define the up and down values for the stock (`S`) and option (`V`); the leaf nodes just relate `S` and `V` (`{V == max(0, Sign*(S-K))}`). As above, this is a true relational model; any of the values can be computed given that a sufficient set of the remaining values is defined.
+
+As an example, consider a call option expiring in two years with strike price of $30 on a stock which currently trades at $34. The stock is expected to increase by a factor of 1.25 and decrease by a factor of 0.70 and the annual interest rate is 3%. Using a time period of one year:
+eg
+	?- Up=1.25, Down=0.7, eval_option(call,2,Up,Down,Stock,Call,K,R),
+	R = 3, Stock=34, K=30.
+	Up = 1.25,
+	Down = 0.7,
+	Stock = 34,
+	K = 30,
+	R = 3,
+	Call:: 7.8471109435385... .
+The current value of the call option is $7.85. There are many similar examples on the internet. The main "variable" across the examples are how the upward movement probability is determined. Or a "volatility" value may be provided instead of up and down factors. These will impact the details but not the high level (binomial) structure of the algorithm.
+
+##### Algebraic Combinations of Options
+
+A particular trading position is usually a combination of options (derivatives) and stocks/bonds (which could be considered as special kinds of ). The total "payoff" is the sum of the individual payoffs. 
+
+A payoff can be represented by a piecewise linear function, one linear function if the stock price is less than the strike price and another if it's greater than the strike price. Any piecewise linear function can be expressed in terms of two elementary functions: the Heaviside function {'h(X,Y)'} and the ramp function {'r(X,Y)'}:
+.pl
+	h(X,Y,0) :- {Y<X}.		% h(X,Y) = 0
+	h(X,Y,1) :- {Y>=X}.		% h(X,Y) = 1
+	
+	r(X,Y,0)   :- {Y<X}.	% r(X,Y) = 0
+	r(X,Y,Y-X) :- {Y>=X}.	% r(X,Y) = Y-X
+Note that these evaluate to either a numeric value (`0` or `1`) or a symbolic expression (`Y-X`) while imposing the necessary constraint between `X` and `Y`.
+
+All payoff options can be described by a matrix product of the form:
+math>	"Option payoff" = [H1,H2,H3,H4]xx[(h(B1,S)),(h(B2,S)),(r(B1,S)),(r(B2,S))]
+where {`S`} is the current stock price, {`B1`} and {`B2`} are the breakpoints equal to either {`0`} or the strike price, and {`H1`}, {`H2`}, {`R1`} and {`R2`} are parameters of the options. To summarize the option payoff used to evaluate the end-of-period position:
+.pl
+	payoff(Type, BuyorSell, S, C, P, R, K, B, Sign*(H1*T1 + H2*T2 + R1*T3 + R2*T4)) :-
+		[S, C, P, R, K, B]::real(0,_),
+		get_sign(BuyorSell, Sign),
+		opt_def(Type,S,C,P,R,K,B,B1,B2,H1,H2,R1,R2),
+		h(B1,S,T1), h(B2,S,T2), r(B1,S,T3), r(B2,S,T4).
+		
+	get_sign(buy, -1).
+	get_sign(sell, 1).
+	
+	opt_def(stock, S, C, P, R, K, B,  0, 0,  S*(1+R/100),   0,  -1, 0).
+	opt_def( call, S, C, P, R, K, B,  0, K,  C*(1+R/100),   0,   0,-1).
+	opt_def(  put, S, C, P, R, K, B,  0, K,  P*(1+R/100)-K, 0,   1,-1).
+	opt_def( bond, S, C, P, R, K, B,  0, 0,  B*(1+R/100),   0,   0, 0).
+`S, B, C, P` are respectively the current stock, bond, call and put price, `K` is the strike price for call or put, and R is the current risk-free interest rate. The payoff value (last argument) is in symbolic form. `payoff/9` is non deterministic since different values of the payoff expression will be generated depending on the stock price. A constraint is used to evaluate the expression as shown in the following examples.
+
+A simple query which evaluates the sale of a call option that expires *in-the-money*, i.e., the strike price is less than the stock price:
+eg
+	?- CALL=5, K=50, R=5.0, S=60,
+		payoff(call, sell, S,CALL,_,R,K,_,PExp),
+		{PayOff==PExp}.
+	CALL = 5,
+	K = 50,
+	R = 5.0,
+	S = 60,
+	PExp = 1*(5*(1+5.0/100)*1+0*1+0*(60-0)+ -1*(60-50)),
+	PayOff:: -4.75000000000000... .
+
+To ask what the underlying stock price should be at expiration in order for the payoff of selling a call option to exceed $5:
+eg
+	?- CALL=5, K=50, R=5.0, {PayOff>=5}, 
+		payoff(call, sell, S, CALL, _, R, K, _, PExp), {PayOff==PExp}.
+	CALL = 5,
+	K = 50,
+	R = 5.0,
+	PExp = 1*(5*(1+5.0/100)*1+0*0+0*(S-0)+ -1*0),
+	PayOff:: 5.25000000000000...,
+	S::real(0, 49.99999999999999) ;
+	CALL = 5,
+	K = 50,
+	R = 5.0,
+	PExp = 1*(5*(1+5.0/100)*1+0*1+0*(S-0)+ -1*(S-50)),
+	PayOff::real(5, 5.250000000000014),
+	S::real(50, 50.250000000000014).
+In this case there are two values of `S` that meet the criteria: `S::real(0, 49.99999999999999)` and `S::real(50, 50.250000000000014)`, produced on backtracking. Unlike CLP({`frR`}) which provides answers in symbolic form, e.g., `PayOff = 55.25 - S`, CLP(BNR) normally provides answers expressed as intervals. (A rough symbolic version could be derived from verbose answer format using flag `clpBNR_verbose`.)
+
+Now consider a combination strategy. A *straddle* is composed of the purchase price of a call and a put option. The following query determines the stock price at expiration for the payoff to exceed $3 with a strike value of $50:
+eg
+	?- CALL=4, PUT=3, R=5.0, K=50, {PayOff>=3}, 
+		payoff(call, buy, S, CALL, _, R, K, _, V1),
+		payoff( put, buy, S, _, PUT, R, K, _, V2),
+		{PayOff==V1+V2}.
+	CALL = 4,
+	PUT = 3,
+	R = 5.0,
+	K = 50,
+	V1 = -1*(4*(1+5.0/100)*1+0*0+0*(S-0)+ -1*0),
+	V2 = -1*((3*(1+5.0/100)-50)*1+0*0+1*(S-0)+ -1*0),
+	PayOff::real(3, 42.65000000000001),
+	S::real(0, 39.65000000000001) ;
+	CALL = 4,
+	PUT = 3,
+	R = 5.0,
+	K = 50,
+	V1 = -1*(4*(1+5.0/100)*1+0*1+0*(S-0)+ -1*(S-50)),
+	V2 = -1*((3*(1+5.0/100)-50)*1+0*1+1*(S-0)+ -1*(S-50)),
+	PayOff::real(3, 9.999999999999944e+15),
+	S::real(60.34999999999999, 1.0e+16).
+Again there are two ranges of the stock value for the payoff to exceed 3: `S::real(0, 39.65000000000001)` for a payoff of `PayOff::real(3, 42.65000000000001)` (`S=<3.65`) and `S::real(60.34999999999999, 1.0e+16)` for a payoff of `PayOff::real(3, 9.999999999999944e+15)` (`S>=60.35`). Put another way, the payoff is less than `3` if `39.65 =< S =< 60.35`. (It's a trivial modification to ask this question.)
+
+There is a subtle issue here; the final constraint, e.g., `{PayOff==V1+V2}`, must follow the call to `payoff` which defines the symbolic expressions. Otherwise `V1` and `V2` are defined as intervals which can't be unified with the expressions. Now the reason `payoff` is implemented to generate expressions is to avoid separate constraints (for `V1` and `V2`) both containing `S`. This will give rise to the previously mentioned dependancy problem if they're "compiled" separately. Combining the expressions symbolically provides CLP(BNR) with the opportunity to simplify the expression and avoid this problem. In general, it's advantageous to delay constraint evaluation until the most complicated expression is constructed rather than building them up from sub-constraints.
+
+A final example of a more complex combination of two put and two call options with automatic backtracking using `format` to output solutions:
+eg
+	?- R=10.0,
+		P1=10, K1=20, payoff(put,  sell, S, _, P1, R, K1, _, V1),
+		P2=18, K2=40, payoff(put,  buy,  S, _, P2, R, K2, _, V2),
+		C3=15, K3=60, payoff(call, buy,  S, C3, _, R, K3, _, V3),
+		C4=10, K4=80, payoff(call, sell, S, C4, _, R, K4, _, V4),
+		{PayOff == V1+V2+V3+V4},
+		format("PayOff::~p,\tStock::~p\n",[PayOff,S]),
+		fail.
+	PayOff::_2990{real(5.699999999999999,5.700000000000001)},	Stock::_368{real(0,19.999999999999996)}
+	PayOff::_30580{real(-14.299999999999999,5.700000000000008)},	Stock::_368{real(20,39.99999999999999)}
+	PayOff::_31300{real(-14.300000000000002,-14.299999999999997)},	Stock::_368{real(40,59.99999999999999)}
+	PayOff::_956{real(-14.30000000000003,5.700000000000006)},	Stock::_344{real(60,79.99999999999999)}
+	PayOff::_27788{real(5.699999999999999,5.700000000000001)},	Stock::_344{real(80,1.0e+16)}
+	false.
+There are 5 answers corresponding to the full range of stock values: `0-20, 20-40, ... 80+`. As before, it's fairly simple to add additional constraints to only consider pre-defined payoff ranges.
+
+Although trading in options can involve complex mechanisms (see the [original paper] for more), CLP over the domain of reals offers an integrated framework of symbolic and numeric processing facilitating a simple and natural design for modelling these mechanisms. (See also [CLP({`frR`}) and Some Electrical Engineering Problems] for more examples of CLP({`frR`}) that could be easily adapted to execute as CLP(BNR) programs.)
+
+<#TableOfContents>
+
+&
+	[original paper] <- link https://ieeexplore.ieee.org/abstract/document/4307090
+	[Constraint Logic Programming and Option Trading] <- link https://ieeexplore.ieee.org/abstract/document/4307090
+	[Binomial Formula] <- link https://medium.com/magnimetrics/understanding-the-binomial-option-pricing-model-44ec28d6e9af
+	[CLP({`frR`}) and Some Electrical Engineering Problems] <- link http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=15A73BEF14501213F6F372FB2FDD4FAA?doi=10.1.1.32.7617&rep=rep1&type=pdf

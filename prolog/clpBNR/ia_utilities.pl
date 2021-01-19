@@ -22,11 +22,8 @@
  */
 
 %
-% compatability predicates
+% compatibility predicates
 %
-
-% list filter
-list(X) :- is_list(X).
 
 %
 %  print_interval(Term), print_interval(Stream,Term)
@@ -40,7 +37,7 @@ print_interval(Stream,Term) :-
 	term_variables(Term,TVars),
 	term_variables(Out,OVars),
 	name_vars_(TVars,OVars,0),  % name variables, intervals replaced by declarations
-	format(Stream,'~w',[Out]).
+	format(Stream,'~w',[Out]).  % direct output
 
 name_vars_([],[],_).
 name_vars_([TVar|TVars],[OVar|OVars],N) :-
@@ -207,6 +204,7 @@ digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
 %
 %  developer trace debug code only -  used by stable_/1
+% Note: uses direct output which should be avoided in release library
 %
 traceIntOp_(Op, Ints, Ins, Outs) :-
 	debugging(clpBNR,true),  % only while debugging clpBNR
@@ -250,7 +248,7 @@ enumerate(X) :-
 	domain(X,integer(L,H)), !,  % enumerable interval
 	between(L,H,X).             % gen values, constraints run on unification
 enumerate(X) :-
-	is_list(X), !,              % list of ..
+	list(X), !,                 % list of ..
 	enumerate_list_(X).
 enumerate(X).                   % X not enumerable, skip it
 
@@ -265,23 +263,23 @@ enumerate_list_([X|Xs]) :-
 small(V) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	small(V,P).
-	
+
 small(V,P) :- 
 	Err is 10**(-P),
 	small_(V,Err).
-	
+
 small_(V,Err) :- 
 	getValue(V,(L,H)), !,
 	chk_small(L,H,Err).
 small_(L,Err) :-
-	is_list(L),
+	list(L),
 	small_list_(L,Err).
-	
+
 small_list_([],_).
 small_list_([X|Xs],Err) :-
 	small_(X,Err),
 	small_list_(Xs,Err).
-	
+
 chk_small(L,H,Err) :- H-L < Err, !. 
 chk_small(L,H,Err) :-                 % from CLIP?
 	ErrH is Err*sqrt((L**2+H**2)/2),  % guaranteed to be a float
@@ -316,7 +314,7 @@ global_minimum(Exp,Z,P) :-
 	{Z==Exp},                                    % Steps 1. - 4.
 	box_([Z|Xs],[(Zl,Zh)|XVs]),                  % construct initial box
 	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).        % and start iteration
-	
+
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
 	continue_MS(Zl,Zh,P,Xs,XVs,False), !,        % Step 12., check termination condition
 	widest_MS(Xs,XVs,Xf,XfMid),                  % Step 5., get midpoint of widest variable
@@ -546,7 +544,7 @@ xpsolveall_(Xs,Err) :-
 xpsolve_each_([],[],Err).
 xpsolve_each_([X|Xs],[X|Us],Err) :-
 	interval_object(X,Type,V,_),          % get interval type and value
-	splitinterval_(Type,X,V,Err,Choices),   % split interval
+	splitinterval_(Type,X,V,Err,Choices), % split interval
 	!,
 	Choices,                              % create choice(point)
 	xpsolve_each_(Xs,Us,Err).             % split others in list
@@ -554,7 +552,7 @@ xpsolve_each_([X|Xs],Us,Err) :-           % avoid freeze overhead if [] unified 
 	X==[], !,                             % end of nested listed, discard
 	xpsolve_each_(Xs,Us,Err).             % split remaining
 xpsolve_each_([X|Xs],[U|Us],Err) :-
-	is_list(X), !,                        % nested list
+	list(X), !,                           % nested list
 	xpsolve_each_(X,U,Err),               % split nested list
 	xpsolve_each_(Xs,Us,Err).             % then others in main list
 xpsolve_each_([X|Xs],Us,Err) :-

@@ -1,7 +1,13 @@
 # CLP(BNR)
-This repository is a re-implementation of CLP(BNR) in Prolog and packaged as an SWI-Prolog module. The original implementation was a component of BNR Prolog (.ca 1988-1996) on Apple Macintosh and Unix. (For a source archive of the last release of BNR Prolog, see [BNR Prolog Source Archive][BNRParchive].) This is an attempt to capture the design and provide a platform for executing the numerous examples found in the [literature][bnrpp]. As it is constrained by the host environment (SWI-Prolog) it can't be 100% compliant with the original implementation(s), but required changes should be minimal.
- 
-In the process of recreating this version of CLP(BNR) subsequent work in relational interval arithmetic has been used, in particular [Efficient Implementation of Interval Arithmetic Narrowing Using IEEE Arithmetic][ia1] and [Interval Arithmetic: from Principles to Implementation][ia2]. In addition, there is at least one comparable system [CLIP][clip] that is targeted at GNU Prolog, ([download CLIP][cldl]). While earlier implementations typically use a low level  of the relational arithmetic primitives, advances in computing technology enable this Prolog version of CLP(BNR) to achieve acceptable performance while maintaining a certain degree of platform independence (addressed by SWI-Prolog) and facilitating experimentation (no "building" required). [SWI-Prolog][swip] was used due it's long history (.ca 1987) as free, open-source software and for supporting attributed variables (`freeze` in previous versions of this repository) which is a key mechanism in implementing constrained logic variables. Starting with `v0.9`, CLP(BNR) requires features that are  supported in SWI-Prolog version `8.2` (or about `8.1.25` of the development stream) which include native rational numbers and IEEE floating point special values and rounding modes.
+
+`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog (V8.2 or later).
+
+CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. It differs from some other CLP(*R*)'s in that:
+* CLP(BNR) is complete in that any real number can be finitely represented even though the set of reals is infinite. It does this by sacrificing precision: a real number *R* is represented by an interval (*L,U*) where *L=<R=<U* and *L* and *U* are numbers as defined by SWI-Prolog (integers, rationals or floats, including the IEEE infinity values). A precise value (*L=U*) is represented directly by the number.
+* CLP(BNR) arithmetic is mathematically sound. Any computed interval will contain the precise value. Due to the well-known pitfalls of IEEE floating point arithmetic, any CLP(*R*) based on conventional IEEE floating point arithmetic is unsound. (Try: `?- 1.21 =:= 1.1*1.1.`) In particular the add and multiply operations are non-associative and non-distributive. Relational interval arithmetic in CLP(BNR) (and some others) ensures that computed intervals contain the mathematically correct real value.
+* All constraints, including non-linear constraints are active. In some CLP(*R*) implementations only linear constraints are active; non-linear constraints are deferred until their set of variables is sufficiently resolved that the constraint becomes linear.
+* CLP(BNR) supports an "integral" constraint which forces interval bounds to be integers, enabling constraints over finite domain problems within the relational interval arithmetic framework; booleans can be represented as integer intervals with bounds `((0,1))` and  primitives to support boolean logic are included. Including integers and booleans within a single arithmetic framework enables natural solutions to mixed domain problems.
+* Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog. The main dependancies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
 
 ## A Brief Introduction
 
@@ -125,21 +131,21 @@ Further explanation and examples, including a complete reference section, can be
 
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.2 or greater is required.
 
-If you do not want to download this entire repo, a package can be installed using the URL `https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.3.zip`. Once installed, it can be loaded with `use_module/1`. For example:
+If you do not want to download this entire repo, a package can be installed using the URL `https://github.com/ridgeworks/clpBNR.git`. Once installed, it can be loaded with `use_module/1`. For example:
 
-	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR_pl/Package/clpBNR-0.9.4.zip')]).
+	?- pack_install(clpBNR,[url('https://ridgeworks.github.io/clpBNR.git')]).
 	Verify package status (anonymously)
 		at "http://www.swi-prolog.org/pack/query" Y/n? 
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.4
+	Installed version:      0.9.5
 	Author:                 Rick Workman <ridgeworks@mac.com>
-	Home page:              https://github.com/ridgeworks/clpBNR_pl
-	Install "clpBNR-0.9.4.zip" (35,985 bytes) Y/n? 
+	Home page:              https://github.com/ridgeworks/clpBNR
+	Install "clpBNR********" (****** bytes) Y/n? 
 	
 	?- use_module(library(clpBNR)).
 	
-	*** clpBNR v0.9.4alpha ***
+	*** clpBNR v0.9.5alpha ***
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `src/` directory) which will automatically include `ia_primitives.pl`, `ia_utilities.pl`, and `ia_simplify.pl`.

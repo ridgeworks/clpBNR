@@ -55,7 +55,7 @@ eg
 	﻿X:: 1.00000000... ;
 	X:: 3.00000000... ;
 	false.
-But it is data dependant; sometimes both mechanisms togther are insufficent, as in this polynomial equation with roots at 0, 3, 4, and 5:
+But it is data dependent; sometimes both mechanisms togther are insufficent, as in this polynomial equation with roots at 0, 3, 4, and 5:
 eg
 	﻿?- set_prolog_flag(clpBNR_default_precision,7),X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X).
 	X:: 0.﻿0000000000000000... ;
@@ -72,56 +72,39 @@ eg
 	X:: 1.00... .
 
 	?- X::real,{X**2-2*X+1==0},solve(X),absolve(X).
-	﻿X:: 0.99999524... ;
-	X:: 0.999997233... ;
-	X:: 0.999997700... ;
-	X:: 0.99999799... ;
-	X:: 0.999998106... ;
-	X:: 0.999998414... ;
+	﻿X:: 0.99999637... ;
+	X:: 0.999997944... ;
+	X:: 0.999997996... ;
+	X:: 0.999998110... ;
+	X:: 0.999998305... ;
 	X:: 0.9999985... ;
 	X:: 0.9999986... ;
-	X:: 0.9999986... ;
-	X:: 0.9999987... ;
-	X:: 0.9999987... ;
-	X:: 0.9999988... ;
 			.
 			.
 			.
-	﻿X:: 0.9999994... ;
-	X:: 0.9999995... ;
+	﻿X:: 0.999999... ;
+	X:: 0.999999... ;
 	X:: 0.999999... ;
 	X:: 0.9999996... ;
-	X:: 0.9999997... ;
-	X:: 0.9999997... ;
-	X:: 0.9999998... ;
-	X:: 0.9999998... ;
 	X:: 0.999999... ;
+	X:: 0.999999... ;
+	X:: 0.999999... ;
+	X:: 1.0000000... ;
 	X:: 1.000000... ;
-	X:: 1.0000001... ;
-	X:: 1.0000001... ;
-	X:: 1.0000002... ;
 	X:: 1.000000... ;
-	X:: 1.0000003... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
 	X:: 1.0000004... ;
-	X:: 1.0000004... ;
-	X:: 1.0000005... ;
-	X:: 1.0000005... ;
 			.
 			.
 			.
-	﻿X:: 1.0000010... ;
-	X:: 1.0000011... ;
-	X:: 1.0000011... ;
-	X:: 1.0000012... ;
-	X:: 1.0000012... ;
-	X:: 1.0000013... ;
-	X:: 1.0000014... ;
-	X:: 1.0000014... ;
 	X:: 1.0000015... ;
-	X:: 1.000001808... ;
-	X:: 1.000001922... ;
-	X:: 1.00000257... ;
-	X:: 1.00000365... ;
+	X:: 1.000001... ;
+	X:: 1.000001... ;
+	X:: 1.0000017... ;
+	X:: 1.0000018... ;
+	X:: 1.000003391... ;
+	X:: 1.000004791... ;
 	false.
 Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while, even using `absolve`, generating many, many false positives. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
 
@@ -130,16 +113,6 @@ eg
 	?- {(X-1)**2==0}.
 	X = 1.
 By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints. This will be explored further in [Constructing Metalevel Contractors].
-One thing to remember: using `**` for n^th roots isn't symmetric, consistent with the conventional mathematical convention that even roots are always positive values.
-eg
-	﻿?- {Y==X**2},Y=4.
-	Y = 4,
-	X::real(-2, 2).
-	
-	?- {Y**1r2==X},Y=4.
-	Y = 4,
-	X = 2.
-These are mathematically equivalent but only the first form results in `X` containing both positive and negative square roots.
 
 <#TableOfContents>
 

@@ -268,12 +268,12 @@ eg
 	Y2 = Y2::real(-1,2),
 	Y3 = Y3::real(-1,2),
 	Y4 = Y4::real(-0.25,2).
-For quadratics like this example, one can do additional preprocessing to find the single occurrence variant (4.), but that's not always possible for an aribitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
+For quadratics like this example, one can do additional preprocessing to find the single occurrence variant (#4.), but that's not always possible for an aribitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
 
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 16,930,175 inferences, 4.572 CPU in 4.598 seconds (99% CPU, 3703281 Lips)
+	﻿% 13,659,623 inferences, 3.660 CPU in 3.670 seconds (100% CPU, 3732630 Lips)
 	X::real(-1, 1),
 	Y::real(-0.2500011568168373, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
@@ -296,28 +296,20 @@ eg
 	true.
 	
 	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
-	X:: ﻿0.00000000000000000...,
+	X:: 0.0000000000000000...,
+	Y:: 10.01000000000000...,
 	S::real(-5.0050000000000034, 5.0050000000000034),
-	Z::real(-0.5, 0.5),
-	Y:: 10.01000000000000... .
+	Z::real(-0.5, 0.5).
 	
 	?- set_prolog_flag(clpBNR_verbose,true).
 	true.
 	
-	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
 	X::real(-5.0e-324, 5.0e-324),
-	{X==_40340},
-	_40340::real(-5.0e-324, 5.0e-324),
-	_40380::real(-5.0050000000000034, 5.0050000000000034),
-	{_40380==X+_40422},
-	S::real(-5.0050000000000034, 5.0050000000000034),
-	{S==_40380},
-	_40422::real(-5.005000000000003, 5.005000000000003),
-	{_40422==Z*Y},
-	Z::real(-1r2, 1r2),
 	Y::real(10.009999999999998, 10.010000000000002),
-	{Y==_40608},
-	_40608::real(10.009999999999998, 10.010000000000002).
+	(S::real(-5.0050000000000034, 5.0050000000000034), {S==X+_28260}),
+	(_28260::real(-5.005000000000003, 5.005000000000003), {_28260==Z*Y}),
+	Z::real(-1r2, 1r2).
 aside>
 	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) developers.
 
@@ -325,26 +317,43 @@ aside>
 
 #### Intervals with Infinite Bounds
 
-For completeness, it is possible to explicitly declare intervals with non-finite bounds (as shown above). But infinite bounds can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created internally to construct complicated constraints from the defined set of primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example that omits any bounds specifications:
+The complete set of real numbers can be represented by the interval `real(-inf,inf)`. While it is possible to explicitly declare intervals with infinite bounds (as shown above), they can be generated in other ways. One way is to fail to declare bounds. When the constraint network is built internally, additional intervals are created internally to construct complicated constraints from the defined set of primitive of interval relations. When the primitives are evaluated, it's important that these internal intervals do not impact possible narrowings of the user defined intervals. Therefore, they are created with infinite bounds, as shown in this example that omits any bounds specifications:
 eg
 	?- {1==X+2*Y, Y-3*X==0}.
 	﻿X::real(-1.0Inf,1.0Inf),
 	Y::real(-1.0Inf,1.0Inf).
-No narrowing is possible because the arithmetic on infinite bounds just generates more infinities. This can lead to the appearance of non-termination or even undefined value exceptions due to arithmetic using infinite operands, e.g., {`0*oo`}. But, as we've already seen, declaring `X` and `Y` to be finite generally resolves this issue:
+No narrowing is possible because the arithmetic on infinite bounds just generates more infinities. This can lead to the appearance of non-termination but, as we've already seen, declaring `X` and `Y` to be finite generally resolves this issue:
 eg
 	?- [X,Y]::real, {1==X+2*Y, Y-3*X==0}.
 	X:: 0.1428571428571428...,
 	Y:: 0.428571428571428... .
-Another way of generating infinities is through arithmetic operations whose result is defined to be infinity, or by overflowing the supported 64-bit floating point range:
+Another way of generating infinities is through arithmetic operations whose result is defined to be infinity:
 eg
-	?- X::real,{Y==X/Z},Z=0.
-	﻿Z = 0,
-	X::real(-1.0e+16, 1.0e+16),
-	Y::real(-1.0Inf, 1.0Inf).
+	﻿?- {Pinf==1/0, Ninf== -1/0, Reals==1/0.0}.
+	Pinf = 1.0Inf,
+	Ninf = -1.0Inf,
+	Reals::real(-1.0Inf, 1.0Inf).
+Note that while dividing by the integer `0` produces a point value (either `1.0Inf` or `-1.0Inf`), dividing by `0.0` yields an interval over all reals. That's due to the fact that `0.0`, like any other floating point literals, is represented a small interval containing the literal value. In this case it contains both positive and negative real values, hence the bounds are negative and positive infinity.
 
-	﻿?- X::real,{Y==X**25}.
-	X::real(-1.0e+16,1.0e+16),
-	Y::real(-1.0Inf,1.0Inf).
+Another way of producing infinte bounds is by overflowing the supported 64-bit floating point range:
+eg
+	﻿?- {R1 == MF+1e3, R2 == MF*2}, current_prolog_flag(float_max,MF).
+	MF = 1.7976931348623157e+308,
+	R1::real(1.7976931348623157e+308, 1.0Inf),
+	R2::real(1.7976931348623157e+308, 1.0Inf).
+`R1` and `R2` can't get much narrower because there aren't any 64-bit floating point values between the two bounds.
+
+Finally, some arithmetic operations involving infinities are undefined. These don't automatically fail, but they don't result in any narrowing either:
+eg
+	﻿?- {X1 == inf*inf, X2 == -inf*inf}.
+	X1 = 1.0Inf,
+	X2 = -1.0Inf.
+	
+	?- {X1 == inf-inf, X2 == -inf/inf}.
+	X1::real(-1.0Inf, 1.0Inf),
+	X2::real(-1.0Inf, 1.0Inf).
+The first query uses defined results to narrow to a point value; the second does not, so the intervals are not narrowed.
+
 Often infinities will disappear due to intersection with finite intervals. But it's always a good practice to write declarations and constraints that prevent them from occurring in the first place.
 
 <#TableOfContents>
@@ -484,7 +493,7 @@ eg
 	?- [X,Y]::real,{X or (Y+42)}.
 	X::boolean,
 	Y::real(-42,-41).
-All the comparision relations are also boolean expressionsfacilitationg the expression of non-differentiable functions by combining boolean and numeric operations. For example, an alternative to the builtin `abs/1`:
+All the comparision relations are also boolean expressions facilitating the expression of non-differentiable functions by combining boolean and numeric operations. For example, an alternative to the builtin `abs/1`:
 eg
 	﻿?- {Abs == ((X>=0) + (X=<0)* -1) *X}, X = 10.
 	Abs = X, X = 10.
@@ -547,46 +556,58 @@ In an ideal world, an inconsistent constraint (or mutually inconsistent constrai
 eg
 	﻿?- {X==X+1}.
 	false.
-However:
+However, consider:
 eg
-	﻿?- X::real, {X==Y+1,X==Y}.
-	X::real(-1.0e+16, 1.0e+16),
-	Y::real(-1.0e+16, 1.0e+16).
-This is valid in the context that positive results may or may not contain a solution. But consider:
-eg
-	﻿?- X::real(-1e2,1e2), {X==Y+1,X==Y}.
-	false.
+	﻿?- {X==Y+1,Y==X}.
+	X = Y,
+	Y::real(-1.0Inf, 1.0Inf).
 	
-	﻿?- X::real(-1e3,1e3),{X==Y+1,X==Y}.
-	X::real(-251.0000000000001, 251.0000000000001),
-	Y::real(-251.0000000000001, 250.0000000000001).
+	?- X::real, {X==Y+1,Y==X}.
+	X = Y,
+	Y::real(-1.0e+16, 1.0e+16).
+	
+	?- X::real(-1e15,1e15), {X==Y+1,Y==X}.
+	false.
+In the first two cases, the addition of `1` is too small to affect the bounds of the result, i.e., no narrowing occurs. In the last case, it does alter the bounds sufficiently to permit the inconsistency to be detected. In the case of larger bounds, a bigger increment can trigger the same consistency check:
+eg
+	﻿?- X::real,{X==Y+10,Y==X}.
+	false.
+This is a simple concrete example where a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent). And it also demonstrates why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
+
+Another example using integers and `<` (remember `<` is unsound over reals):
+eg
+	﻿?- [X,Y]::integer, {X<Y, Y<X}.
+	X::integer(-72057594037924936, 72057594037924936),
+	Y::integer(-72057594037924937, 72057594037924935).
+	
+	?- [X,Y]::integer(0,1000), {X<Y, Y<X}.
+	false.
 This somewhat confusing behaviour is a product of the throttling behaviour described above. The fixed point iteration is causing some narrowing but the throttling mechanism kicks in before it visibly affects the interval bounds. In the first case the mechansim is not triggered before failure. In the second case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.)
 
 The alternative to this behaviour is the appearance of non-termination; it will take a long time to narrow a wide domain by incremental steps (size `1` in the example above). (The fixed point iteration can be shown to terminate but, at some point, practical considerations must take precedence.)
 
-Another interesting example of an inconsistent constraint (using `integer`'s because `>` is unsound over `real`'s)`:
+Another interesting example of an inconsistent constraint:
 eg
-	﻿?- [X,Y]::integer, {Y>abs(X), X==Y}.
-	X::integer(375, 72057594037927559),
-	Y::integer(375, 72057594037927560).
-Throttling has terminated the fixed point iteration. If the initial domains are small enough:
+	﻿?- X::integer, {X>abs(X)}.
+	X::integer(1, 72057594037927935).
+The problem here is that constraint propogation gets stuck at a fixed point due to the dependancy issue. We can overcome this using `solve` but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
-	﻿?- [X,Y]::integer(-10,10), {Y>abs(X), X==Y}.
+	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).
 	false.
-
-Throttling only affects a single constraint addition, so one way to overcome its effects one of the solvers can be used to impose additional constraints via searching:
+Sometimes the dependency can broken by re-expressing the problem:
 eg
-	﻿?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}.
-	X::integer(428, 572),
-	Y::integer(429, 572).
-	
-	?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}, enumerate(X).
+	﻿?- [X,Y]::integer(-1200,1200), {Y>abs(X),Y==X}.
 	false.
 	
-	?- [X,Y]::integer(-1000,1000), {Y>abs(X), X==Y}, absolve(X).
+	?- [X,Y]::integer(-1201,1201), {Y>abs(X),Y==X}.
+	X = Y,
+	Y::integer(600, 601).
+But there's a limit to the size of the domain as illustrated by the second query. In this case throttling has again terminated the fixed point iteration. As before, `solve` can be used as to break the impasse:
+eg
+	﻿?- [X,Y]::integer(-1201,1201), {Y>abs(X),Y==X}, solve(X).
 	false.
 
-As shown, inconsistent constraints can fail if the conditions are right, or may result in somewhat ambiguous answers. While they may be the result of incorrect constraint formulation, it's often difficult to discern when this is the case (unlike the examples above). Unfortunately, they don't always result in immediate failure so recognizing the symptoms can be important.
+The failure to "fail" in the face of inconsistent constraints isn't wrong according to the interpretation of positive answers documented above. It's just that the conditions weren't right to cause failure. So it's important to interpret any positive answers with this issue in mind.
 
 <#TableOfContents>
 
@@ -594,7 +615,7 @@ As shown, inconsistent constraints can fail if the conditions are right, or may 
 
 By sharing the same fundamental framework based on numeric intervals, CLP(BNR) enables the mixing of arithmetic and boolean types in constraints. The implementation primarily consists of just two key predicates, `::/2` (used as an infix operator) for creating intervals (logic variables constrained to be numeric values) and `{}/1` (used as an outfix operator) to apply constraints to intervals.
 
-Given sufficient constraints, it's possible to narrow an interval to a small range determined by the precision of the underlying arithmetic system, and, in some cases, to a single point value (which is then just unified with the original logic variable). Additional utility predicates like `solve/1` and `enumerate/1` can be used to search for multiple solutions or force narrowing in cases where the internal constraint propogation is too weak or dependency issues are present.
+Given sufficient constraints, it's possible to narrow an interval to a small range determined by the precision of the underlying arithmetic system, and, in some cases, to a single point value (which is then just unified with the original logic variable). Additional utility predicates like `solve/1` and `enumerate/1` can be used to search for multiple solutions or force narrowing in cases where the internal constraint propagation is too weak, dependency issues are present, or inconsistent constraints are specified. 
 
 <#TableOfContents>
 

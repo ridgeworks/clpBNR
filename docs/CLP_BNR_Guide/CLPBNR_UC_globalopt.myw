@@ -32,7 +32,7 @@ eg
 `global_minimum` and `global_maximum` take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
 eg
 	﻿?- X::real(0,20),global_maximum(X*(5*pi-X),Z,3).
-	X::real(7.715468219981181, 7.992506304532757),
+	﻿X::real(7.71546821998115, 7.992506304532808),
 	Z:: 61.7... .
 These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
 eg
@@ -83,8 +83,8 @@ eg
 	Z:: 2.249340... .
 
 	﻿?- [X1,X2]::real(0,_),{X1+2*X2=<3,8*X1+5*X2>=10}, global_minimum((X1-2)**2+(X2-2)**2,Z),splitsolve([X1,X2]).
-	X1:: 1.3992345...,
-	X2:: 0.8003827...,
+	﻿X1:: 1.399230...,
+	X2:: 0.800384...,
 	Z:: 1.800000... .
 Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later. First a few Shaum's examples more grounded in the real world.
  

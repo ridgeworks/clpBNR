@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019,2020 Rick Workman
+ *	Copyright (c) 2019,2020,2021 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -49,25 +49,14 @@ clpStatistic(narrowingOps(C)) :- g_read('clpBNR:evalNode',C).
 
 clpStatistic(narrowingFails(C)) :- g_read('clpBNR:evalNodeFail',C).
 
-% SWIP optimization for non_empty/2, replaces nexttoward function call with constant
-goal_expansion(L <  RHS, L < MaxFloat) :-
-	RHS == nexttoward( 1.0Inf,0),
-	current_prolog_flag(float_max,MaxFloat).  % MaxFloat is nexttoward( 1.0Inf,0). 
-goal_expansion(H >  RHS, H > NegMaxFloat) :-
-	RHS == nexttoward( -1.0Inf,0),
-	current_prolog_flag(float_max,MaxFloat),
-	NegMaxFloat is -MaxFloat.  % NegMaxFloat is nexttoward( -1.0Inf,0).
+% SWIP optimization for non_empty/2
+goal_expansion(non_empty(L,H), L =< H).
+
 %
-% non-empty inteval test, L=<H, infinte point values should fail
+% non-empty interval test
 %
 non_empty((L,H)) :- non_empty(L,H).
-non_empty(L,H) :-
-	L =< H,                      % non-empty
-	% Point infinity values not allowed. IEEE semantics allows overflow infinities
-	% to round down/up to finite values so this more elaborate check is necessary.
-	% This is performance sensitive - currently fastest implementation: 
-	(float(L) -> L <  nexttoward( 1.0Inf,0) ; true),
-	(float(H) -> H >  nexttoward(-1.0Inf,0) ; true).
+non_empty(L,H) :- L =< H.                      % non-empty
 
 %
 % forces all intervals to boolean range, (optimize if already boolean)
@@ -89,10 +78,19 @@ intCase(s, (L,H)).                       % split
 % X, Y and Z are intervals
 %
 
+%
 % Z := X ^ Y  (intersection)
+%
+
 ^((Xl,Xh), (Yl,Yh), (Zl,Zh)) :-
 	Zl is max(Xl, Yl), Zh is min(Xh, Yh),
 	non_empty(Zl,Zh).
+
+%
+% Z := X \/ Y (union)
+%
+union_((Xl,Xh),(Yl,Yh),(Zl,Zh)) :-
+	Zl is min(Xl,Yl), Zh is max(Xh,Yh).
 
 %
 % wrap repeating interval onto a prime cylinder of width W and
@@ -111,11 +109,6 @@ wrap_((Xl,Xh), W, (MXl,MXh), (Xpl,Xph)) :-  % project onto cylinder from -W/2 to
 %
 unwrap_((Xpl,Xph), W, (MXl,MXh), (Xl,Xh)) :-
 	Xl is Xpl+W*MXl, Xh is Xph+W*MXh.
-
-union_(X,[],X) :-!.  %  set union (including empty set)
-union_([],Y,Y) :-!.
-union_((Xl,Xh),(Yl,Yh),(Zl,Zh)) :- Zl is min(Xl,Yl), Zh is max(Xh,Yh).
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -188,7 +181,7 @@ narrowing_op(le, P, $(Z, X, Y), New) :-
 le_true(X, (Yl,Yh), $((1,1), (NXl,NXh), (NYl,NYh)), P) :-
 	^(X, (-1.0Inf,Yh), (NXl,NXh)),           % NewX := (Xl,Xh) ^(NI,Yh)
 	^((Yl,Yh), (NXl,1.0Inf), (NYl,NYh)),     % NewY := (Yl,Yh) ^(Xl,PI)
-	(NXh =< NYl -> P=p ; true).              % will? always be true
+	(NXh =< NYl -> P=p ; true).              % will always be true?
 
 le_false(X, Y, $((0,0), NewX, NewY), P) :-
 	lt_true(Y,X,$(_,NewY,NewX),P).
@@ -220,7 +213,7 @@ lt_true( X, (Yl,Yh), $((1,1), (NXl,NXh), (NYl,NYh)), P) :-
 	^(X, (-1.0Inf,YhD), (NXl,NXh)),           % NewX := (Xl,Xh) ^(NInf,YhD)
 	next_lt_(NXl,1,NXlU),                     % NXlU is next upward value from NXl
 	^((Yl,Yh), (NXlU,1.0Inf), (NYl,NYh)),     % NewY := (Yl,Yh) ^(NXlU,PInf)
-	(NXh < NYl -> P=p ; true).                % will? always be true
+	(NXh < NYl -> P=p ; true).                % will always be true?
 	
 lt_false(X, Y, $((0,0), NewX, NewY), P) :-
 	le_true(Y,X,$(_,NewY,NewX),P).
@@ -441,8 +434,8 @@ narrowing_op(abs, _, $(Z,X), $(NewZ, NewX)) :-
 % intersect and join Z with positive and negative regions of X
 %
 intersect_regions_(Z,X,NewZ) :-
-	(^(Z,X,ZPos) -> true ; ZPos = []),  % positive Z region
-	(-(X,Z,ZNeg) -> true ; ZNeg = []),  % negative Z region
+	(^(Z,X,ZPos) -> true ; empty_interval(ZPos)),  % positive Z region
+	(-(X,Z,ZNeg) -> true ; empty_interval(ZNeg)),  % negative Z region
 	union_(ZPos,ZNeg,NewZ).
 
 % NZ := Z ^ -X (unary minus)
@@ -544,9 +537,9 @@ pt_powr_(Z,X,R,NewZ) :-
 	  ; Zh1 is roundtoward(Xh**R,to_positive)
 	),	
 	Zpl is max(Zl,Zl1),  Zph is min(Zh,Zh1),    % positive case
-	(Zpl =< Zph -> Zps = (Zpl,Zph) ; Zps = []),
+	(Zpl =< Zph -> Zps = (Zpl,Zph) ; empty_interval(Zps)),
 	Znl is max(Zl,-Zh1), Znh is min(Zh,-Zl1),   % negative case
-	(Znl =< Znh -> Zns = (Znl,Znh) ; Zns = []),
+	(Znl =< Znh -> Zns = (Znl,Znh) ; empty_interval(Zns)),
 	union_(Zps,Zns,NewZ).                       % union of positive and negative cases
 pt_powr_((Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-         % all other cases
 	(float(Xl)
@@ -606,7 +599,7 @@ sin_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-
 	union_(NX1,NX2,NewX).
 
 try_sin_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- sin_((MXS,MXS), X, Z, _, NewX, NewZ),!.
-try_sin_(X,Z,[],[],MXS,MXF,MXF).  % if sin_ fails, return empty X interval for union
+try_sin_(X,Z,MT,MT,MXS,MXF,MXF) :- empty_interval(MT).  % if sin_ fails, return empty X interval for union
 
 sin_sector_(lo,Pi_2,(Xl,Xh),Z,(NXl,NXh),NewZ) :-
 	Xl =< -Pi_2, !,                % X intersects lo sector, flip to mid
@@ -625,7 +618,7 @@ sin_sector_(mid,Pi_2,(Xl,Xh),Z,NewX,NewZ) :-
 	X1l is max(Xl,-Pi_2), X1h is min(Xh, Pi_2),
 	sin_prim_((X1l,X1h),Z,NewX,NewZ).
 	
-sin_sector_(_Any,_,_X,_Z,[],[]).
+sin_sector_(_Any,_,_X,_Z,MT,MT) :- empty_interval(MT).
 
 % both sin and asin monotonic, increasing in range -pi/2 to pi/2
 sin_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-
@@ -666,7 +659,7 @@ cos_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-
 	union_(NX1,NX2,NewX).
 
 try_cos_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- cos_((MXS,MXS), X, Z, _, NewX, NewZ),!.
-try_cos_(X,Z,[],[],MXS,MXF,MXF).  % if cos_ fails, return empty X interval for union
+try_cos_(X,Z,MT,MT,MXS,MXF,MXF) :- empty_interval(MT).  % if cos_ fails, return empty X interval for union
 
 cos_sector_(neg,(Xl,Xh),Z,(NXl,NXh),NewZ) :-     % Lo is -pi, Hi is 0
 	Xl =< 0, !,
@@ -679,8 +672,8 @@ cos_sector_(pos,(Xl,Xh),Z,NewX,NewZ) :-          % Lo is 0, Hi is pi
 	X1l is max(0,Xl),
 	cos_prim_((X1l,Xh),Z,NewX,NewZ).
 
-cos_sector_(_Any,_X,_Z,[],[]).
-	
+cos_sector_(_Any,_X,_Z,MT,MT) :- empty_interval(MT).
+
 % both cos and acos monotonic decreasing in range 0 to pi
 cos_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-
 	% Note: can't depend on transcendentals to obey rounding
@@ -712,20 +705,20 @@ tan_((MX,MX), (Xl,Xh), (Zl,Zh), (MX,MX), (NXl,NXh), (NZl,NZh)) :-
 	NXl is max(Xl,nexttoward(atan(NZl),-1.0Inf)),
 	NXh is min(Xh,nexttoward(atan(NZh), 1.0Inf)),
 	non_empty(NXl,NXh).
-	
+
 % not same cylinder, must span infinite discontinuity --> no change
 %tan_(MX, X, Z, MX, X, Z).
 
 tan_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-
 %	MXl is MXh-1,  % adjacent cylinders
 	PiBy2 is pi/2, MPiBy2 is -PiBy2,
-	try_tan_((Xl,PiBy2),  Z, NX1, NZ1,MXl,MXh,NMXl),
-	try_tan_((MPiBy2,Xh), Z, NX2, NZ2,MXh,MXl,NMXh),
-	union_(NZ1,NZ2,NewZ),             % will fail if both empty
+	try_tan_((Xl,PiBy2),  Z, NX1, (NZL,_), MXl,MXh,NMXl),
+	try_tan_((MPiBy2,Xh), Z, NX2, (_,NZH) ,MXh,MXl,NMXh),
+	union_((NZL,1.0Inf),(-1.0Inf,NZH),NewZ),
 	union_(NX1,NX2,NewX).
-	
+
 try_tan_(X,Z,NewX,NewZ,MXS,MXF,MXS) :- tan_((MXS,MXS), X, Z, _, NewX, NewZ), !.
-try_tan_(X,Z,[],[],MXS,MXF,MXF).  % if tan_ fails, return empty X interval for union
+try_tan_(X,Z,MT,MT,MXS,MXF,MXF) :- empty_interval(MT).  % if tan_ fails, return empty X interval for union
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

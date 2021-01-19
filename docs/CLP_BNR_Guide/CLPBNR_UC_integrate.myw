@@ -277,15 +277,15 @@ eg
 Before trying anything else, see if `absolve` helps to address any weak convergence issues:
 eg
 	﻿﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)), absolve(Af).
-	F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(25.69728183329884, 27.44933960820444).
+	﻿F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(25.69728183329884, 27.384202093340335).
 That actually helped quite a bit, but still not as narrow as it could be. 
 
 Decreasing the step size (increasing `Ctrl`):
 eg
 	﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50),9), absolve(Af).
-	F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(24.869257146716613, 28.138508668976122).
+	﻿F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(24.869257146716613, 28.23565654323769).
 actually made it worse, so it's probably not an instability issue. 
 
 The problem is that any uncertainty in one of "constants" is propagated from each integration step to the next, amplified by the approximation error. The end result is correct in that it contains the "real" value, but it may seem more conservative than need be. That's the product of the interaction between input fuzzy data and approximation errors caused by the integration algorithm. Weak convergence may further exacerbate the problem but, to some extent, that can be mitigated through the use of `absolve`.
