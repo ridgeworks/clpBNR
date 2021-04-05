@@ -4,7 +4,7 @@ Other implementations of CLP over intervals have been characterized (see [CLIP])
 
 aside> Aside: With conventional floating point arithmetic, adding redundant equations must be done carefully because they can exacerbate problems caused by rounding errors. Using sound interval arithmetic, these problems are avoided and redundancy can be used to accelerate convergence. (See also [Algorithmic Power from Declarative Use of Redundant Constraints]).
 
-A contractor is just a procedure which forces some narrowing operation on set of intervals. `solve`, `splitsolve` and `absolve`, as defined in the `clpBNR` package, are contractors bundled with an iterating algorithm that terminates when some condition is met, e.g., the width of the interval(s) is less than some value. Here's two contractors that split intervals at their midpoint; `mid_split_one` selects the largest interval (by width) from a list. It uses `mid_point_split` which takes a single interval as its argument and splits it (see [Appendix 2] for module `clpBNRmeta_contractor` source code):
+A contractor is just a procedure which forces some narrowing operation on set of intervals. `solve`, `splitsolve` and `absolve`, as defined in the `clpBNR` package, are contractors bundled with an iterating algorithm that terminates when some condition is met, e.g., the width of the interval(s) is less than some value. Here's two contractors that split intervals at their midpoint; `mid_split_one` selects the largest interval (by width) from a list. It uses `mid_point_split` which takes a single interval as its argument and splits it (see [Appendix 1] for module `clpBNRmeta_contractor` source code):
 .pl
 	%
 	% contractor to split largest interval of a list on midpoint
@@ -545,4 +545,4 @@ CISC based interval constraint systems overcame deficiencies in RISC, such as sl
 	[Solving Polynomial Equations in one Variable] <- link #toc4Solving_Polynomial_Equations_in_one_Variable
 	[Progress in the solving of a circuit design problem] <- link https://www.researchgate.net/publication/2322545_Progress_in_the_Solving_of_a_Circuit_Design_Problem
 	[Algorithmic Power from Declarative Use of Redundant Constraints] <- link http://webhome.cs.uvic.ca/~vanemden/Publications/redund.pdf
-	[Appendix 2] <- link #toc4Appendix_2_-__clpBNRmeta_contractor.pl__Source
+	[Appendix 1] <- link #toc4Appendix_1_-__clpBNRmeta_contractor.pl__Source

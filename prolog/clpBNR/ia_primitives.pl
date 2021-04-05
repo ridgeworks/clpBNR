@@ -487,10 +487,14 @@ narrowing_op(exp, _, $((Zl,Zh),(Xl,Xh)), $((NZl,NZh),(NXl,NXh))) :-
 
 % Z== X**Y
 
-narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- !,   % Y = point exponent
-	pt_powr_(Z,X,R,NewZ), non_empty(NewZ),
-	Ri is 1/R,
-	pt_powr_(X,NewZ,Ri,NewX), non_empty(NewX).
+narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- !,   % R = point exponent
+	(R =\= 0
+	 ->	pt_powr_(Z,X,R,NewZ), non_empty(NewZ),
+		Ri is 1/R,
+		pt_powr_(X,NewZ,Ri,NewX), non_empty(NewX)
+	 ;	^(Z,(1,1),NewZ), non_empty(NewZ),
+	 	NewX = X
+	).
 
 narrowing_op(pow, _, $(Z,(Xl,Xh),Y), $(NewZ, NewX, NewY)) :-   % interval Y, X must be positive
 	XZl is max(0,Xl), Xp = (XZl,Xh),  Xh >= 0,  % X must be positive (>=0)

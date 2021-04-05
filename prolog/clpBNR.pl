@@ -30,8 +30,8 @@
 	(::)/2,                % declare interval
 	{}/1,                  % define constraint
 	interval/1,            % filter for clpBNR constrained var
-	list/1,                % for compatibility
-	domain/2, range/2,     % for compatibility
+	list/1,                % O(1) list filter (also for compatibility)
+	domain/2, range/2,     % get type and bounds (domain)
 	delta/2,               % width (span) of an interval or numeric (also arithmetic function)
 	midpoint/2,            % midpoint of an interval (or numeric) (also arithmetic function)
 	median/2,              % median of an interval (or numeric) (also arithmetic function)
@@ -86,10 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.5").
-
-:- use_module(library(arithmetic)).                 % for interval arithmetic functions
-:- use_module(library(lists),[subtract/3,union/3]). % for flags
+version("0.9.6").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -258,11 +255,17 @@ getValue(Int, Val) :-
 watch(Int,Action) :-
 	atom(Action), 
 	get_interval_flags_(Int,Flags), !,
-	lists:subtract(Flags,[watch(_)],Flags1),   % remove any previous setting
-	(Action = none -> true ; set_interval_flags_(Int,[watch(Action)|Flags1])).		
+	remove_(Flags,watch(_),Flags1),
+	(Action = none -> Flags2=Flags1 ; Flags2=[watch(Action)|Flags1]),
+	set_interval_flags_(Int,Flags2).
 watch(Ints,Action) :-
 	list(Ints),
 	watch_list_(Ints,Action).
+
+remove_([],_,[]).
+remove_([X|Xs],X,Xs) :- !.
+remove_([X|Xs],X,[X|Ys]) :-
+	remove_(Xs,X,Ys).
 
 watch_list_([],Action).
 watch_list_([Int|Ints],Action) :-
@@ -329,7 +332,7 @@ interval_domain_(T,(L,H),Dom) :- Dom=..[T,L,H].
 %
 %  delta(Int, Wid) width/span of an interval or numeric value, can be infinite
 %
-arithmetic:evaluable(delta(X),user).
+:- arithmetic_function(user:(delta/1)).
 
 delta(Int, Wid) :-
 	getValue(Int,(L,H)),
@@ -343,7 +346,7 @@ delta(Int, Wid) :-
 %	40 (2), 10.1145/2493882. hal-00576641v1
 % Exception, single infinite bound treated as largest finite FP value
 %
-arithmetic:evaluable(midpoint(X),user).
+:- arithmetic_function(user:(midpoint/1)).
 
 midpoint(Int, Mid) :-
 	getValue(Int,(L,H)),
@@ -358,7 +361,8 @@ midpoint_(L,H,M)       :- M1 is L/2 + H/2, M=M1.        % general case
 % median(Int,Med) from CLP(RI)
 % Med = 0 if Int contains 0, else a number which divides Int into equal
 % numbers of FP values. Med is always a float
-arithmetic:evaluable(median(X),user).
+%
+:- arithmetic_function(user:(median/1)).
 
 median(Int, Med) :-
 	getValue(Int,(L,H)),
@@ -521,8 +525,13 @@ mergeType_(_,    _,    integer).
 % optimize for one or both lists (dominant case)
 mergeFlags_([],Flags2,Flags2) :- !.
 mergeFlags_(Flags1,[],Flags1) :- !.
-mergeFlags_(Flags1,Flags2,Flags) :-
-	lists:union(Flags1,Flags2,Flags).  % ambiguous if both have same flag set to different values
+mergeFlags_([F1|Flags1],Flags2,Flags) :-   % discard if F in Flags2 
+	functor(F1,N,1),                       % ignore value
+	functor(F2,N,1),
+	memberchk(F2,Flags2), !,
+	mergeFlags_(Flags1,Flags2,Flags).
+mergeFlags_([F1|Flags1],Flags2,[F1|Flags]) :-  % keep F, not in Flags2 
+	mergeFlags_(Flags1,Flags2,Flags).
 
 % merge two node lists removing duplicates based on operation and arguments
 mergeNodes_([N],NodeList,NodeList) :- var(N),!.         % end of list
@@ -754,7 +763,6 @@ clpStatistic(max_iterations(O/L)) :-
 
 %
 % Execute a node on the queue
-%	Note: "special" ops like instantiate and integral not counted as narrowing op in clpStatistics 
 %
 % Comment out the following to enable Op tracing:
 goal_expansion(traceIntOp_(Op, Args, PrimArgs, New),true).

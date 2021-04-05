@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.5
+	Installed version:      0.9.6
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -149,7 +149,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.9.5alpha ***.
+	% *** clpBNR v0.9.6alpha ***.
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
@@ -163,8 +163,8 @@ The `clpBNR` module declaration is:
 		(::)/2,                % declare interval
 		{}/1,                  % define constraint
 		interval/1,            % filter for clpBNR constrained var
-		list/1,                % for compatibility
-		domain/2, range/2,     % for compatibility
+		list/1,                % O(1) list filter (also for compatibility)
+		domain/2, range/2,     % get type and bounds (domain)
 		delta/2,               % width (span) of an interval or numeric (also arithmetic function)
 		midpoint/2,            % midpoint of an interval (or numeric) (also arithmetic function)
 		median/2,              % median of an interval (or numeric) (also arithmetic function)

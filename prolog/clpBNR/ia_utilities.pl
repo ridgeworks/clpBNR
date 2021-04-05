@@ -600,7 +600,7 @@ splitinterval_integer_((L,H),0) :-
 	L < 0, H > 0.                     % contains 0 but not bounded by 0 
 splitinterval_integer_((-1.0Inf,H),Pt) :-
 	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
-splitinterval_integer_((L,-1.0Inf),Pt) :-
+splitinterval_integer_((L,1.0Inf), Pt) :-
 	Pt is L*10+5.                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
 splitinterval_integer_((L,H),Pt) :- 
 	H-L >= 16,                        % don't split ranges smaller than 16
@@ -619,9 +619,10 @@ splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
 	Pt is L*10+1,
 	Pt < 1.0Inf.                          % Pt must be finite
 
-splitinterval_real_((L,H),Pt,E) :-    % finite L,H, positive or negative but not split, Pt\=0.
-	\+ chk_small(L,H,E),              % only split if not small 
-	splitMean_(L,H,Pt), !.
+splitinterval_real_((L,H),Pt,E) :-        % finite L,H, positive or negative but not split, Pt\=0.
+	\+ chk_small(L,H,E),                  % only split if not small 
+	splitMean_(L,H,Pt), !,
+	L < Pt,Pt < H.                        % split point must be between L and H
 
 %splitinterval_real_([L,H],Pt,E) :-
 %	writeln('FAIL'([L,H],Pt,E)),fail.

@@ -21,7 +21,7 @@ eg
 and, in this case, it works equally well if you solve for `X` or `Y` or both. However this may not always be the case. While the solution found should always be the same, the time taken to find it may vary widely (sometimes an order of magnitude or more). The following "real-world" examples were taken from [SYSTEMS OF LINEAR EQUATIONS AND MATRICES].
 
 ##### Manufacturing: Production Scheduling
-"Ace Novelty wishes to produce three types of souvenirs: types A, B, and C. To manufacture a type-A souvenir requires 2 minutes on machine I, 1 minute on machine II, and 2 minutes on machine III. A type-B souvenir requires 1 minute on machine I, 3 minutes on machine II, and 1 minute on machine III. A type-C souvenir requires 1 minute on machine I and 2 minutes each on machines II and III. There are 3 hours available on machine I, 5 hours available on machine II, and 4 hours available on machine III for processing the order. How many souvenirs of each type should Ace Novelty make in order to use all of the available time?"
+>	"*Ace Novelty wishes to produce three types of souvenirs: types A, B, and C. To manufacture a type-A souvenir requires 2 minutes on machine I, 1 minute on machine II, and 2 minutes on machine III. A type-B souvenir requires 1 minute on machine I, 3 minutes on machine II, and 1 minute on machine III. A type-C souvenir requires 1 minute on machine I and 2 minutes each on machines II and III. There are 3 hours available on machine I, 5 hours available on machine II, and 4 hours available on machine III for processing the order. How many souvenirs of each type should Ace Novelty make in order to use all of the available time?*"
 
 This can be simply modeled by:
 .pl
@@ -47,7 +47,7 @@ eg
 So Ace Novelty should make 36 type-A souvenirs, 48 type-B souvenirs, and 60 type-C souvenirs.
 
 ##### Capital Expenditure Planning
-The management of Hartman Rent-A-Car has allocated $1.5 million to buy a fleet of new automobiles consisting of compact, intermediate-size, and full-size cars. Compacts cost $12,000 each, intermediate-size cars cost $18,000 each, and full-size cars cost $24,000 each. If Hartman purchases twice as many compacts as intermediate-size cars and the total number of cars to be purchased is 100, determine how many cars of each type will be purchased. (Assume that the entire budget will be used.)
+>	"*The management of Hartman Rent-A-Car has allocated $1.5 million to buy a fleet of new automobiles consisting of compact, intermediate-size, and full-size cars. Compacts cost $12,000 each, intermediate-size cars cost $18,000 each, and full-size cars cost $24,000 each. If Hartman purchases twice as many compacts as intermediate-size cars and the total number of cars to be purchased is 100, determine how many cars of each type will be purchased. (Assume that the entire budget will be used.)*"
 eg
 	﻿?- [C,I,F]::integer(0,_),{C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I}.
 	﻿C::integer(0,100),
@@ -74,7 +74,7 @@ The problem as stated is to solve for the currents flowing through the resistors
 	           I_5-I_6+I_9 = 0
 As the paper states, there are 11 equations in 10 unknowns, but it's not obvious where the redundancy occurs. (Further it is suggested that initial ranges of `[-100,100]` be used for all intervals, although except for one case, this is not really necessary.)
 
-However consider {`I_s`}. From the equations, it is not obvious that it cannot be negative. But that implies that poitive current can flow from the negative to the positive terminals of the voltage supply. Furthermore any search, e.g., using `solve/1`, will spend considerable effort attempting to find solutions where this can occur. (The paper cited indicates either no answer was achieved within 24 hours on a 2 MIP CPU or no narrowing occurs even using `solve`.) But adding the simple constraint {`Is>=0`} generates the answer withing a second or two (machine dependent). Here's the CLP(BNR) program:
+However consider {`I_s`}. From the equations, it is not obvious that it cannot be negative. But that implies that positive current can flow from the negative to the positive terminals of the voltage supply. Furthermore any search, e.g., using `solve/1`, will spend considerable effort attempting to find solutions where this can occur. (The paper cited indicates either no answer was achieved within 24 hours on a 2 MIP CPU or no narrowing occurs even using `solve`.) But adding the simple constraint {`Is>=0`} generates the answer within a second or two (machine dependent). The CLP(BNR) code to define the circuit:
 .pl
 	simpleCircuit(Vs) :-
 		simpleCircuitDef(Vs,EQs),  % EQs is list of constraint equations in Vs
@@ -118,7 +118,7 @@ eg
 	I6:: 0.2962385...,
 	I7:: 0.8282986... ;
 	false.
-Using `solve` finds the solution in a few seconds, but there is an arguably missing constraint. We are probably not interested in the case where `Is` is negative, i.e., current flows from the positive terminal of the voltage source to the negative. Adding this constraint reduces the execution time by over a factor of three:
+Using `solve` finds the solution in a few seconds, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
 eg
 	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
 	% 11,668,722 inferences, 2.882 CPU in 2.890 seconds (100% CPU, 4048864 Lips)
@@ -161,101 +161,122 @@ eg
 	W::real(-1.0e+16, 1.0e+16),
 	Y::real(-1.0e+16, 1.0e+16),
 	Z::real(-1.0e+16, 1.0e+16).
-In general, `solve` can take a long time to determine that little or no narrowing is possible if the set of linear equations is underdetermined.
+But there are cases where underdetermined still yield meaningful results. From the same source as previous examples:
+>	"*Traffic Control (The figure) shows the flow of downtown traffic in a certain city during the rush hours on a typical weekday. The arrows indicate the direction of traffic flow on each one-way road, and appears beside each road. 5th Avenue and 6th Avenue can each handle up to 2000 vehicles per hour without causing congestion, whereas the maximum capacity of both 4th Street and 5th Street is 1000 vehicles per hour. The flow of traffic is controlled by traffic lights installed at each of the four intersections.*"
+[Figure 7 Traffic]
+"Without congestion" implies that all traffic entering an intersection must leave the intersection. Including the street volume limits, the system can be modelled as:
+```
+﻿?- [X1,X3]::integer(0,2000), [X2,X4]::integer(0,1000), {X1+X4==1500, X1+X2==1300, X2+X3==1800, X3+X4==2000}.
+X1::integer(500, 1300),
+X3::integer(1000, 1800),
+X2::integer(0, 800),
+X4::integer(200, 1000).
+```
+Note that `solve` is unnecessary  here. This isn't a unique solution (the system is underdetermined) but the results are useful in that they specify limits to traffic flows while avoiding congestion. Further constraints can be applied to model other possible scenarios, e.g.,
+>	"*Suppose the part of 4th Street between 5th Avenue and 6th Avenue is to be resurfaced and that traffic flow between the two junctions must therefore be reduced to at most 300 vehicles per hour.*"
+yielding:
+```
+﻿?- [X1,X3]::integer(0,2000), [X2,X4]::integer(0,1000), {X1+X4==1500, X1+X2==1300, X2+X3==1800, X3+X4==2000}, {X4=<300}.
+X1::integer(1200, 1300),
+X3::integer(1700, 1800),
+X2::integer(0, 100),
+X4::integer(200, 300).
+```
+Congestion does not occur as long as `X2` remains below 100, since exceeding that will cause congestion at the intersection of 5th Street and 5th Avenue.
 
-##### Using Gaussian Elimination
-As the examples above show, the general technique using `solve` (when necessary) with `{}` constraints can be used to solve systems of linear equations. Futhermore, there's nothing in this approach that is specific to linear systems. Non-linear equations and even inequalties can be specified without changing the basic strategy. That's not to say that this approach is the most efficient. When it is known that the problem is a linear system, standard numerical methods, e.g., Gaussian elimination, can be used with interval constraints to find solutions much faster than using `solve` (which, after all, is a pretty blunt instrument). Furthermore, these techniques can be used without undue concerns for accuracy; the mathematical correctness of the underlying arithmetic and the use of intervals contain any rounding errors in the answers.
+##### Cramer's Rule
+Solving systems of linear equations by specifying the equations as constraints and performing a bifurcating search (`solve/1`) is a rather brute force approach when there are several [well known algorithms] for doing the same thing. One such algorithm is [Cramer's rule] which states that if you can represent the system of equations in matrix form {`A*bb"x"=bb"b"`} where {`A`} is an {`n xx n`} matrix of coefficients, and {`bb"b"`} and {`bb"x"`} are {`n`}-dimensional column vectors, then {`bb"x" = A^-1*bb"b"`}.
 
-To demonstrate this, assume that there is a predicate `rewrite_linear(EQs,LinearEQs,OtherEQs)` which takes a list of constraints, `EQs` and separates them into two lists: `LinearEQs` which contain the linear equations (standard defintion) and `OtherEQs`. Furthermore conventional Gaussian elimination has been used to rewrite the original linear equations into an upper triangular form. (See [Appendix 1] for the souce of `rewrite_linear/3` which is too large to include here.) A few examples:
+Using `library(ndarray)`in the [`arithmetic_types`] pack for matrix support, the "Production Scheduling" problem described above can be simply solved (without constraints):
 eg
-	?- rewrite_linear([2*X+4*Y+6*Z==22,3*X+8*Y+5*Z==27,-X+Y+2*Z==2],Cs,Os).
-	Cs = [X+2*Y+3*Z==11,Y-2*Z== -3,Z==2].
-	Os = [].
+	﻿?- set_prolog_flag(prefer_rationals,true).
+	true.
 	
-	?- rewrite_linear([3*X-2*Y+8*Z==9,-2*X+2*Y+Z==3,X*Y==W,X+2*Y-3*Z==8],Cs,Os).
-	﻿Cs = [X-2r3*Y+8r3*Z==3, Y+19r2*Z==27r2, Z==1],
-	Os = [X*Y==W].
-The generated lists `Cs` and `Os` can then be used as input to `{}` to add them to the constraint network. In many cases this is sufficient to generate the solution:
-eg
-	﻿?- rewrite_linear([2*X+4*Y+6*Z==22,3*X+8*Y+5*Z==27,-X+Y+2*Z==2],Cs,Os),{Cs,Os}.
-	X = 3,
-	Y = 1,
-	Z = 2,
-	Cs = [3+2*1+3*2==11, 1-2*2== -3, 2==2],
-	Os = [].
-
-	﻿?- rewrite_linear([3*X-2*Y+8*Z==9,-2*X+2*Y+Z==3,X*Y==W,X+2*Y-3*Z==8],Cs,Os),{Cs,Os}.
-	X = 3,
-	Y = 4,
-	Z = 1,
-	W = 12,
-	Cs = [3-2r3*4+8r3*1==3, 4+19r2*1==27r2, 1==1],
-	Os = [3*4==12].
-For a complete set of linear equations (at least `N` equations in `N` unknowns, the constraint system does little more than back substitution and evaluation to produce the solution.
-
-The simple, slow convergent case from above:
-eg
-	?- rewrite_linear([X+Y==1,X-Y==1],Cs,Os).
-	Cs = [X+Y==1,Y==0],
-	Os = [].
-
-	﻿?- rewrite_linear([X+Y==1,X-Y==1],Cs,_),{Cs}.
-	X = 1,
-	Y = 0,
-	Cs = [1+0==1, 0==0].
-Note that, in all these examples, the solutions are exact because floating point values introduced in splitting intervals (with `solve`) have been avoided.
-
-Finally here is the "problematic" simple circuit example which now generates the solution in a few milliseconds without the use of `solve`:
-eg
-	﻿?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10,
-		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
-		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
-		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
-		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
-		    I5-I6+I9 == 0],Cs,_).
-	Cs = [Is-I1-I2-I8==0, I1==10, I2+I8-I7==0, I8-1r5*I7+3r10*I3==0, I7+13r8*I3-5r4*I5==0, I3+ ... * ... - 3*I9==0, ... - ... - ... * ... == 0, ... + ... == 0, ... == ...|...].
+	﻿?- use_module(library(type_ndarray)).
+	true.
 	
-	?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10,
-		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
-		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
-		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
-		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
-		    I5-I6+I9 == 0],Cs,_),{Cs}.
-	Is = 55560r5131,
-	I1 = 10,
-	I2 = 2920r5131,
-	I8 = 190r733,
-	I7 = 4250r5131,
-	I3 = -1600r5131,
-	I5 = 1320r5131,
-	I9 = 200r5131,
-	I4 = 390r733,
-	I6 = 1520r5131,
-	Cs = [55560r5131-10-2920r5131-190r733==0, 10==10, 2920r5131+190r733-4250r5131==0, 190r733-1r5*4250r5131+3r10* -1600r5131==0, 4250r5131+13r8* -1600r5131-5r4*1320r5131==0, -1600r5131+ ... * ... - 3*200r5131==0, ... - ... - ... * ... == 0, ... + ... == 0, ... == ...|...].
-Again, the solution values are precise since the input values (voltage source and resistance values) are precise and the gaussian pivoting produces rational coefficients. Rationals are a bit hard to comprehend as output, but they can be converted to (approximate) floating point values using `FIx is float(Ix)`. Or force the use of floats by setting `I1` to a floating point value:
+	?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is ndarray([[180],[300],[240]]), Xs is ndarray([[A],[B],[C]]),
+	Xs is dot(inverse(Am),Bs).
+	
+	Am = #(#(2, 1, 1), #(1, 3, 2), #(2, 1, 2)),
+	Bs = #(#(180), #(300), #(240)),
+	Xs = #(#(36), #(48), #(60)),
+	A = 36,
+	B = 48,
+	C = 60.
+The function `ndarray/1` creates an N dimensional array from a nested list representation while the `dot/2` and `inverse/1` functions calculate the dot product and matrix inverse. (Rational number calulations are enabled to avoid floating point rounding errors.) Functions on type `ndarray` are constraint aware, so as long as the array structure has been defined, the order of the goals can be changed enabling the common test and generate pattern:
 eg
+	﻿?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is new(ndarray,[3,1]),
+	ndarray([[A],[B],[C]]) is dot(inverse(Am),Bs),
+	Bs is transpose(ndarray([180,300,240])).
+	
+	Am = #(#(2, 1, 1), #(1, 3, 2), #(2, 1, 2)),
+	Bs = #(#(180), #(300), #(240)),
+	A = 36,
+	B = 48,
+	C = 60.
 
-	﻿?- rewrite_linear([Is-I1-I2-I8 == 0,   I1 == 10.0,
-		   -Is+I1+I7 == 0,     2*I2-3*I3-8*I8 == 0,
-		    I2+I3-I5 == 0,     3*I3+5*I5-9*I9 == 0,
-		-I3-I4+I8-I9 == 0,    -4*I4+6*I6+9*I9 == 0,
-		    I4+I6-I7 == 0, -I1+4*I4+7*I7+8*I8 == 0,
-		    I5-I6+I9 == 0],Cs,_),{Cs}.
-	﻿Cs = [Is-I1-I2-I8==0, I1==10.0, I2+I8-I7== -0.0, I8-1r5*I7+3r10*I3== -0.0, I7+13r8*I3-5r4*I5==0.0, I3+ ... * ... - 3*I9==0.0, ... - ... - ... * ... == 0.0, ... + ... == 0.0, ... == ...|...],
-	Is:: 10.8282985772753...,
-	I8:: 0.25920873124147...,
-	I7:: 0.8282985772753...,
-	I3:: -0.31183005262132...,
-	I5:: 0.25725979341259...,
-	I9:: 0.03897875657766...,
-	I4:: 0.5320600272851...,
-	I6:: 0.296238549990255...,
-	I2:: 0.5690898460339...,
-	I1:: 10.00000000000000... .
+The "Expenditure Planning" problem is similarly straight forward:
+eg
+	?- Am is ndarray([[1,1,1],[12000,18000,24000],[1,-2,0]]), Bs is ndarray([[100],[1500000],[0]]),
+	ndarray([[C],[I],[F]]) is dot(inverse(Am),Bs).
+	
+	Am = #(#(1, 1, 1), #(12000, 18000, 24000), #(1, -2, 0)),
+	Bs = #(#(100), #(1500000), #(0)),
+	C = 60,
+	I = 30,
+	F = 10.
 
-In a real world example, precise input values for resistors and voltage are not practical, but imprecise values can be accomodated with intervals.
-
-The use of Gaussian elimination has a dramatic effect on performance; in the case of the circuit example, over two orders of magnitude. In particular, time is not wasted trying to find solutions to underdetermined sets of equations by splitting intervals. As was the case for finding the roots of polynomials using Taylor expansion, this demonstrates how the use of standard numerical methods, taking advantage of problem specific properties, can be used with interval constraints to improve on the general search techniques provided. Furthermore, the combination is mathematically sound, unlike using these same tecniques with floating point values. The use of `rewrite_linear/3` (or similar) can also be used with mixed linear and non-linear constraints. The only restriction is the full set of linear constraints must be provided in the input list, i.e., they can't be incrementally added. By pushing this responsibilty up to the application level, the underlying basic constraint handling is greatly simplified. In general, numerical methods that depend on more than one constraint (equation) must be implemented outside the constraint system.
+The solution to the "Simple Circuit" analysis isn't quite so clear. Cramer's rule requires a square coefficient matrix, while the simple circuit has 11 equations in 10 unknowns. On obvious appraoch might be to discard the `I1 = 10` equation and usin the remaining 10 (while unifying `I1` with `10`). But there is no inverse for the resulting coefficient matrix (`Am`), as the determinant of the matrix is `0` (using the coefficient ordering corresponding to `[I1,I2,I3,I4,I5,I6,I7,I8,I9,Is]`):
+eg
+	﻿?- Am is ndarray([
+	[-1,-1, 0, 0, 0, 0, 0,-1, 0, 1],
+	[ 1, 0, 0, 0, 0, 0, 1, 0, 0,-1],
+	[ 0, 1, 1, 0,-1, 0, 0, 0, 0, 0],
+	[ 0, 0,-1,-1, 0, 0, 0, 1,-1, 0],
+	[ 0, 0, 0, 1, 0, 1,-1, 0, 0, 0],
+	[ 0, 0, 0, 0, 1,-1, 0, 0, 1, 0],
+	[ 0, 2,-3, 0, 0, 0, 0,-8, 0, 0],
+	[ 0, 0, 3, 0, 5, 0, 0, 0,-9, 0],
+	[ 0, 0, 0,-4, 0, 6, 0, 0, 9, 0],
+	[-1, 0, 0, 4, 0, 0, 7, 8, 0, 0]
+	]), Det is determinant(Am).
+	Am = #(#(-1, -1, 0, 0, 0, 0, 0, -1, 0, 1), #(1, 0, 0, 0, 0, 0, 1, 0, 0, -1), #(0, 1, 1, 0, -1, 0, 0, 0, 0, 0), #(0, 0, -1, -1, 0, 0, 0, 1, -1, 0), #(0, 0, 0, 1, 0, 1, -1, 0, 0, 0), #(0, 0, 0, 0, 1, -1, 0, 0, 1, 0), #(0, 2, -3, 0, 0, 0, 0, -8, 0, 0), #(0, 0, 3, 0, 5, 0, 0, 0, -9, 0), #(0, 0, 0, -4, 0, 6, 0, 0, 9, 0), #(-1, 0, 0, 4, 0, 0, 7, 8, 0, 0)),
+	Det = 0.
+Since it's not obvious which equation may be redundant, experimentation can be used to find a non-zero determinant by replacing the first equation by `I1 = 10`. A new predicate to support the matrix form of the circuit definition:
+eg
+	simpleCircuitDef(Currents,Am,Bs,Xs) :-
+		Xs is transpose(ndarray(Currents)),
+		Am is ndarray([
+		[ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+		[ 1, 0, 0, 0, 0, 0, 1, 0, 0,-1],
+		[ 0, 1, 1, 0,-1, 0, 0, 0, 0, 0],
+		[ 0, 0,-1,-1, 0, 0, 0, 1,-1, 0],
+		[ 0, 0, 0, 1, 0, 1,-1, 0, 0, 0],
+		[ 0, 0, 0, 0, 1,-1, 0, 0, 1, 0],
+		[ 0, 2,-3, 0, 0, 0, 0,-8, 0, 0],
+		[ 0, 0, 3, 0, 5, 0, 0, 0,-9, 0],
+		[ 0, 0, 0,-4, 0, 6, 0, 0, 9, 0],
+		[-1, 0, 0, 4, 0, 0, 7, 8, 0, 0]
+		]),	
+		Bs is transpose(ndarray([10.0,0,0,0,0,0,0,0,0,0])).
+Now:
+eg
+	﻿?- simpleCircuitDef([I1,I2,I3,I4,I5,I6,I7,I8,I9,Is],Am,Bs,Xs),Xs is dot(inverse(Am),Bs).
+	I1 = 10.0,
+	I2 = 0.5690898460339116,
+	I3 = -0.3118300526213214,
+	I4 = 0.5320600272851296,
+	I5 = 0.25725979341259014,
+	I6 = 0.2962385499902553,
+	I7 = 0.8282985772753849,
+	I8 = 0.25920873124147337,
+	I9 = 0.038978756577665176,
+	Is = 10.828298577275387,
+	Am = #(#(1, 0, 0, 0, 0, 0, 0, 0, 0, 0), #(1, 0, 0, 0, 0, 0, 1, 0, 0, -1), #(0, 1, 1, 0, -1, 0, 0, 0, 0, 0), #(0, 0, -1, -1, 0, 0, 0, 1, -1, 0), #(0, 0, 0, 1, 0, 1, -1, 0, 0, 0), #(0, 0, 0, 0, 1, -1, 0, 0, 1, 0), #(0, 2, -3, 0, 0, 0, 0, -8, 0, 0), #(0, 0, 3, 0, 5, 0, 0, 0, -9, 0), #(0, 0, 0, -4, 0, 6, 0, 0, 9, 0), #(-1, 0, 0, 4, 0, 0, 7, 8, 0, 0)),
+	Bs = #(#(10.0), #(0), #(0), #(0), #(0), #(0), #(0), #(0), #(0), #(0)),
+	Xs = #(#(10.0), #(0.5690898460339116), #(-0.3118300526213214), #(0.5320600272851296), #(0.25725979341259014), #(0.2962385499902553), #(0.8282985772753849), #(0.25920873124147337), #(0.038978756577665176), #(10.828298577275387)).
+Where applicable, using standard numerical methods, with or without constraints, is usually a more optimal approach than a general purpose search technique like `solve/1`, yielding more precise results in less time. On the other hand, if the problem consists of mixed linear and non-linear equations or fails to meet the necessary requirements, e.g., coefficient matrix isn't square, "constrain and search" may offer a feasible alternative.
 
 <#TableOfContents>
 
@@ -264,4 +285,8 @@ The use of Gaussian elimination has a dramatic effect on performance; in the cas
 	[Towards Practical Interval Constraint Solving in Logic Programming] <- link https://pdfs.semanticscholar.org/1dca/e2a910184c4b2f9d770f054168150c6d0bde.pdf
 	[FPconvergance]  <- image images/linearConvergance.png width=50% height=50% style="margin-left:200px"
 	[SimpleCircuit] <- image images/SimpleCircuit.png  width=50% height=50% style="margin-left:200px"
+	[Figure 7 Traffic] <- image images/TrafficExample5.png  width=30% height=30% style="margin-left:200px"
 	[Appendix 1] <- link #toc4Appendix_1_-__linear.pl__Source
+	[well known algorithms] <- link https://en.wikipedia.org/wiki/System_of_linear_equations
+	[Cramer's rule] <- link https://en.wikipedia.org/wiki/Cramer%27s_rule
+	[`arithmetic_types`] <- link https://www.swi-prolog.org/pack/list?p=arithmetic_types

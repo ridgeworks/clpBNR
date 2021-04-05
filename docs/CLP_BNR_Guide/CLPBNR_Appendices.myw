@@ -1,26 +1,21 @@
 ### Appendices
 
-#### Appendix 1 - `linear.pl` Source
-aside> ( [/*linear.pl*/raw text] )
-@include supplemental/linear.pl
-<#TableOfContents>
-
-#### Appendix 2 - `clpBNRmeta_contractor.pl` Source
+#### Appendix 1 - `clpBNRmeta_contractor.pl` Source
 aside> ( [/*clpBNRmeta_contractor.pl*/raw text] )
 @include supplemental/clpBNRmeta_contractor.pl
 <#TableOfContents>
 
-#### Appendix 3 - `local_optima.pl` Source
+#### Appendix 2 - `local_optima.pl` Source
 aside> ( [/*local_optima.pl*/raw text] )
 @include supplemental/local_optima.pl
 <#TableOfContents>
 
-#### Appendix 4 - `integrateV.pl` Source
+#### Appendix 3 - `integrateV.pl` Source
 aside> ( [/*integrateV.pl*/raw text] )
 @include supplemental/integrateV.pl
 <#TableOfContents>
 
-#### Appendix 5 - `travellingSalesman.pl` Source for all algorithms
+#### Appendix 4 - `travellingSalesman.pl` Source for all algorithms
 aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/travellingSalesman.pl
 <#TableOfContents>

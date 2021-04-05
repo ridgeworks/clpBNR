@@ -9,8 +9,8 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		(::)/2,                % declare interval
 		{}/1,                  % define constraint
 		interval/1,            % filter for clpBNR constrained var
-		list/1,                % for compatibility
-		domain/2, range/2,     % for compatibility
+		list/1,                % O(1) list filter (also for compatibility)
+		domain/2, range/2,     % get type and bounds (domain)
 		delta/2,               % width (span) of an interval or numeric (also arithmetic function)
 		midpoint/2,            % midpoint of an interval (or numeric) (also arithmetic function)
 		median/2,              % median of an interval (or numeric) (also arithmetic function)
