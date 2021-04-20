@@ -124,7 +124,7 @@ Further explanation and examples, including a complete reference section, can be
 [cldl]:        http://interval.sourceforge.net/interval/index.html
 [swip]:        http://www.swi-prolog.org
 [bnrpp]:       https://ridgeworks.github.io/BNRProlog-Papers
-[clpBNR_UG]:   https://github.com/ridgeworks/clpBNR/blob/master/docs/CLP_BNR_Guide/CLP_BNR_Guide.html
+[clpBNR_UG]:   https://github.com/ridgeworks/clpBNR/docs/CLP_BNR_Guide/CLP_BNR_Guide.html
 [BNRParchive]: https://github.com/ridgeworks/BNRProlog-Source-Archive
 
 ## Getting Started
