@@ -50,21 +50,17 @@ clpStatistic(narrowingOps(C)) :- g_read('clpBNR:evalNode',C).
 clpStatistic(narrowingFails(C)) :- g_read('clpBNR:evalNodeFail',C).
 
 % SWIP optimization for non_empty/2
+:- if(current_predicate(system:expand_goal/2)).
+
 goal_expansion(non_empty(L,H), L =< H).
+
+:- endif.
 
 %
 % non-empty interval test
 %
 non_empty((L,H)) :- non_empty(L,H).
 non_empty(L,H) :- L =< H.                      % non-empty
-
-%
-% forces all intervals to boolean range, (optimize if already boolean)
-%
-booleanVal_((0,0),(0,0)).
-booleanVal_((1,1),(1,1)).
-booleanVal_((0,1),(0,1)).
-booleanVal_(V,(0,1)):- ^(V,(0,1),(0,1)).   % constrain non-booleans to (0,1)
 
 %
 % interval category: non-negative (includes zero), non-positive, or split (contains 0)
@@ -243,7 +239,7 @@ narrowing_op(in, _, $(Z, X, Y), $(NewZ, NewX, Y)):-
 	^(X,Y,NewX), !,   % NewX is intersection of X and Y
 	^(Z,(1,1),NewZ).
 
-narrowing_op(in, p, $((0,0), X, Y), $((0,0), NewX, Y)):-    % persistent, X and Y don't intersect'
+narrowing_op(in, p, $(Z, X, Y), $(NewZ, X, Y)):-    % persistent, X and Y don't intersect'
 	^(Z,(0,0),NewZ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -492,8 +488,8 @@ narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- !,   % R = point exp
 	 ->	pt_powr_(Z,X,R,NewZ), non_empty(NewZ),
 		Ri is 1/R,
 		pt_powr_(X,NewZ,Ri,NewX), non_empty(NewX)
-	 ;	^(Z,(1,1),NewZ), non_empty(NewZ),
-	 	NewX = X
+	 ;	^(Z,(1,1),NewZ),
+		NewX = X
 	).
 
 narrowing_op(pow, _, $(Z,(Xl,Xh),Y), $(NewZ, NewX, NewY)) :-   % interval Y, X must be positive
@@ -729,107 +725,98 @@ try_tan_(X,Z,MT,MT,MXS,MXF,MXF) :- empty_interval(MT).  % if tan_ fails, return 
 % Z== ~X boolean negation (Z and X boolean)
 
 narrowing_op(not, P, $(Z,X), $(NewZ, NewX)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB),  % constrain to boolean
-	notB_(XB,ZB,NewZ,P),
-	notB_(NewZ,XB,NewX,P).
-	%(NewZ=(B,B) -> P=p ; true).  % if either was a point, both are now
+	notB_(X,Z,Z1,P), ^(Z,Z1,NewZ),
+	notB_(NewZ,X,X1,P), ^(X,X1,NewX).
 
-notB_((0,0), (_,1), (1,1), p).
-notB_((1,1), (0,_), (0,0), p).
-notB_((0,1),     Z,     Z, _).
-
+notB_((0,0), _, (1,1), p).
+notB_((1,1), _, (0,0), p).
+notB_(    _, Z,     Z, _).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X and Y  boolean 'and'
 
 narrowing_op(and, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	andB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
+	andB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
 andB_rel_(Z,(1,1),(1,1), NewZ,(1,1),(1,1), p) :- !, ^(Z,(1,1),NewZ).  % all cases persistent (points) except last
-andB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(0,0),NewZ).
-andB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(0,0),NewZ).
+andB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),NewY).
+andB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),NewX).
 andB_rel_((1,1),X,Y,     (1,1),NewX,NewY, p)  :- !, ^(X,(1,1),NewX), ^(Y,(1,1),NewY).
 andB_rel_((0,0),X,(1,1), (0,0),NewX,(1,1), p) :- !, ^(X,(0,0),NewX).
 andB_rel_((0,0),(1,1),Y, (0,0),(1,1),NewY, p) :- !, ^(Y,(0,0),NewY).
-andB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+andB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X and Y  boolean 'nand'
 
 narrowing_op(nand, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	nandB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
+	nandB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
 nandB_rel_(Z,(1,1),(1,1), NewZ,(1,1),(1,1), p) :- !, ^(Z,(0,0),NewZ).  % all cases persistent except last
-nandB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(1,1),NewZ).
-nandB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(1,1),NewZ).
+nandB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).
+nandB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),NewX).
 nandB_rel_((0,0),X,Y,     (0,0),NewX,NewY, p)  :- !, ^(X,(1,1),NewX), ^(Y,(1,1),NewY).
 nandB_rel_((1,1),X,(1,1), (1,1),NewX,(1,1), p) :- !, ^(X,(0,0),NewX).
 nandB_rel_((1,1),(1,1),Y, (1,1),(1,1),NewY, p) :- !, ^(Y,(0,0),NewY).
-nandB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+nandB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X or Y  boolean 'or'
 
 narrowing_op(or, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	orB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
+	orB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
 orB_rel_(Z,(0,0),(0,0), NewZ,(0,0),(0,0), p) :- !, ^(Z,(0,0),NewZ).  % all cases persistent (points) except last
-orB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(1,1),NewZ).
-orB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(1,1),NewZ).
+orB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).
+orB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),NewX).
 orB_rel_((0,0),X,Y,     (0,0),NewX,NewY, p)  :- !, ^(X,(0,0),NewX), ^(Y,(0,0),NewY).
 orB_rel_((1,1),X,(0,0), (1,1),NewX,(0,0), p) :- !, ^(X,(1,1),NewX).
 orB_rel_((1,1),(0,0),Y, (1,1),(0,0),NewY, p) :- !, ^(Y,(1,1),NewY).
-orB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+orB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X nor Y  boolean 'nor'
 
 narrowing_op(nor, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	norB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
+	norB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
 norB_rel_(Z,(0,0),(0,0), NewZ,(0,0),(0,0), p) :- !, ^(Z,(1,1),NewZ).  % all cases persistent (points) except last
-norB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(0,0),NewZ).
-norB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(0,0),NewZ).
+norB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),NewY).
+norB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),NewX).
 norB_rel_((1,1),X,Y,     (1,1),NewX,NewY, p)  :- !, ^(X,(0,0),NewX), ^(Y,(0,0),NewY).
 norB_rel_((0,0),X,(0,0), (0,0),NewX,(0,0), p) :- !, ^(X,(1,1),NewX).
 norB_rel_((0,0),(0,0),Y, (0,0),(0,0),NewY, p) :- !, ^(Y,(1,1),NewY).
-norB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+norB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X xor Y  boolean 'xor'
 
 narrowing_op(xor, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	xorB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
+	xorB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
 xorB_rel_(Z,(B,B),(B,B), NewZ,(B,B),(B,B), p) :- !, ^(Z,(0,0),NewZ).  % all cases persistent (points) except last
 xorB_rel_(Z,(X,X),(Y,Y), NewZ,(X,X),(Y,Y), p) :- !, ^(Z,(1,1),NewZ).
 xorB_rel_((B,B),X,(B,B), (B,B),NewX,(B,B), p) :- !, ^(X,(0,0),NewX).
 xorB_rel_((Z,Z),X,(Y,Y), (Z,Z),NewX,(Y,Y), p) :- !, ^(X,(1,1),NewX).
 xorB_rel_((B,B),(B,B),Y, (B,B),(B,B),NewY, p) :- !, ^(Y,(0,0),NewY).
 xorB_rel_((Z,Z),(X,X),Y, (Z,Z),(X,X),NewY, p) :- !, ^(Y,(1,1),NewY).
-xorB_rel_(Z,X,Y,         Z,X,Y, P).  % still indeterminate
+xorB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==X -> Y  boolean 'implies'
 
 narrowing_op(imB, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
-	booleanVal_(Z,ZB), booleanVal_(X,XB), booleanVal_(Y,YB),
-	imB_rel_(ZB,XB,YB, NewZ, NewX, NewY, P), !.
-	
-imB_rel_(Z,(1,1),Y, New,(1,1),New,   P) :- !, ^(Z,Y,New), (New=(B,B) -> P=p ; true).  % X=1, Z=Y, persistant if point 
-imB_rel_(Z,(0,0),Y, NewZ,(0,0),Y,    p) :- !, ^(Z,(1,1),NewZ).                      % X=0, Z=1, persistant
+	imB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
+
+imB_rel_(Z,(1,1),Y, New,(1,1),New,   P) :- !, ^(Z,Y,New), (New=(B,B) -> P=p ; true).   % X=1, Z=Y, persistant if point
+imB_rel_(Z,(0,0),Y, NewZ,(0,0),Y,    p) :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).        % X=0, Z=1, persistant
 imB_rel_(Z,X,(0,0), NewZ,NewX,(0,0), P) :- !, notB_(X,Z,NewZ,P), notB_(NewZ,X,NewX,P). % Y=0, Z=~X, persistant if point
 imB_rel_(Z,X,(1,1), NewZ,X,(1,1),    P) :- !, ^(Z,(1,1),NewZ).                      % Y=1, Z=1, persistant
 imB_rel_((0,0),X,Y, (0,0),NewX,NewY, p) :- !, ^(X,(1,1),NewX), ^(Y,(0,0),NewY).     % Z=0,X=1,Y=0, persistant
-imB_rel_(Z,X,Y,     Z,X,Y,           P).  % still indeterminate
+imB_rel_(Z,X,Y,     NewZ,NewX,NewY,  P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate

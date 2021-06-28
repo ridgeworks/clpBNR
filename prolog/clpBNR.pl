@@ -86,7 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.6").
+version("0.9.7").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -173,7 +173,7 @@ clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('clpBNR:inferen
 
 %
 % list filter for compatibility
-%	Note: not equivalent to is_list/1 but executes on O(n) time.
+%	Note: not equivalent to is_list/1 but executes in O(1) time.
 %
 list(X) :- compound(X) ->  X=[_|_] ; X==[].
 
@@ -282,20 +282,18 @@ check_monitor_(Int, Update, interval(Type,Val,Nodelist,Flags)) :-
 %
 % set interval value (assumes bounds check has already been done)
 %
-putValue_(New, Int, NodeList) :-
-	get_attr(Int, clpBNR, Def), !,               % still an interval
+putValue_(New, Int, NodeList) :- 
+	get_attr(Int, clpBNR, Def), !,     % still an interval
 	(debugging(clpBNR,true) -> check_monitor_(Int, New, Def) ; true),
-	Def = interval(Type,_,Nodes,_),              % get Type and Nodes before setValue_
-	setValue_(New,Int,Def),                      % set new value
+	Def = interval(Type,_,Nodes,_),    % get Type and Nodes
+	(New = (L,H), L=:=H                % narrowed to a point, unify with interval
+	 -> setarg(3,Def,_NL),             % clear node list (so nothing done in unify)
+		(rational(L) -> Int=L ; Int=H) % if either bound rational (precise), use it
+	 ;	setarg(2,Def,New)              % update value in interval (backtrackable)
+	),
 	queue_nodes_(Type,New,Int,Nodes,NodeList).   % construct node list to schedule
-putValue_((L,H), Num, NodeList) :- number(Num),  % catch things like [0,-0.0]
+putValue_((L,H), Num, _) :- number(Num),  % catch things like (0,-0.0)
 	L=:=Num, H=:=Num.
-
-setValue_((L,H),Int,Def) :- L=:=H, !,  % narrowed to a point, unify with interval
-	setarg(3,Def,_NL),                 % clear node list (so nothing done in unify)
-	(rational(L) -> Int=L ; Int=H).    % if either bound rational (precise), use it
-setValue_(New,Int,Def) :-              % update value in interval (backtrackable)
-	setarg(2,Def,New).
 
 queue_nodes_(real,_,_,Nodes,Nodes).           % type real - just use Nodes
 queue_nodes_(integer,(L,H),_,Nodes,Nodes) :-  % type integer #1 with integral bounds
@@ -588,6 +586,9 @@ constrain_(C) :-
 buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('Add ~p',{C}),
 	build_(C, 1, boolean, Agenda, NewAgenda), !.
+buildConstraint_(C,Agenda,NewAgenda) :-
+	debug_clpBNR_('{} failure due to bad constraint: ~p',{C}),
+	fail.
 
 :- include(clpBNR/ia_simplify).  % simplifies constraints to a hopefully more efficient equivalent
 
@@ -740,7 +741,8 @@ stable_(Agenda) :-
 
 stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
 	g_read('clpBNR:iterations',Cur),        % maintain "low" water mark (can be negative)
-	(OpsLeft<Cur -> g_assign('clpBNR:iterations',OpsLeft);true).
+	(OpsLeft<Cur -> g_assign('clpBNR:iterations',OpsLeft) ; true),
+	(OpsLeft<0 -> E is -OpsLeft, debug_clpBNR_('Iteration throttle limit exceeded by ~w ops.',E) ; true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
 	doNode_(Args, Op, P, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
@@ -764,8 +766,12 @@ clpStatistic(max_iterations(O/L)) :-
 %
 % Execute a node on the queue
 %
+:- if(current_predicate(system:expand_goal/2)).
+
 % Comment out the following to enable Op tracing:
 goal_expansion(traceIntOp_(Op, Args, PrimArgs, New),true).
+
+:- endif.
 
 doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, Agenda, NewAgenda) :-  % Arity 3 Op
 	var(P), !,                                    % check persistent bit
@@ -829,13 +835,15 @@ trim_ops_($(Op1,Op2)) :-
 trim_ops_($(Op1)) :-
 	trim_op_(Op1).
 
-trim_op_(Arg) :- number(Arg), !.
 trim_op_(Arg) :- 
-	get_attr(Arg, clpBNR, Def),     % an interval ?
-	Def = interval(_, _, NList, _),
-	trim_persistent_(NList,TrimList),
-	% if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
-	(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList)).  % write trimmed node list
+	(number(Arg)
+	 -> true
+	 ;	get_attr(Arg, clpBNR, Def),     % an interval ?
+		arg(3,Def,NList),  %%Def = interval(_, _, NList, _),
+		trim_persistent_(NList,TrimList),
+		% if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
+		(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList))  % write trimmed node list
+	).
 
 trim_persistent_(T,T) :- var(T), !.    % end of indefinite list  
 trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
@@ -850,23 +858,32 @@ updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change 
 updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
 	% New = [NewL,NewH], (NewL > NewH -> trace ; true),
 	% NewL=<NewH,  % check unnecessary if primitives do their job
-	propagate_if_(OpsLeft, Old, New), !,         % if OpsLeft >0 or narrowing sufficent
-	putValue_(New, Int, Nodelist),               % update value (may fail)
+	chk_float_overwrite(Old, New, New1),         % change, check for unnecessary float conversions on bounds
+	(OpsLeft>0 -> true ; propagate_if_(Old, New1)), !,  % if OpsLeft >0 or narrowing sufficent
+	putValue_(New1, Int, Nodelist),              % update value (may fail)
 	linkNodeList_(Nodelist, Agenda, NewAgenda).  % then propagate change
 
 updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with Agenda
 
-propagate_if_(Ops, _, _)           :- Ops>0, !.  % check work limiter
-propagate_if_(_, (OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
+% check that a precise bound isn't overwritten by equivalent float
+% fail if recalculated New same as Old
+chk_float_overwrite((OL,OH), (NL,NH), (NL1,NH1)) :-
+	(rational(OL), float(NL), OL =:= NL -> NL1 = OL ; NL1 = NL),
+	(rational(OH), float(NH), OH =:= NH -> NH1 = OH ; NH1 = NH),
+	(NL1 = OL, NH1 = OH -> fail ; true).
+
+% propgate if sufficient narrowing (> 10%)
+propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
 
 linkNodeList_([X|Xs], List, NewList) :-
-	nonvar(X), !,                                % not end of list ...
-	(arg(3,X,1)                                  % test linked flag
-	 -> NextList = List                          % already linked
-	 ;  linkNode_(List, X, NextList)             % not linked add it to list
-	),
-	linkNodeList_(Xs, NextList, NewList).
-linkNodeList_(_, List, List).                    % end of indefinite node list (don't make it definite)
+	(var(X)                                      % end of list? ...
+	 -> NewList=List                             % Yes - don't make it definite
+	 ;  (arg(3,X,1)                              % No  - test linked flag
+	 	 -> NextList = List                      % already linked
+		 ;  linkNode_(List, X, NextList)         % not linked add it to list
+		),
+		linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
+	).
 
 % Assumes persistant nodes are pre-trimmed (see putValue_/3)
 linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list

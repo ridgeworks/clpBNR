@@ -2,7 +2,7 @@
 title>	A Guide to CLP(BNR)
 centreblock>
 	**Constraint Logic Programming over Booleans, Integers and Reals**
-	**Version 0.9.6, April 2021**
+	**Version 0.9.7, June 2021**
 
 The word "constraint" is used in a variety of contexts from everyday life to physics, mathematics, and other sciences with much the same intuitive meaning, even when the formalization is different. A bead on a wire, a weight on a string, a beaker open to the atmosphere, a space mission limited by onboard fuel, a desert ecology limited by the lack of water are all examples of constrained systems.
 
@@ -15,7 +15,7 @@ CLP(BNR) is an instance of CLP({`RR`}), i.e., CLP over the domain of real number
 	Where {`f`} is an arbitrary function, {`x_j`} are reals and {`F,X_j`} are intervals. Due to the well-known pitfalls of IEEE floating point arithmetic, any CLP({`RR`}) based on conventional IEEE floating point arithmetic is unsound. (Try: `?- 1.21 =:= 1.1*1.1.`) In particular the add and multiply operations are non-associative and non-distributive. Relational interval arithmetic in CLP(BNR) (and some others) ensures that computed intervals contain the mathematically correct real value.
 * All constraints, including non-linear constraints are active. In some CLP({`RR`}) implementations only linear constraints are active; non-linear constraints are deferred until their set of variables is sufficiently resolved that the constraint becomes linear.
 * CLP(BNR) supports an "integral" constraint which forces interval bounds to be integers, enabling constraints over finite domain problems within the relational interval arithmetic framework; booleans can be represented as integer intervals with bounds `((0,1))`, and  boolean logic operations are included. Because of the uniformity of the approach, problems which involve closely interacting mixtures of discrete and continuous domains can be addressed.
-* Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog (V8.2 or later) and configured as an "Add-on" package as module `clpBNR`. The main dependancies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements. 
+* Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog (V8.2 or later) and configured as an "Add-on" package as module `clpBNR`. The main dependencies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
 
 CLP systems began appearing an the 1980's and span a considerable variety in system and underlying technology as well as a variety of applications. The first interval based CLP system was incorporated in BNR Prolog (1988) based on the ideas of [Cleary (1986)]. The original version was based on intervals over the reals only, but could handle simple nonlinear constraints. In 1992 BNR Prolog's CLP system was extended to CLP(BNR) which provides a uniform treatment of boolean, integer, and real valued variables using interval propagation. Although source of the last known Unix based application has been archived (see [BNR Prolog source]) it is no longer actively supported. However, much of the original literature still is available (see [BNR Prolog Papers]).
 

@@ -39,7 +39,7 @@ eg
 	
 	?- X=1.1, A=5, X*(A+1) =:= X*A+X.
 	false.
-As a further consequence, as shown in the last example, the distributive law over real numbers no longer applies. Thus any output from programs involving floating point arithmetic should be treated with suspicion. (It should be noted that these issues are not confined to Prolog; other programming languages, and supporting arithmetic libraries, are equally weak in this area. However, the effects are especially noticable when the underlying premise of the programming language, i.e., formal logic in Prolog, is violated.)
+As a further consequence, as shown in the last example, the distributive law over real numbers no longer applies. Thus any output from programs involving floating point arithmetic should be treated with suspicion. (It should be noted that these issues are not confined to Prolog; other programming languages, and supporting arithmetic libraries, are equally weak in this regard. However, the effects are especially noticable when the underlying premise of the programming language, i.e., formal logic in Prolog, is violated.)
 
 <#TableOfContents>
 

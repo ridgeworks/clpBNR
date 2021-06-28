@@ -187,7 +187,7 @@ Congestion does not occur as long as `X2` remains below 100, since exceeding tha
 ##### Cramer's Rule
 Solving systems of linear equations by specifying the equations as constraints and performing a bifurcating search (`solve/1`) is a rather brute force approach when there are several [well known algorithms] for doing the same thing. One such algorithm is [Cramer's rule] which states that if you can represent the system of equations in matrix form {`A*bb"x"=bb"b"`} where {`A`} is an {`n xx n`} matrix of coefficients, and {`bb"b"`} and {`bb"x"`} are {`n`}-dimensional column vectors, then {`bb"x" = A^-1*bb"b"`}.
 
-Using `library(ndarray)`in the [`arithmetic_types`] pack for matrix support, the "Production Scheduling" problem described above can be simply solved (without constraints):
+Using `library(type_ndarray)`in the [`arithmetic_types`] pack for matrix support, the "Production Scheduling" problem described above can be simply solved (without constraints):
 eg
 	﻿?- set_prolog_flag(prefer_rationals,true).
 	true.

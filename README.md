@@ -124,7 +124,7 @@ Further explanation and examples, including a complete reference section, can be
 [cldl]:        http://interval.sourceforge.net/interval/index.html
 [swip]:        http://www.swi-prolog.org
 [bnrpp]:       https://ridgeworks.github.io/BNRProlog-Papers
-[clpBNR_UG]:   https://ridgeworks.github.io/clpBNR_pl/CLP_BNR_Guide/CLP_BNR_Guide.html
+[clpBNR_UG]:   https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html
 [BNRParchive]: https://github.com/ridgeworks/BNRProlog-Source-Archive
 
 ## Getting Started
@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.6
+	Installed version:      0.9.7
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -149,7 +149,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.9.6alpha ***.
+	% *** clpBNR v0.9.7alpha ***.
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).

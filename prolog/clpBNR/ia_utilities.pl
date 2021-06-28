@@ -245,16 +245,15 @@ monitor_action_(_, _, _).  % default to noop (as in 'none')
 %  enumerate integer and boolean intervals
 %
 enumerate(X) :-
-	domain(X,integer(L,H)), !,  % enumerable interval
+	interval_object(X, integer, (L,H), _), !,
 	between(L,H,X).             % gen values, constraints run on unification
-enumerate(X) :-
-	list(X), !,                 % list of ..
+enumerate(X) :- list(X), !,     % list of ..
 	enumerate_list_(X).
 enumerate(X).                   % X not enumerable, skip it
 
 enumerate_list_([]).
 enumerate_list_([X|Xs]) :-
-	enumerate(X),
+	(integer(X) -> true ; enumerate(X)),  % optimization: X already an integer, skip it
 	enumerate_list_(Xs).
 
 %
@@ -548,7 +547,7 @@ xpsolve_each_([X|Xs],[X|Us],Err) :-
 	!,
 	Choices,                              % create choice(point)
 	xpsolve_each_(Xs,Us,Err).             % split others in list
-xpsolve_each_([X|Xs],Us,Err) :-           % avoid freeze overhead if [] unified in head
+xpsolve_each_([X|Xs],Us,Err) :-           % avoid unfreeze overhead if [] unified in head
 	X==[], !,                             % end of nested listed, discard
 	xpsolve_each_(Xs,Us,Err).             % split remaining
 xpsolve_each_([X|Xs],[U|Us],Err) :-
@@ -619,10 +618,10 @@ splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
 	Pt is L*10+1,
 	Pt < 1.0Inf.                          % Pt must be finite
 
-splitinterval_real_((L,H),Pt,E) :-        % finite L,H, positive or negative but not split, Pt\=0.
-	\+ chk_small(L,H,E),                  % only split if not small 
+splitinterval_real_((L,H),Pt,E) :-     % finite L,H, positive or negative but not split, Pt\=0.
+	\+ chk_small(L,H,E),               % only split if not small 
 	splitMean_(L,H,Pt), !,
-	L < Pt,Pt < H.                        % split point must be between L and H
+	L < Pt,Pt < H.                     % split point must be between L and H
 
 %splitinterval_real_([L,H],Pt,E) :-
 %	writeln('FAIL'([L,H],Pt,E)),fail.
