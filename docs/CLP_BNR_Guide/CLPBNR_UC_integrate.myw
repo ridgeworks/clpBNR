@@ -235,7 +235,7 @@ Of course there's a tradeoff between a smaller step size and compute time. But t
 
 "*A tank is filled with 10 gal. of brine in which is dissolved 5 lb. of salt. Brine containing 3 lb. of salt per gal. enters the tank at 2 gal./min. and the well stirred mixture leaves at the same rate. How much salt is present after 10 min.? After 30 min.?*"
  
-If {`A`} is the amount of salt in the tank, {`dA//dt`} is the rate of change of this amount of salt, which is equal to the difference between the rate that salt enters and leaves: {`dA//dt = 2*3 - 2*(A//10)`} or `d(A)=6-A/5`. Initial condition: `A(0)=5`, so after 10 minutes:
+If {`A`} is the amount of salt in the tank, {`dA//dt`} is the rate of change of this amount of salt, which is equal to the difference between the rate that salt enters and leaves: {`dA//dt = 2*3 - 2*(A//10)`} or {`d(A)=6-A/5`}. Initial condition: {`A(0)=5`}, so after 10 minutes:
 eg
 	?- integrate(d(A)=6-A/5,T,(0,5),(10,Af),real(0,50)).
 	Af:: 26.6... .
