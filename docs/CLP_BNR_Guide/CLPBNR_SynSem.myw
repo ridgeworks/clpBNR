@@ -273,16 +273,16 @@ For quadratics like this example, one can do additional preprocessing to find th
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	﻿% 13,659,623 inferences, 3.660 CPU in 3.670 seconds (100% CPU, 3732630 Lips)
+	﻿% 19,437,676 inferences, 3.167 CPU in 3.191 seconds (99% CPU, 6137730 Lips)
 	X::real(-1, 1),
 	Y::real(-0.2500011568168373, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
 
-Another example using `solve/1` to find the roots of a 256 degree polynomial:
+Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared to avoid floating point overflows when dealing with large powers):
 eg
 	?- {0 == 35*X**256 - 14*X**17 + X}, solve(X).
-	﻿X:: -0.847943660827315... ;
-	X:: ﻿0.00000000000000000... ;
+	X:: -0.847943660827315... ;
+	X:: 0.00000000000000000... ;
 	X:: 0.847943660827315... ;
 	X:: 0.995842494200498... ;
 	false.
@@ -622,5 +622,5 @@ Given sufficient constraints, it's possible to narrow an interval to a small ran
 &
 	[circle-parabola] <- image images/circle-parabola.png width=25% height=25% style="margin-left:200px"
 	[dependency]      <- image images/dependency.png width=25% height=25% style="margin-left:200px"
-	[simple_quad]     <- image images/simple_quad width=25% height=25% style="margin-left:200px"
+	[simple_quad]     <- image images/simple_quad.png width=25% height=25% style="margin-left:200px"
 	[data type]       <- link https://en.wikipedia.org/wiki/Data_type

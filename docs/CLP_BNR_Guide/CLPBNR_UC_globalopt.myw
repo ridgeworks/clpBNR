@@ -386,7 +386,7 @@ The maximum income of $481.50 can be realized by making (and selling) 55 pounds 
 
 The objective is to minimize the distance between the refinery and the three ports. Assuming a coordinate system with Port A at ` (0,0) ` the objective function becomes:
 >	`sqrt(X**2+Y**2)+sqrt((X-300)**2+(Y-400)**2)+sqrt((X-700)**2+(Y-300)**2)`
-where the refinery is located at `(X,Y)`. A (redundant) constraint to minimize the search space is that the refinery must lie within the box bounded by the ports, which imposes an upper bound on X of 700, and on Y of 400. This is an unconstrained global optimization which will just use simple gradient constraints:
+where the refinery is located at `(X,Y)`. A (redundant) constraint to minimize the search space is that the refinery must lie within the box bounded by the ports, which imposes an upper bound on `X` of 700, and on `Y` of 400. This is an unconstrained global optimization which will just use simple gradient constraints:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
