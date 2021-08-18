@@ -483,13 +483,14 @@ narrowing_op(exp, _, $((Zl,Zh),(Xl,Xh)), $((NZl,NZh),(NXl,NXh))) :-
 
 % Z== X**Y
 
-narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- !,   % R = point exponent
-	(R =\= 0
-	 ->	pt_powr_(Z,X,R,NewZ), non_empty(NewZ),
-		Ri is 1/R,
-		pt_powr_(X,NewZ,Ri,NewX), non_empty(NewX)
-	 ;	^(Z,(1,1),NewZ),
+narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- rational(R,N,D), !,   % R = rational point exponent
+	(R = 0
+	 -> ^(Z,(1,1),NewZ),
 		NewX = X
+	 ; 	N1 is N rem 2, D1 is D rem 2,
+	 	pt_powrCase(N1,D1,Z,X,R,NewZ), non_empty(NewZ),
+		Ri is 1/R,
+		pt_powrCase(D1,N1,X,NewZ,Ri,NewX), non_empty(NewX)
 	).
 
 narrowing_op(pow, _, $(Z,(Xl,Xh),Y), $(NewZ, NewX, NewY)) :-   % interval Y, X must be positive
@@ -501,56 +502,57 @@ narrowing_op(pow, _, $(Z,(Xl,Xh),Y), $(NewZ, NewX, NewY)) :-   % interval Y, X m
 	odiv_(Ynum,Yden,Y,NewY).       % NY := Y ^ log(NZ)/log(NX)*/
 	
 % requires conservative rounding using nexttoward
-pt_powr_(Z,X,R,NewZ) :- 
-	R < 0, !,                                    % negative R
+% Assumption : even numerator and denominator can't occur (non-normalized rational).
+pt_powrCase(N1,D1,Z,X,R,NewZ) :-  R < 0, !,  % R negative
 	Rp is -R,
 	universal_interval(UI),
 	odiv_((1,1),Z,UI,Zi),
-	pt_powr_(Zi,X,Rp,NZi),
+	pt_powrCase(N1,D1,Zi,X,Rp,NZi),
 	odiv_((1,1),NZi,Z,NewZ).
-pt_powr_(Z,X,R,NewZ) :-
-	integer(R), R rem 2 =:= 0, !,                % even integer R
-	Z = (Zl,Zh), X = (Xl,Xh),
-	(float(Xl) 
-	 -> Zl1 is max(0,nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf))
-	  ; Zl1 is max(0,roundtoward(Xl**R,to_negative))
+
+pt_powrCase(1,0,(Zl,Zh),(Xl,Xh),R,NewZ) :-  % R positive, numerator odd, denominator even
+	% reflect about X axis to inclide positive and negative roots
+	Xh >=0,   % some part of X must be positive
+	(float(Xl)
+	 -> Zl1 is max(0, roundtoward(nexttoward(nexttoward(Xl,-1.0Inf),-1.0Inf)**R, to_negative))
+	  ; Zl1 is max(0, roundtoward(Xl**R,to_negative))
 	),
 	(float(Xh)
-	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
+	 -> Zh1 is roundtoward(nexttoward(nexttoward(Xh,1.0Inf),1.0Inf)**R, to_positive)
 	  ; Zh1 is roundtoward(Xh**R,to_positive)
 	),
-	( sign(Xl)*sign(Xh) =< 0
-	 -> NZl is max(0,Zl)             % X bounded by or includes 0
-	 ;  NZl is max(min(Zl1,Zh1),Zl)  % X doesn't include 0
-	),
-	NZh is min(max(Zl1,Zh1),Zh),
-	NewZ = (NZl,NZh).
-pt_powr_(Z,X,R,NewZ) :-
-	rational(R), denominator(R) rem 2 =:= 0, !,  % even rational R
-	Z = (Zl,Zh), X = (Xl,Xh),
-	(float(Xl) 
-	 -> Zl1 is max(0,nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf))
-	  ; Zl1 is max(0,roundtoward(Xl**R,to_negative))
-	),
-	(float(Xh)
-	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
-	  ; Zh1 is roundtoward(Xh**R,to_positive)
-	),	
 	Zpl is max(Zl,Zl1),  Zph is min(Zh,Zh1),    % positive case
 	(Zpl =< Zph -> Zps = (Zpl,Zph) ; empty_interval(Zps)),
 	Znl is max(Zl,-Zh1), Znh is min(Zh,-Zl1),   % negative case
 	(Znl =< Znh -> Zns = (Znl,Znh) ; empty_interval(Zns)),
 	union_(Zps,Zns,NewZ).                       % union of positive and negative cases
-pt_powr_((Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-         % all other cases
+
+pt_powrCase(0,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator even, denominator odd
+	% reflect about Z axis
+	( Xh < 0 -> Xl1 is -Xh, Xh1 is -Xl           % negative X, negate interval
+	;(Xl > 0 -> Xl1 = Xl, Xh1 = Xh               % positive X, As is
+	;           Xl1 = 0, Xh1 is max(-Xl,Xh)      % split
+	)),
+	% NZl can't be negative
+	(float(Xl1)
+	 -> NZl is max(Zl,max(0, roundtoward(nexttoward(nexttoward(Xl1,-1.0Inf),-1.0Inf)**R, to_negative)))
+	  ; NZl is max(Zl,max(0, roundtoward(Xl1**R,to_negative)))
+	),
+	(float(Xh1)
+	 -> NZh is min(Zh, roundtoward(nexttoward(nexttoward(Xh1,1.0Inf),1.0Inf)**R, to_positive))
+	  ; NZh is min(Zh, roundtoward(Xh1**R,to_positive))
+	).
+
+pt_powrCase(1,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator odd
+	% continuous monotonic
 	(float(Xl)
-	 -> Zl1 is nexttoward(roundtoward(Xl**R,to_negative),-1.0Inf)
-	  ; Zl1 is roundtoward(Xl**R,to_negative)
+	 -> NZl is max(Zl, roundtoward(nexttoward(nexttoward(Xl,-1.0Inf),-1.0Inf)**R,to_negative))
+	  ; NZl is max(Zl, roundtoward(Xl**R,to_negative))
 	),
 	(float(Xh)
-	 -> Zh1 is nexttoward(roundtoward(Xh**R,to_positive), 1.0Inf)
-	  ; Zh1 is roundtoward(Xh**R,to_positive)
-	),
-	NZl is max(Zl,min(Zl1,Zh1)), NZh is min(Zh,max(Zl1,Zh1)).
+	 -> NZh is min(Zh, roundtoward(nexttoward(nexttoward(Xh,1.0Inf),1.0Inf)**R,to_positive))
+	  ; NZh is min(Zh, roundtoward(Xh**R,to_positive))
+	).
 
 ln((Xl,Xh), (Zl,Zh)) :-
 	Zl is roundtoward(log(Xl),to_negative), % rounding dependable?
