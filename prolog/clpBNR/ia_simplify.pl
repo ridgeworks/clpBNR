@@ -349,7 +349,8 @@ collect_term_(E,List/[elem(Exp,1)|NewT], List/NewT) :-
 % simplify_pwr_: NT rational, 
 simplify_pwr_(AT,NT,Term) :- rational(AT), !,  % constant folding
 	Term is AT**NT.
-simplify_pwr_(Exp**P,NT,elem(Exp,Pwr)) :- integer(NT), rational(P), !,  % (X**P)**NT
+simplify_pwr_(AT,NT,elem(Exp,Pwr)) :-
+	compound(AT), AT=Exp**P, rational(P), !,  % (X**P)**NT, NT and P both rational
 	Pwr is NT*P.
 simplify_pwr_(AT,NT,elem(AT,NT)).
 
