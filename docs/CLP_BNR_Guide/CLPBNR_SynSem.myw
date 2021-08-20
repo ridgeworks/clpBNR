@@ -280,11 +280,12 @@ It doesn't make much sense to apply crude search predicates, like `solve/1`, to 
 
 Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared to avoid floating point overflows when dealing with large powers):
 eg
-	?- X::real, {0 == 35*X**256 - 14*X**17 + X}, solve(X).
-	﻿X:: -0.847943660827315... ;
-	X:: ﻿0.000000000000000... ;
+	?- {0 == 35*X**256 - 14*X**17 + X}, solve(X).
+	X:: -0.847943660827315... ;
+	X:: 0.00000000000000000... ;
 	X:: 0.847943660827315... ;
-	X:: 0.995842494200498... .
+	X:: 0.995842494200498... ;
+	false.
 This is all very general, and very declarative, and is done without the application of any numerical methods or deep understanding of the underlying machinery. But this comes at a computational price. For any particular problem space, e.g., systems of linear equations, it may well be that there are more efficient ways of arriving at the same solutions. Luckily numerical methods that apply to normal floating point arithmetic can also be applied to intervals of reals and, because of the underlying correctness of the arithmetic, you can actually have some confidence in the answers.
 
 A final point on the unification of two intervals: when this occurs, the resulting interval has the intersection of the two ranges (as described above) AND its constraints are the union of the constraints from the two original intervals.
