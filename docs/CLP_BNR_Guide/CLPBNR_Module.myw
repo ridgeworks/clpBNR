@@ -44,7 +44,8 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected
 		clpStatistics/1,       % get all defined in a list
-		watch/2                % enable monitoring of changes for interval or (nested) list of intervals
+		watch/2,               % enable monitoring of changes for interval or (nested) list of intervals
+		trace_clpBNR/1         % enable/disable tracing of clpBNR ops
 		]).
 
 Documenting these predicates and how to use them is the focus of the rest of this document. 

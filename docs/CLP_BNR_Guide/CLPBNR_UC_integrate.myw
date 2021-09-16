@@ -344,7 +344,7 @@ This example uses multiple differential equations to model `X` and `Y` direction
 
 ##### Higher Order Differential Equations
 
-The *n*-th order differential equation in the independent variable {`y`} and the independent {`x`} can be written in functional form:
+The *n*-th order differential equation in the dependent variable {`y`} and the independent {`x`} can be written in functional form:
 
 math> F(x,y,y^1,y^2,...,y^(n-1),y^(n)) = 0
 

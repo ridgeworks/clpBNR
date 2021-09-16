@@ -33,8 +33,8 @@ evalNode(Op, P, Is, R) :-
 evalNode(Op, _, _, _):-
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR, true),  % fail immediately unless debug=true
-	current_node_(Node),
-	debug_clpBNR_('Fail ~w',Node),
+	current_node_(C),
+	debug_clpBNR_("** fail ** ~w.",C),
 	fail.
 
 sandbox:safe_global_variable('clpBNR:evalNode').
@@ -143,8 +143,8 @@ narrowing_op(eq, _, $(Z,X,Y), $(NewZ,X,Y)) :- ^(Z,(0,1),NewZ).     % else no cha
 % Z==(X<>Y)  % (Z boolean, X,Y integer)
 
 narrowing_op(ne, p, $(Z, X, Y), $(NewZ, X, Y)) :-                  % persistent: disjoint or necessarily equal
-	not_equal_(X,Y,Z1), !,
-	^(Z, Z1, NewZ).
+	not_equal_(X,Y,BZ), !,
+	^(Z, (BZ,BZ), NewZ).
 
 narrowing_op(ne, _, $((1,1), X, Y), $((1,1), NewX, NewY)) :-       % Z true, X/Y a point = bound of Y/X
 	ne_int_(X,Y,NewX),        % narrow X if Y is a point and a bound of X (always succeeds but may not narrow)
@@ -152,15 +152,15 @@ narrowing_op(ne, _, $((1,1), X, Y), $((1,1), NewX, NewY)) :-       % Z true, X/Y
 
 narrowing_op(ne, _, $(Z,X,Y), $(NewZ,X,Y)) :- ^(Z,(0,1),NewZ).     % none of the above, narrow Z to boolean
 
-not_equal_((Xl,Xh), (Yl,Yh), (1,1)) :-  (Xh < Yl ; Yh < Xl).     % X and Y disjoint, Z true
-not_equal_((X,X),   (Y,Y),   (0,0)) :-  X =:= Y.                 % pt(X)=:=pt(Y),    Z false 
+not_equal_((Xl,Xh), (Yl,Yh), 1) :-  (Xh < Yl ; Yh < Xl).     % X and Y disjoint,           Z true
+not_equal_((X,X),   (Y,Y),   0) :-  X =:= Y.                 % otherwise if pt(X)=:=pt(Y), Z false
 
-% Z <> X, where where Z and X are integer intervals (enforced elsewhere)
-ne_int_((X,H), (X,X), (NewL,H)) :- !,  % X is a point,  and low bound of Z
+% Y <> X, where where Y and X are integer intervals (enforced elsewhere)
+ne_int_((X,H), (X,X), (NewL,H)) :- !,  % X is a point,  and low bound of Y
 	NewL is X+1, NewL=<H.
-ne_int_((L,X), (X,X), (L,NewH)) :- !,  % X is a point,  and high bound of Z
+ne_int_((L,X), (X,X), (L,NewH)) :- !,  % X is a point,  and high bound of Y
 	NewH is X-1, L=<NewH.
-ne_int_(Z, X, Z).
+ne_int_(Y, X, Y).                      % no narrowing
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -180,7 +180,7 @@ le_true(X, (Yl,Yh), $((1,1), (NXl,NXh), (NYl,NYh)), P) :-
 	(NXh =< NYl -> P=p ; true).              % will always be true?
 
 le_false(X, Y, $((0,0), NewX, NewY), P) :-
-	lt_true(Y,X,$(_,NewY,NewX),P).
+	lt_true(Y,X,$(_,NewY,NewX),P).  % unsound but best alternative
 	
 le_bool((Xl,Xh), (Yl,Yh), $(NewZ, (Xl,Xh), (Yl,Yh)), P) :-
 	(Yh  < Xl
@@ -234,13 +234,14 @@ next_lt_(V,  1, NV) :- NV is min(V+1,nexttoward(V, 1.0Inf)).
 
 % Z==(X<=Y)  % inclusion, constrains X to be subinterval of Y (Z boolean)
 
-% Only two cases: either X and Y intersect or they don't.
-narrowing_op(in, _, $(Z, X, Y), $(NewZ, NewX, Y)):-
-	^(X,Y,NewX), !,   % NewX is intersection of X and Y
-	^(Z,(1,1),NewZ).
-
-narrowing_op(in, p, $(Z, X, Y), $(NewZ, X, Y)):-    % persistent, X and Y don't intersect'
-	^(Z,(0,0),NewZ).
+narrowing_op(in, P, $(Z, X, Y), $(NewZ, NewX, Y)):-
+	% Only two cases: either X and Y intersect or they don't.
+	(^(X,Y,NewX)   % NewX is intersection of X and Y
+	 -> ^(Z,(1,1),NewZ)      % X and Y intersect, Z must always be true going forward
+	 ;  ^(Z,(0,0),NewZ),     % X and Y don't intersect, Z must be false
+	 	NewX = X,            % no change in X
+	    P=p                  % persistent, since X and Y can never intersect
+	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -487,7 +488,7 @@ narrowing_op(pow, _, $(Z,X,(R,R)), $(NewZ, NewX, (R,R))) :- rational(R,N,D), !, 
 	(R = 0
 	 -> ^(Z,(1,1),NewZ),
 		NewX = X
-	 ; 	N1 is N rem 2, D1 is D rem 2,
+	 ; 	N1 is N mod 2, D1 is D rem 2,  % use `mod` for negative N
 	 	pt_powrCase(N1,D1,Z,X,R,NewZ), non_empty(NewZ),
 		Ri is 1/R,
 		pt_powrCase(D1,N1,X,NewZ,Ri,NewX), non_empty(NewX)
@@ -730,8 +731,8 @@ narrowing_op(not, P, $(Z,X), $(NewZ, NewX)) :-
 	notB_(X,Z,Z1,P), ^(Z,Z1,NewZ),
 	notB_(NewZ,X,X1,P), ^(X,X1,NewX).
 
-notB_((0,0), _, (1,1), p).
-notB_((1,1), _, (0,0), p).
+notB_((0,0), _, (1,1), p) :- !.
+notB_((1,1), _, (0,0), p) :- !.
 notB_(    _, Z,     Z, _).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -241,7 +241,7 @@ eg
 	Y:: 1.00000000000000... .
 
 	?- {X**2+Y**2==2, Y-X**2==0}, findall(['X '=X,'Y '=Y],solve([X,Y]),L).
-	﻿L = [[X =_75972, Y =_75984], [X =_76002, Y =_76014]],
+	﻿L = [['X '=_75972, 'Y '=_75984], ['X '=_76002, 'Y '=_76014]],
 	X::real(-1.1892071150027212, 1.1892071150027212),
 	Y::real(0.765366864730179, 1.4142135623730951),
 	_75972:: -1.00000000000000...,
@@ -273,19 +273,18 @@ For quadratics like this example, one can do additional preprocessing to find th
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	﻿% 19,437,676 inferences, 3.167 CPU in 3.191 seconds (99% CPU, 6137730 Lips)
+﻿	% 13,257,239 inferences, 2.691 CPU in 2.700 seconds (100% CPU, 4926137 Lips)
 	X::real(-1, 1),
 	Y::real(-0.2500011568168373, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
 
-Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared to avoid floating point overflows when dealing with large powers):
+Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared as shown to avoid floating point overflows when dealing with large powers):
 eg
-	?- {0 == 35*X**256 - 14*X**17 + X}, solve(X).
+	﻿?- X::real, {0 == 35*X**256 - 14*X**17 + X}, solve(X).
 	X:: -0.847943660827315... ;
-	X:: 0.00000000000000000... ;
+	X:: 0.0000000000000000... ;
 	X:: 0.847943660827315... ;
-	X:: 0.995842494200498... ;
-	false.
+	X:: 0.995842494200498... .
 This is all very general, and very declarative, and is done without the application of any numerical methods or deep understanding of the underlying machinery. But this comes at a computational price. For any particular problem space, e.g., systems of linear equations, it may well be that there are more efficient ways of arriving at the same solutions. Luckily numerical methods that apply to normal floating point arithmetic can also be applied to intervals of reals and, because of the underlying correctness of the arithmetic, you can actually have some confidence in the answers.
 
 A final point on the unification of two intervals: when this occurs, the resulting interval has the intersection of the two ranges (as described above) AND its constraints are the union of the constraints from the two original intervals.
@@ -452,7 +451,7 @@ eg
 	﻿B::boolean.
 Note that the range is implied by the type.
 
-Although the basic boolean operations of conjunction, disjunction, and negation can be defined in terms of arithmetic operations, for clarity the infix operators `and` and `or`, and prefix operator `~` (respectively) are defined.  For added convenience, `nand`, `nor`, `xor`, and `->` (boolean implication) are also defined as infix operators. When these operators are used, the domain of any operands in constraints can be inferred as `boolean` or `integer(0,1)`, so an explicit declaration using `::` is usually not necessary. Boolean expressions also evaluate to *true* (1) or *false* (0) and so can be used directly as constraints (*false* implies failure).
+Although the basic boolean operations of conjunction, disjunction, and negation can be defined in terms of arithmetic operations, for clarity the infix operators `and` and `or`, and prefix operator `~` (respectively) are defined. (It may not have been apparent, but "`,`" used in `{...}` constraint expressions is equivalent to "`and`".) For added convenience, `nand`, `nor`, `xor`, and `->` (boolean implication) are also defined as infix operators. When these operators are used, the domain of any operands in constraints can be inferred as `boolean` or `integer(0,1)`, so an explicit declaration using `::` is usually not necessary. Boolean expressions also evaluate to *true* (1) or *false* (0) and so can be used directly as constraints (*false* implies failure).
 eg
 	?- {A or B}.
 	﻿A::boolean,
@@ -460,6 +459,9 @@ eg
 
 	?- {A and B}.
 	﻿A = B, B = 1.
+
+	﻿?- {A,B}.
+	A = B, B = 1.
 
 	?- {~(A nand B)}.
 	﻿A = B, B = 1.
@@ -572,7 +574,7 @@ In the first two cases, the addition of `1` is too small to affect the bounds of
 eg
 	﻿?- X::real,{X==Y+10,Y==X}.
 	false.
-This is a simple concrete example where a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent). And it also demonstrates why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
+The earlier query is a simple concrete example where a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent). And it also demonstrates why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
 
 Another example using integers and `<` (remember `<` is unsound over reals):
 eg
@@ -582,7 +584,7 @@ eg
 	
 	?- [X,Y]::integer(0,1000), {X<Y, Y<X}.
 	false.
-This somewhat confusing behaviour is a product of the throttling behaviour described above. The fixed point iteration is causing some narrowing but the throttling mechanism kicks in before it visibly affects the interval bounds. In the first case the mechansim is not triggered before failure. In the second case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.)
+This somewhat confusing behaviour is a product of the throttling behaviour described above. In the first case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.) In the second case the desired failure occurs before throttling is enabled.
 
 The alternative to this behaviour is the appearance of non-termination; it will take a long time to narrow a wide domain by incremental steps (size `1` in the example above). (The fixed point iteration can be shown to terminate but, at some point, practical considerations must take precedence.)
 
@@ -590,7 +592,7 @@ Another interesting example of an inconsistent constraint:
 eg
 	﻿?- X::integer, {X>abs(X)}.
 	X::integer(1, 72057594037927935).
-The problem here is that constraint propogation gets stuck at a fixed point due to the dependancy issue. We can overcome this using `solve` but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
+The problem here is that constraint propagation gets stuck at a fixed point due to the dependency issue. We can overcome this using `solve` but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
 	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).
 	false.

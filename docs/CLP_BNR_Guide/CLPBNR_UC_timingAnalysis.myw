@@ -184,7 +184,7 @@ Note that Prolog negation (`\+`) is used in checking the hazard timing, i.e., su
 Analysing the timing operation of a nominal circuit (5 Mhz. clock, 0 wait states):
 eg
 	?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
-	﻿verify_FAIL(event(ce,600),setup(rD1,integer(210,630)+30),hold(rD2,integer(610,885)-10))
+	﻿﻿verify_FAIL(event(ce,600),setup(rD1,(V0::integer(210,630))+30),hold(rD2,(V1::integer(610,885))-10))
 	
 	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(max,d1,integer(210,595)),ev(min,d2,integer(610,850)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(610,885))]
 	

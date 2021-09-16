@@ -52,7 +52,7 @@ In the first example, both `M` and `N` are narrowed by applying the constraint `
  
 In the last example, the constraint causes the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound towards -inifinity, upper bound towards infinity) to ensure that any answer is included in the resulting interval, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.) This example also demonstrates the more compact "elipsis postfix" form used to output `real` intervals whose bounds have narrowed so that at least the first 3 digits match. This is not actually a goal but does present the domain in a more readable form. (A strict "goal" format including constraints is supported by enabling a CLP(BNR) environment flag.)
 
-Sound constraints over real intervals (since interval ranges are closed) include `==`, `=<`, and `>=`, while `<>`, `<` and `>` are provided for `integer`'s. A fairly complete set of standard arithmetic operators (`+`, `-`, `*`, `/`, `**`), boolean operators (`and`, `or`, `xor`, `nand`, `nor`) and common functions (`exp`, `log`, `sqrt`, `abs`, `min`, `max` and standard trig and inverse trig functions) provided as interval relations. Note that these are relations so `{X==exp(Y)}` is the same as `{log(X)==Y}`. A few more examples:
+Sound constraints over real intervals (since interval ranges are closed) include `==`, `=<`, and `>=`, while `<>`, `<` and `>` are provided for `integer`'s. A fairly complete set of standard arithmetic operators (`+`, `-`, `*`, `/`, `**`), boolean operators (`and`, `or`, `xor`, `nand`, `nor`, `~`) and common functions (`exp`, `log`, `sqrt`, `abs`, `min`, `max` and standard trig and inverse trig functions) provided as interval relations. Note that these are relations so `{X==exp(Y)}` is the same as `{log(X)==Y}`. A few more examples:
 
 	?- {X==cos(X)}.
 	X:: 0.73908513321516... .
@@ -104,14 +104,14 @@ Note that all of these examples produce multiple solutions that are produced by 
 
 Here is the current set of operators and functions supported in this version:
 
-	== is <> =< >= < >                    %% equalities and inequalities
+	==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
 	+ - * /                               %% basic arithmetic
 	**                                    %% includes real exponent, odd/even integer
 	abs                                   %% absolute value
 	sqrt                                  %% square root (needed?)
 	min max                               %% min/max (arity 2)
 	<= =>                                 %% inclusion
-	and or nand nor xor ->                %% boolean
+	and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 	- ~                                   %% unary negate and not
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.8
+	Installed version:      0.9.9
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -149,7 +149,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.9.8alpha ***.
+	% *** clpBNR v0.9.9alpha ***.
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
@@ -198,7 +198,8 @@ The `clpBNR` module declaration is:
 		clpStatistics/0,       % reset
 		clpStatistic/1,        % get selected
 		clpStatistics/1,       % get all defined in a list
-		watch/2                % enable monitoring of changes for interval or (nested) list of intervals
+		watch/2,               % enable monitoring of changes for interval or (nested) list of intervals
+		trace_clpBNR/1         % enable/disable tracing of clpBNR ops
 		]).
 
 
@@ -215,3 +216,7 @@ This package sets the SWI-Prolog arithmetic flags as follows:
 	set_prolog_flag(float_undefined,nan),
 
 This package will not work as intended if these flag values are not respected.
+
+## Other SWI-Prolog Envirnment Flags
+
+Example output in the documentation is premised on flag `write_attributes` is set to `portray` and flag `answer_write_options` includes `quoted(false)`. These will be set accordingly when `clpBNR` initializes but nothing prevents them from being subsequently overwritten.

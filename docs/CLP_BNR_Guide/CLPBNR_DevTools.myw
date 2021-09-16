@@ -6,52 +6,48 @@ eg
 	true.
 	
 	﻿?- X::real(0,10),{X=<5},{X>19}.
-	% Add {_1448118{real(0,10)}=<5}
-	% Add {_1448118{real(0,5)}>19}
-	% Fail lt(1,19,_1448118{real(0,5)})
+	﻿% Add {_9178{real(0,10)}=<5}
+	% Add {_9178{real(0,5)}>19}
+	% ** fail ** 19<_9178{real(0,5)}.
 	false.
-Sheer volume makes this approach infeasible for narrowing operations, so this must be debugged at the package source level using standard tools. Hopefully this is seldom necessary.
+If this is insufficient, tracing of individual narrowing operations can be done using [**trace_clpBNR/1**]. However it's easy to become overwhelmed by the sheer volume of the trace information, so it's best to limit usage to smaller problems. An example:
+	﻿?- trace_clpBNR(true).
+	true.
 
-In addition, it is possible to set interval watch points which generate a trace of changes of that interval using [**watch/2**]:
+	[debug]  ?- [M,N]::integer(0,8), {M==3*N, M>3}.
+	% _304974{integer(0,8)}==3*_305052{integer(0,8r3)}.
+	% 3<_304974{integer(3.0000000000000004,8)}.
+	% integral(_305052{integer(0,2)}).
+	% integral(_304974{integer(4,8)}).
+	% _304974{integer(4,6)}==3*_305052{integer(4r3,2)}.
+	% 3<_304974{integer(4,6)}.
+	% integral(2).
+	% 6==3*2.
+	M = 6,
+	N = 2.
+For some problems, it's sufficent to just monitor the value of a interval (or a few intervals). When this is true, the sheer volume of tracing can be resduced using the [**watch/2**] predicate:
 eg
 	?- debug(clpBNR).
 	true.
 	
-	?- [X,Y]::real, watch(X,log),{1==X+2*Y, Y-3*X==0}.
-	% Add {1==_1603016{real(-1.0e+16,1.0e+16)}+2*_1603118{real(-1.0e+16,1.0e+16)}}
-	% Add {_1603118{real(-1.0e+16,1.0e+16)}-3*_1603016{real(-1.0e+16,1.0e+16)}==0}
-	﻿% Set value of _9682{real(-1.0e+16,1.0e+16)} to (-3333333333333333.5,3333333333333333.5)
-	% Set value of _9682{real(-3333333333333333.5,3333333333333333.5)} to (-1666666666666666.8,1.666666666666667e+15)
-	% Set value of _9682{real(-1666666666666666.8,1.666666666666667e+15)} to (-555555555555555.44,555555555555555.75)
-	% Set value of _9682{real(-555555555555555.44,555555555555555.75)} to (-277777777777777.7,277777777777777.97)
-	% Set value of _9682{real(-277777777777777.7,277777777777777.97)} to (-92592592592592.47,92592592592592.75)
-	% Set value of _9682{real(-92592592592592.47,92592592592592.75)} to (-46296296296296.164,46296296296296.45)
-	% Set value of _9682{real(-46296296296296.164,46296296296296.45)} to (-15432098765431.959,15432098765432.246)
-	% Set value of _9682{real(-15432098765431.959,15432098765432.246)} to (-7716049382715.909,7716049382716.194)
-	% Set value of _9682{real(-7716049382715.909,7716049382716.194)} to (-2572016460905.208,2572016460905.493)
-	% Set value of _9682{real(-2572016460905.208,2572016460905.493)} to (-1286008230452.5325,1286008230452.8184)
-	% Set value of _9682{real(-1286008230452.5325,1286008230452.8184)} to (-428669410150.7489,428669410151.03467)
-	% Set value of _9682{real(-428669410150.7489,428669410151.03467)} to (-214334705075.30307,214334705075.58875)
-	% Set value of _9682{real(-214334705075.30307,214334705075.58875)} to (-71444901691.67245,71444901691.95816)
-	% Set value of _9682{real(-71444901691.67245,71444901691.95816)} to (-35722450845.76479,35722450846.050514)
-	% Set value of _9682{real(-35722450845.76479,35722450846.050514)} to (-11907483615.159695,11907483615.44541)
-												.
-												.
-												.
-												.
-	﻿% Set value of _9682{real(0.1428571428571159,0.1428571428571698)} to (0.14285714285713386,0.14285714285715184)
-	% Set value of _9682{real(0.14285714285713386,0.14285714285715184)} to (0.14285714285713835,0.14285714285714737)
-	% Set value of _9682{real(0.14285714285713835,0.14285714285714737)} to (0.14285714285714135,0.14285714285714438)
-	% Set value of _9682{real(0.14285714285714135,0.14285714285714438)} to (0.14285714285714207,0.14285714285714363)
-	% Set value of _9682{real(0.14285714285714207,0.14285714285714363)} to (0.14285714285714257,0.14285714285714313)
-	% Set value of _9682{real(0.14285714285714257,0.14285714285714313)} to (0.1428571428571427,0.14285714285714302)
-	% Set value of _9682{real(0.1428571428571427,0.14285714285714302)} to (0.1428571428571428,0.1428571428571429)
-	% Set value of _9682{real(0.1428571428571428,0.1428571428571429)} to (0.14285714285714282,0.1428571428571429)
-	% Set value of _9682{real(0.14285714285714282,0.1428571428571429)} to (0.14285714285714285,0.14285714285714288)
-	﻿X = X:: 0.1428571428571428...,
-	Y = Y:: 0.428571428571428... .
+	﻿?- [M,N]::integer(0,8), watch([M,N],log), {M==3*N, M>3}.
+	% Add {_57378{integer(0,8)}==3*_57456{integer(0,8)}}
+	% Unify _58316{real(-1.0Inf,1.0Inf)} with _57378{integer(0,8)}
+	% Add {_57378{integer(0,8)}>3}
+	% Set value of _57456{integer(0,8)} to (0,8r3)
+	% Set value of _57378{integer(0,8)} to (3.0000000000000004,8)
+	% Set value of _57456{integer(0,8r3)} to (0,2)
+	% Set value of _57378{integer(3.0000000000000004,8)} to (4,8)
+	% Set value of _57378{integer(4,8)} to (4,6)
+	% Set value of _57456{integer(0,2)} to (4r3,2)
+	% Set value of _57456{integer(4r3,2)} to (2,2)
+	% Unify _?{integer(4r3,2)} with 2
+	% Set value of _57378{integer(4,6)} to (6,6)
+	% Unify _?{integer(4,6)} with 6
+	M = 6,
+	N = 2.
 
-Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when the constraints on intervals are useful. For the most part, these should be captured in the `% Add ...` debug output.
+Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when just the residual constraints on intervals provide useful information.
 
 Finally, use [**clpStatistics**] to get a general idea of performance and narrowing operation counts.
 
@@ -60,4 +56,5 @@ Finally, use [**clpStatistics**] to get a general idea of performance and narrow
 &
 	[`debug` topic] <- link https://www.swi-prolog.org/pldoc/man?section=debug
 	[**watch/2**] <- link #toc4**watch**(*+Intervals,_++Atom*)
+	[**trace_clpBNR/1**] <- link #toc4**trace_clpBNR**(*?Boolean*)
 	[**clpStatistics**] <- link #toc4**clpStatistic**(*+Statistic*),_**clpStatistics**,_**clpStatistics**(*--Statistics*)

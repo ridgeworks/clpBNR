@@ -94,12 +94,11 @@ domain_goals_(false,X,[X::Dom]) :-  % Verbose=false, only QueryVars output
 domain_goals_(_,X,[]).         % catchall but normally non-query attvar, Verbose=false
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
-constraints_([node(COp,P,_,Args)|Nodes],X,[C|Cs]) :-
+constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
 	var(P),                       % skip persistent nodes (already in value)
 	term_variables(Args,[V|_]),   % this ensures constraints only get output once
 	V==X,
-	fmap_(Op,COp,_,_,_), !,
-	remap_(Op,Args,C),
+	map_constraint_op_(Op,Args,C),
 	constraints_(Nodes,X,Cs).
 constraints_([_|Nodes],X,Cs) :-
 	constraints_(Nodes,X,Cs).
@@ -117,18 +116,17 @@ to_comma_cexp_([C|Cs],In,Out) :-
 %
 % 1. Any 'real' rational bounds output as floats (conservatively rounded).
 % 2. Any subnormal bounds converted to zero.
-% 3. Sufficiently narrow reals output in elipsis format.
+% 3. Sufficiently narrow reals output in ellipsis format.
 % 4. Any real intervals with bounds zero or subnormal output as 0.0...
 % 5. Query interval variables output as V = V::Domain
 % 6. Subterm intervals as sub-terms printed as domain (Type(L,H)).
 %
-:-	(  % to avoid quoting ellipsis postfix format, also increase answer depth a bit
-	 current_prolog_flag(answer_write_options,Opts),
-	 lists:subtract(Opts,[quoted(_)],NOpts0),
-	 lists:subtract(NOpts0,[max_depth(D)],NOpts),
-	 (var(D) -> ND=20 ; ND is max(D,20)),
-	 set_prolog_flag(answer_write_options, [quoted(false),max_depth(ND)|NOpts])
-	).
+:- op(150, xf, ...).     % postfix op just for ellipsis output format
+
+% remove quotes on stringified number in ellipsis format
+user:portray(Out...) :-
+	string_concat(Out,"...",OutStr),
+	write_term(OutStr,[quoted(false)]).
 
 intValue_((0,1),integer,boolean).                  % boolean
 intValue_((L,H),real,Out...) :-                    % virtual zero (zero or subnormal) 

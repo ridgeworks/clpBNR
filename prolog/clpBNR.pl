@@ -26,7 +26,6 @@
 :- module(clpBNR,          % SWI module declaration
 	[
 	op(700, xfx, ::),
-	op(150, xf,  ...),     % postfix op currently just for output
 	(::)/2,                % declare interval
 	{}/1,                  % define constraint
 	interval/1,            % filter for clpBNR constrained var
@@ -65,7 +64,8 @@
 	clpStatistics/0,       % reset
 	clpStatistic/1,        % get selected
 	clpStatistics/1,       % get all defined in a list
-	watch/2                % enable monitoring of changes for interval or (nested) list of intervals
+	watch/2,               % enable monitoring of changes for interval or (nested) list of intervals
+	trace_clpBNR/1         % enable/disable tracing of clpBNR narrowing ops
 	]).
 
 /*		missing(?) functionality: utility accumulate/2.		*/
@@ -77,16 +77,16 @@
 abs                                   %% absolute value
 sqrt                                  %% positive square root
 min	max                               %% binary min/max
-==	is	<>	=<	>=	<	>             %% comparison
+==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
 <=	=>                                %% inclusion
-and	or	nand	nor	xor	->            %% boolean
+and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 -	~                                 %% unary negate and not
 exp	log                               %% exp/ln
 sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.8").
+version("0.9.9").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -117,13 +117,15 @@ restore_optimise :-  % by :- initialization.
 %
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
 
+trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
+
 :- set_prolog_flag(optimise,true).
 
 current_node_(Node) :-  % look back to find current Op being excuted for debug messages
 	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
-	prolog_frame_attribute(F,parent_goal,doNode_(Arg,Op,_,_,_,_)),
-	Arg =.. [_|Args],
-	Node=..[Op|Args].
+	prolog_frame_attribute(F,parent_goal,doNode_(Args,Op,_,_,_,_)),
+	map_constraint_op_(Op,Args,Node),
+	!.
 
 %
 % statistics
@@ -564,19 +566,19 @@ new_interval_(V,Type) :-
 	universal_interval(UI),
 	int_decl_(Type,UI,V).
 
-addConstraints_(C,Agenda,NewAgenda) :-
-	constraint_(C), !, % a constraint is a boolean expression that evaluates to true
-	simplify(C,CS),    % optional
-	buildConstraint_(CS, Agenda, NewAgenda).
-addConstraints_((C,Cs),Agenda,NewAgenda) :-  % Note: comma as operator
-	nonvar(C),
-	addConstraints_(C,Agenda,NextAgenda), !,
-	addConstraints_(Cs,NextAgenda,NewAgenda).
-addConstraints_([],Agenda,Agenda).
+addConstraints_([],Agenda,Agenda) :- !.
 addConstraints_([C|Cs],Agenda,NewAgenda) :-
 	nonvar(C),
 	addConstraints_(C,Agenda,NextAgenda), !,
 	addConstraints_(Cs,NextAgenda,NewAgenda).
+addConstraints_((C,Cs),Agenda,NewAgenda) :-  % Note: comma as operator
+	nonvar(C),
+	addConstraints_(C,Agenda,NextAgenda), !,
+	addConstraints_(Cs,NextAgenda,NewAgenda).
+addConstraints_(C,Agenda,NewAgenda) :-
+	constraint_(C),    % a constraint is a boolean expression that evaluates to true
+	simplify(C,CS),    % optional
+	buildConstraint_(CS, Agenda, NewAgenda).
 
 % low overhead version for internal use	
 constrain_(C) :- 
@@ -669,6 +671,7 @@ fmap_(<=,   in,    ZXY,     ZXY,     [boolean,real,real]).  % inclusion/subinter
 fmap_(=>,   in,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).  % inclusion/subinterval
 
 fmap_(and,  and,   ZXY,     ZXY,     [boolean,boolean,boolean]).
+fmap_(',',  and,   ZXY,     ZXY,     [boolean,boolean,boolean]).  % for usability
 fmap_(or,   or,    ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(nand, nand,  ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(nor,  nor,   ZXY,     ZXY,     [boolean,boolean,boolean]).
@@ -688,9 +691,17 @@ fmap_(acos,cos,   [Z,X],    [X,Z],   [real,real]).
 fmap_(tan, tan,   ZX,       ZX,      [real,real]).
 fmap_(atan,tan,   [Z,X],    [X,Z],   [real,real]).
 
-% reverse map from Op and Args (used by "verbose" top level output to reverse compile constraints)
-remap_(Op,$(Z,X,Y),C) :- constraint_(Op), Z==1, !,  % simplification for constraints
+% reverse map node info to a facsimile of the original constraint
+map_constraint_op_(integral,$(V),integral(V)) :- !.
+map_constraint_op_(Op,Args,C) :-
+	fmap_(COp,Op,_,_,_),
+	remap_(COp,Args,C),
+	!.
+
+remap_(Op,$(Z,X,Y),C) :- constraint_(Op), Z==1, !,  % simplification for binary constraints
 	C=..[Op,X,Y]. 
+remap_(Op,$(Z,X),C) :- constraint_(Op), Z==1, !,    % simplification for unary constraints (~)
+	C=..[Op,X].
 remap_(Op,$(Z,X,Y),Z==C) :- !,
 	C=..[Op,X,Y].
 remap_(Op,$(Z,X),Z==C) :-
@@ -845,7 +856,7 @@ trim_op_(Arg) :-
 		(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList))  % write trimmed node list
 	).
 
-trim_persistent_(T,T) :- var(T), !.    % end of indefinite list  
+trim_persistent_(T,T) :- var(T), !.    % end of indefinite node list
 trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
 trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
 
@@ -875,14 +886,12 @@ chk_float_overwrite((OL,OH), (NL,NH), (NL1,NH1)) :-
 % propgate if sufficient narrowing (> 10%)
 propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
 
+linkNodeList_(X, List, List) :- var(X), !.       % end of indefinite list? ...
 linkNodeList_([X|Xs], List, NewList) :-
-	(var(X)                                      % end of list? ...
-	 -> NewList=List                             % Yes - don't make it definite
-	 ;  (arg(3,X,1)                              % No  - test linked flag
-	 	 -> NextList = List                      % already linked
-		 ;  linkNode_(List, X, NextList)         % not linked add it to list
-		),
-		linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
+	(arg(3,X,1)                                  % test linked flag
+	 -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
+	 ;  linkNode_(List, X, NextList),            % not linked add it to list
+	    linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
 	).
 
 % Assumes persistant nodes are pre-trimmed (see putValue_/3)
@@ -890,6 +899,39 @@ linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list
 	setarg(3,X,1).                               % set linked bit
 
 :- include(clpBNR/ia_utilities).  % print,solve, etc.
+
+%
+% tracing doNode_ support - depends on SWI-Prolog hook prolog_trace_interception/4
+%
+trace_clpBNR(V) :-
+	var(V), !,
+	debugging(clpBNR(trace),V).
+trace_clpBNR(true) :-
+	debug(clpBNR(trace)),
+	spy(clpBNR:doNode_).
+trace_clpBNR(false) :-
+	% only remove spy point if it was (possibly) set by trace_clpBNR
+	(debugging(clpBNR(trace),true) -> nospy(clpBNR:doNode_) ; true),
+	nodebug(clpBNR(trace)).
+
+% prolog_trace_interception/4 is undefined by default, so need to do this now
+:- dynamic user:prolog_trace_interception/4.
+:- multifile user:prolog_trace_interception/4.
+
+user:prolog_trace_interception(Port,Frame,_Choice,Action) :-
+	debugging(clpBNR(trace),true),  % peg(trace) enabled?
+	prolog_frame_attribute(Frame,goal,Goal),  % separate goal unification required?
+	Goal = clpBNR:doNode_(Args, Op, _P, _, _, _),
+	map_constraint_op_(Op,Args,C),
+	clpBNR_trace_port(Port,C,Action),
+	!.  % defensive, remove any CP's
+
+clpBNR_trace_port(call,C,continue).  % ignore
+clpBNR_trace_port(redo,C,continue).  % ignore (just used for trimming?)
+clpBNR_trace_port(fail,C,fail) :-
+	trace_clpBNR_("** fail ** ~p.",C).
+clpBNR_trace_port(exit,C,continue) :-
+	trace_clpBNR_("~p.",C).
 
 %
 % Get all defined statistics
@@ -936,6 +978,7 @@ init_clpBNR :-
 	version_info,
 	check_features,
 	set_prolog_flags,
-	set_min_free(8196).
+	set_min_free(8196),
+	trace_clpBNR(false).  % reset tracing on reload
 
 :- initialization(init_clpBNR, now).

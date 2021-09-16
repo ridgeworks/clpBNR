@@ -16,11 +16,24 @@ Initial bounds are specified using the `::` operator.
 
 A `clpBNR` constraint is a boolean expression (i.e, evaluates to *true* or *false*). Boolean operators include equality (`==`) and the inequalities (`=<, <, <>` etc.), and (`and, or, not` etc.). (The full set of operators supported in `clpBNR` is listed below.) Any constraint which evaluates to false causes a Prolog failure at that point.
 
-`clpBNR` contains a fixed point iterator. Any change in an interval value will cause any constraints on the interval to be re-evaluated, possibly resulting in the narrowing of other intervals and triggering more re-evaluations. This process terminates when no further changes occur, or when the internal throttling mechanism is activated (see below). A stable state does not imply there is a solution in that state, but if there is a solution, it is contained in the "box" defined by the domains of the intervals. On the other hand, a failure does imply there is no solution in the domains of the constrained intervals.
+`clpBNR` maintains constraint consistency using a fixed point iterator. Any change in an interval value will cause any constraints on the interval to be re-evaluated, possibly resulting in the narrowing of other intervals and triggering more re-evaluations. This process terminates when no further changes occur, or when the internal throttling mechanism is activated (see below). A stable state does not imply there is a solution in that state, but if there is a solution, it is contained in the "box" defined by the domains of the intervals. On the other hand, a failure does imply there is no solution in the domains of the constrained intervals.
 
 Constraints can be incrementally added. This is the process by which the initial domains are narrowed to a useful answer (given the proviso above) or failure occurs (no solution found).
 
 Constraints are syntactically defined using `{ ... }` brackets. (Note that `::` domain specifications are also a form of "constraint".)
+
+The set of operators and functions currently supported are:
+	==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
+	+ - * /                               %% basic arithmetic
+	**                                    %% includes real exponent, odd/even integer
+	abs                                   %% absolute value
+	sqrt                                  %% square root (needed?)
+	min max                               %% min/max (arity 2)
+	<= =>                                 %% inclusion
+	and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
+	- ~                                   %% unary negate and not
+	exp log                               %% exp/ln
+	sin asin cos acos tan atan            %% trig functions
 
 #### Environment Flags
 
@@ -361,7 +374,7 @@ eg
 	M = -42.
 
 .pred	**nb_setbounds**(*+Interval, +List*)
-**nb_setbounds** is an extra-logical primitive to intersect the bounds defined by *List*, containing two numeric values, with the current bounds of *Int*. This operation is *not* undone during backtracking and should be used with extreme care. It's primary (only?) use is controlling the the upper/lower bound within a branch-and-bound predicate; an example from the User Guide:
+**nb_setbounds** is an extra-logical primitive to intersect the bounds defined by *List*, containing two numeric values, with the current bounds of *Int*. This operation is *not* undone during backtracking and should be used with extreme care. It's primary (only?) use is controlling the the upper/lower bound within a branch-and-bound predicate; an example:
 .pl
 	min_ratchet(Goal,Objective) :- 
 		{Objective <= Bound},              % define "bound" constraint (must be inclusion to avoid back flow)
@@ -488,6 +501,29 @@ eg
 	?- [X,Y]::integer, {X+Y==2,X-Y==0}, solve([X,Y]).
 	X = Y, Y = 1.
 Other examples using **solve** can be found in earlier sections of this User Guide.
+
+.pred	**trace_clpBNR**(*?Boolean*)
+If *Boolean* is `true`/`false`, tracing (using `debug` messages) of `clpBNR` primitive operations is enabled/disabled. Otherwise *Boolean* is unified with the current tracing state.
+eg
+	﻿?- trace_clpBNR(V).
+	V = false.
+
+	?- trace_clpBNR(true).
+	% Spy point on clpBNR:doNode_/6
+	true.
+
+	[debug]  ?- trace_clpBNR(V).
+	V = true.
+
+	[debug]  ?- trace_clpBNR(false).
+	% Spy point removed from clpBNR:doNode_/6
+	true.
+
+	[debug]  ?- nodebug.
+	true.
+
+	?-
+Note that tracing clpBNR operations is built on the underlying SWI-Prolog debugger. Enabling tracing enables `debug` mode, but disabling tracing (like `notrace/0`) does not automatically exit `debug` mode. If `nodebug` is used, `clpBNR` tracing will be disbaled, but will be re-enabled if `debug` is re-enabled.
 
 .pred	**upper_bound**(*+Interval*)
 Unifies *Interval* with its upper bound; equivalent to `range(Interval,[_,H]), Interval=H`. (Supported for historical reasons.)
