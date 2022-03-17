@@ -4,7 +4,7 @@ The version of CLP(BNR) as a SWI-Prolog package is entirely implemented in Prolo
 eg
 	?- debug(clpBNR).
 	true.
-	
+
 	﻿?- X::real(0,10),{X=<5},{X>19}.
 	﻿% Add {_9178{real(0,10)}=<5}
 	% Add {_9178{real(0,5)}>19}
@@ -25,7 +25,7 @@ If this is insufficient, tracing of individual narrowing operations can be done 
 	% 6==3*2.
 	M = 6,
 	N = 2.
-For some problems, it's sufficent to just monitor the value of a interval (or a few intervals). When this is true, the sheer volume of tracing can be resduced using the [**watch/2**] predicate:
+For some problems, it's sufficient to just monitor the value of a interval (or a few intervals). When this is true, the sheer volume of tracing can be resduced using the [**watch/2**] predicate:
 eg
 	?- debug(clpBNR).
 	true.

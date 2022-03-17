@@ -79,20 +79,20 @@ eg
 	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,1/e), real(0.0,1.0)).
 	Yi:: 1.00... .
 	
-	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,1/e), real(0.0,1.0), 3, Out).
-	Out = [(0, Yi),  (1r8, _234042),  (1r4, _234066),  (3r8, _234090),  (1r2, _234114),  (5r8, _234138),  (3r4, _234162),  (7r8, _234186),  (1, 0.36787944117144233)],
+	﻿?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,1/e), real(0.0,1.0), 3, Out).
+	Out = [(0, [Yi]),  (1r8, [_A]),  (1r4, [_B]),  (3r8, [_C]),  (1r2, [_D]),  (5r8, [_E]),  (3r4, [_F]),  (7r8, [_G]),  (1, [0.36787944117144233])],
 	Yi:: 1.0...,
-	_234042:: 0.9...,
-	_234066:: 0.9...,
-	_234090:: 0.8...,
-	_234114:: 0.7...,
-	_234138:: 0.6...,
-	_234162:: 0.5...,
-	_234186:: 0.46... .
+	_D:: 0.7...,
+	_B:: 0.9...,
+	_A:: 0.9...,
+	_C:: 0.8...,
+	_F:: 0.5...,
+	_E:: 0.6...,
+	_G:: 0.46... .
 
 The first example specifies an initial condition `Yi=1` and generates the final value `Yf=0.368...`. As the second example shows, it will also calculate `Yi` from `Yf` (as an arithmetic expression). The third example just shows the intervening results for a larger step size (`Ctrl=3`), along with a less precise answer.
 
-With the basic framework established, the definition of the `step/4` predicate remains. Research in numerical methods for integration has yielded many algorthms for the approxiamtion step (Euler (various), Adams-Bashforth, Runge-Kutta, etc.) with varying performance with respect to accuracy, stability (convergence), and efficiency depending on the problem at hand. For simplicity, we'll start with a simple Euler method. 
+With the basic framework established, the definition of the `step/4` predicate remains. Research in numerical methods for integration has yielded many algorithms for the approximation step (Euler (various), Adams-Bashforth, Runge-Kutta, etc.) with varying performance with respect to accuracy, stability (convergence), and efficiency depending on the problem at hand. For simplicity, we'll start with a simple Euler method.
 
 The `step` predicate takes the differential equation (expressed in `yall` lambda format), the `X,Y` pairs representing the values at the boundaries of the step, and `Ydomain`. The Euler method assumes the slope is the simple interval extension of {`f`} replacing the {`x`} and {`y`} with the `X` and `Y` intervals over the step range. The interval slope is then used to constrain the endpoint `Y` values (which will be "attached" to other step endpoints. An Euler based step predicate using intervals:
 .pl
@@ -322,22 +322,22 @@ eg
 	Vx0 = 80.00000000000001,
 	Vy0 = 138.56406460551017,
 	Vxf:: 80.0000000000000...,
+	Vyf:: 74.5640646055101...,
 	Xf:: 160.00000000000...,
 	Yf:: 213.12812921102...,
-	Vyf:: 74.5640646055101...,
 	Vf:: 109.360869283737... .
 	
-	?- G=32, Vx0 is 160*cos(pi/3), Vy0 is 160*sin(pi/3),
+	﻿?- G=32, Vx0 is 160*cos(pi/3), Vy0 is 160*sin(pi/3),
 	integrateV([d(Vx)=0, d(Vy)= -G, d(X)=Vx, d(Y)=Vy], T, (0,[Vx0,Vy0,0,0]), (4,[Vxf,Vyf,Xf,Yf]), [real,real,real,real]),
 	{Vf is sqrt(Vxf**2+Vyf**2)}.
 	G = 32,
 	Vx0 = 80.00000000000001,
 	Vy0 = 138.56406460551017,
 	Vxf:: 80.0000000000000...,
+	Vyf:: 10.5640646055101...,
 	Xf:: 320.00000000000...,
 	Yf:: 298.25625842204...,
-	Vyf:: 10.5640646055101...,
-	Vf:: 80.6944822214592... .
+	Vf:: 80.694482221459... .
 Note that the order of the independent values in `Initial` and `Final` are determined by the order of the differential equations, i.e., `[Vx,Vy,X,Y]`. After 4 sec., the shell is travelling a litte over 80 ft./sec. and is almost 300 ft. high and 320 ft. down range.
 
 This example uses multiple differential equations to model `X` and `Y` directions but also hints at how to model higher order equations (`d(Vx)` is the second derivative of `X`).

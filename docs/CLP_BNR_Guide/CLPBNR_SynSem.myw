@@ -240,14 +240,14 @@ eg
 	X:: 1.00000000000000...,
 	Y:: 1.00000000000000... .
 
-	?- {X**2+Y**2==2, Y-X**2==0}, findall(['X '=X,'Y '=Y],solve([X,Y]),L).
-	﻿L = [['X '=_75972, 'Y '=_75984], ['X '=_76002, 'Y '=_76014]],
-	X::real(-1.1892071150027212, 1.1892071150027212),
-	Y::real(0.765366864730179, 1.4142135623730951),
-	_75972:: -1.00000000000000...,
-	_75984:: 1.00000000000000...,
-	_76002:: 1.00000000000000...,
-	_76014:: 1.00000000000000... .
+	﻿?- {X**2+Y**2==2, Y-X**2==0}, findall((X,Y),solve([X,Y]),L).
+	L = [(_A, _B),  (_C, _D)],
+	X::real(-1.1892071150027215, 1.1892071150027215),
+	Y::real(0.7653668647301779, 1.4142135623730951),
+	_C:: 1.00000000000000...,
+	_D:: 1.00000000000000...,
+	_A:: -1.00000000000000...,
+	_B:: 1.00000000000000... .
 Note that in the second example `X` and `Y` are just the values after imposing the constraint (see above); backtracking in `findall` has removed all the final bindings of `X` and `Y`, but their values have been captured in `L`.
 
 But there is another reason why intervals fail to "optimally" narrow; the so-called *dependency problem*. This is the overestimation of the result of an interval function when the same variable occurs more than once. Simply put, given intervals `X` and `Y` with the same range, the interval primitives can't distinguish between `{Z==X-X}`, where one might normally expect `Z` to be `0`, and `{Z==X-Y}`. This isn't an issue in conventional arithmetic where only single valued variables are used but is significant when the "operands" are ranges (i.e., sets of reals). In general, overestimation will occur unless the extension of a normal function into intervals only contains single occurences of each of its variables. (This was recognized as an issue in the Moore's original interval arithmetic work (1966).)
@@ -304,11 +304,11 @@ eg
 	true.
 	
 	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
-	X::real(-5.0e-324, 5.0e-324),
-	Y::real(10.009999999999998, 10.010000000000002),
-	(S::real(-5.0050000000000034, 5.0050000000000034), {S==X+_28260}),
-	(_28260::real(-5.005000000000003, 5.005000000000003), {_28260==Z*Y}),
-	Z::real(-1r2, 1r2).
+	X::real(-1.0e-323, 1.0e-323),
+	Y::real(10.009999999999996, 10.010000000000003),
+	(S::real(-5.005000000000004, 5.005000000000004), {S==X+_A}),
+	Z::real(-1r2, 1r2),
+	(_A::real(-5.0050000000000034, 5.0050000000000034), {_A==Y*Z}).	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
 aside>
 	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) developers.
 

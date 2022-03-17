@@ -54,11 +54,11 @@ eg
 	?- length( [1,2,3,4], N).
 	N = 4.
 
-	?- length( X, 4). 
-	X = [_5222,_5228,_5234,_5240].
+	﻿?- length( X, 4).
+	X = [_, _, _, _].
 
 	?- length( [X|Xs], 4). 
-	Xs = [_5262,_5268,_5274].
+	Xs = [_, _, _].
 
 	?- length( [_,_], 4). 
 	false.
@@ -71,16 +71,16 @@ eg
 	ERROR: 
 	ERROR: Note: some frames are missing due to last-call optimization.
 	ERROR: Re-run your program in debug mode (:- debug.) to get more detail.
-	?- length( [X|Xs], N). 
-	Xs = [],
-	N = 1 
-	Xs = [_6258],
-	N = 2 
-	Xs = [_6258,_6264],
-	N = 3 
-	Xs = [_6258,_6264,_6270],
-	N = 4 
-	Xs = [_6258,_6264,_6270,_6276],
+	﻿?- length( [X|Xs], N).
+	Xs =  ([]),
+	N = 1 ;
+	Xs = [_],
+	N = 2 ;
+	Xs = [_, _],
+	N = 3 ;
+	Xs = [_, _, _],
+	N = 4 ;
+	Xs = [_, _, _, _],
 	N = 5 .
 Here's a CLP(BNR) constraint based version (but an equivalent version could be just as easily constructed using CLP(FD) or a similar finite domain constraint system):
 .pl
@@ -95,11 +95,11 @@ eg
 	N = 4.
 
 	?- list_length(X,4). 
-	X = [_4244,_5754,_7264,_8774] ; 
+	X = [_, _, _, _] ;
 	false.
 
 	?- list_length([X|Xs],4). 
-	Xs = [_48,_60,_72] ;
+	Xs = [_, _, _] ;
 	false.
 
 	?- list_length([_,_],4). 
@@ -108,26 +108,26 @@ eg
 	?- list_length([X|Xs],-3). 
 	false.
 
-	?- list_length([X|Xs],N). 
-	Xs = [],
+	﻿?- list_length([X|Xs],N).
+	Xs =  ([]),
 	N = 1 ;
-	Xs = [_390],
+	Xs = [_],
 	N = 2 ;
-	Xs = [_390,_3884],
+	Xs = [_, _],
 	N = 3 ;
-	Xs = [_348,_676,_1048],
+	Xs = [_, _, _],
 	N = 4 ;
-	Xs = [_294,_480,_792,_1208],
+	Xs = [_, _, _, _],
 	N = 5 .
 So what we've ended up with is a simple implementation that's semantically equivalent to the system predicate (modulo error handling) but is orders of magnitude worse in performance. Why did we bother? So we can do things like taming the infinite backtracker :
 eg
-	?- N::integer(5,7), list_length(L,N). 
+	﻿?- N::integer(5,7), list_length(L,N).
 	N = 5,
-	L = [_110,_314,_518,_1504,_3864] ;
+	L = [_, _, _, _, _] ;
 	N = 6,
-	L = [_110,_314,_518,_1504,_3864,_6224] ;
+	L = [_, _, _, _, _, _] ;
 	N = 7,
-	L = [_92,_296,_500,_704,_908,_1112,_1524] ;
+	L = [_, _, _, _, _, _, _] ;
 	false.
 The point of this exercise was not to invent a better version of `length/2`. The built-in version is very efficient and generally works the way you want. But if code complexity and readability are issues, which is usually the case for Prolog users, constraints restore the ability to write programs that are dependent on arithmetic in a very "logical" way.
 
@@ -169,37 +169,37 @@ Note the "fuzzing" due to the presence of floating point constants.
 
 Since the logical properties of `sum/2` have been restored, it can be used in many different ways. In the most general case it generates all lists of all sums (manually terminated after three cases):
 eg
-	?- sum(L,S).
-	﻿L = [],
+	﻿?- sum(L,S).
+	L =  ([]),
 	S = 0 ;
-	L = [_20508],
-	_20508::real(-1.0Inf, 1.0Inf),
-	S::real(-1.0Inf, 1.0Inf) ;
-	L = [_23324, _23330],
-	_23324::real(-1.0Inf, 1.0Inf),
+	L = [_A],
 	S::real(-1.0Inf, 1.0Inf),
-	_23330::real(-1.0Inf, 1.0Inf) ;
-	L = [_26508, _26514, _26520],
-	_26508::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf) ;
+	L = [_A, _B],
 	S::real(-1.0Inf, 1.0Inf),
-	_26514::real(-1.0Inf, 1.0Inf),
-	_26520::real(-1.0Inf, 1.0Inf) .
+	_A::real(-1.0Inf, 1.0Inf),
+	_B::real(-1.0Inf, 1.0Inf) ;
+	L = [_A, _B, _C],
+	S::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf),
+	_B::real(-1.0Inf, 1.0Inf),
+	_C::real(-1.0Inf, 1.0Inf) .
 As with other predicates of this nature, e.g., `list_length/2`, the potential for non-termination exists and must be managed.
 eg
-	?- length(L,3), L::integer(0,10), sum(L,S).
-	﻿L = [_1480, _1486, _1492],
-	_1480::integer(0, 10),
-	S::real(0, 30),
-	_1486::integer(0, 10),
-	_1492::integer(0, 10).
+	﻿?- length(L,3), L::integer(0,10), sum(L,S).
+	L = [_A, _B, _C],
+	_A::integer(0, 10),
+	_B::integer(0, 10),
+	_C::integer(0, 10),
+	S::real(0, 30).
 Because CLP(BNR) only constrains numbers, order is important, i.e., the list length must be defined before `sum/2` is executed. The order can be changed provided the potential non-determinism is managed, e.g., by using cut (`!`):
 eg
-	?- sum(L,S), length(L,3), L::integer(0,10), !.
-	﻿L = [_7824, _7830, _7836],
-	_7824::integer(0, 10),
+	﻿?- sum(L,S), length(L,3), L::integer(0,10).
+	L = [_A, _B, _C],
 	S::real(0, 30),
-	_7830::integer(0, 10),
-	_7836::integer(0, 10).
+	_A::integer(0, 10),
+	_B::integer(0, 10),
+	_C::integer(0, 10) .
 Other possible queries:
 eg
 	?- sum(L,10), L=[1,V,3], !.
@@ -229,10 +229,10 @@ eg
 	Sum::integer(0, 10),
 	V::real(-4, 6).
 	
-	?- sym_sum([1,V-3,3],S), {Sum == S}, Sum::integer(0,10).
-	﻿S = 1+(V-3+(3+0)),
-	V::real(-1, 9),
-	Sum::integer(0, 10).
+	﻿?- sum([1,V-3,3],S), {Sum == S}, Sum::integer(0,10).
+	S = 1+(V-3+(3+0)),
+	Sum::integer(0, 10),
+	V::real(-1, 9).
 A possible downside, from a pure logic programming perspective, is that the expression (`S` in the examples) must be instantiated before the constraint. Otherwise, `sym_sum` will try to unify an interval with the expression which fails. (Intervals can only be unified with numeric values and other intervals.)
 
 This pattern of working symbolically and only afterwards converting to constraints enables the same predicate to be used with different arithmetic systems, e.g., CLP(FD). It can be helpful during development because the expressions may be more readable before the logic variables are constrained.

@@ -183,68 +183,68 @@ Note that Prolog negation (`\+`) is used in checking the hazard timing, i.e., su
 
 Analysing the timing operation of a nominal circuit (5 Mhz. clock, 0 wait states):
 eg
-	?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
-	﻿﻿verify_FAIL(event(ce,600),setup(rD1,(V0::integer(210,630))+30),hold(rD2,(V1::integer(610,885))-10))
-	
-	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(610,750)),ev(max,d1,integer(210,595)),ev(min,d2,integer(610,850)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(610,885))]
-	
+	﻿?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
+	verify_FAIL(event(ce,600),setup(rD1,(V0::integer(210,630))+30),hold(rD2,(V1::integer(610,885))-10))
+
+	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,600),ev(lin,a1,V0::integer(47,110)),ev(lin,a2,V1::integer(210,280)),ev(lin,r1,V2::integer(210,365)),ev(lin,r2,V3::integer(610,750)),ev(lin,l1,V4::integer(7,80)),ev(lin,l2,V5::integer(118,181)),ev(max,mA1,V6::integer(47,145)),ev(lin,r1,V7::integer(210,365)),ev(lin,r2,V8::integer(610,750)),ev(max,d1,V9::integer(210,595)),ev(min,d2,V10::integer(610,850)),ev(lin,rD1,V11::integer(210,630)),ev(lin,rD2,V12::integer(610,885))]
+
 	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
-	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 600), ev(lin, a1, _5040), ev(lin, a2, _5054), ev(lin, r1, _5068), ev(lin, r2, _5082), ev(lin, l1, _5096), ev(lin, l2, _5110), ev(max, mA1, _5124), ev(lin, r1, _5138), ev(lin, r2, _5152), ev(max, d1, _5166), ev(min, d2, _5180), ev(lin, rD1, _5194), ev(lin, rD2, _5208)],
-	_5040::integer(47, 110),
-	_5110::integer(118, 181),
-	_5096::integer(7, 80),
-	_5124::integer(47, 145),
-	_5166::integer(210, 595),
-	_5194::integer(210, 630),
-	_5068::integer(210, 365),
-	_5054::integer(210, 280),
-	_5082::integer(610, 750),
-	_5180::integer(610, 850),
-	_5208::integer(610, 885),
-	_5138::integer(210, 365),
-	_5152::integer(610, 750).
+	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 600), ev(lin, a1, _A), ev(lin, a2, _B), ev(lin, r1, _C), ev(lin, r2, _D), ev(lin, l1, _E), ev(lin, l2, _F), ev(max, mA1, _G), ev(lin, r1, _H), ev(lin, r2, _I), ev(max, d1, _J), ev(min, d2, _K), ev(lin, rD1, _L), ev(lin, rD2, _M)],
+	_A::integer(47, 110),
+	_B::integer(210, 280),
+	_C::integer(210, 365),
+	_D::integer(610, 750),
+	_E::integer(7, 80),
+	_F::integer(118, 181),
+	_G::integer(47, 145),
+	_H::integer(210, 365),
+	_I::integer(610, 750),
+	_J::integer(210, 595),
+	_K::integer(610, 850),
+	_L::integer(210, 630),
+	_M::integer(610, 885).
 A timing violation has been detected; the data read from the EPROM via the transceiver arrives too late to meet the setup requirements of the CPU. If the source is modified to inject a wait state (`wait_cycles(1)`), the violation is avoided:
 eg
 	﻿?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
-	
-	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,800),ev(lin,a1,integer(47,110)),ev(lin,a2,integer(210,280)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(810,950)),ev(lin,l1,integer(7,80)),ev(lin,l2,integer(118,181)),ev(max,mA1,integer(47,145)),ev(lin,r1,integer(210,365)),ev(lin,r2,integer(810,950)),ev(max,d1,integer(210,595)),ev(min,d2,integer(810,1050)),ev(lin,rD1,integer(210,630)),ev(lin,rD2,integer(810,1085))]
-	
+
+	Net=[ev(lin,c1,0),ev(lin,c2,200),ev(lin,ce,800),ev(lin,a1,V0::integer(47,110)),ev(lin,a2,V1::integer(210,280)),ev(lin,r1,V2::integer(210,365)),ev(lin,r2,V3::integer(810,950)),ev(lin,l1,V4::integer(7,80)),ev(lin,l2,V5::integer(118,181)),ev(max,mA1,V6::integer(47,145)),ev(lin,r1,V7::integer(210,365)),ev(lin,r2,V8::integer(810,950)),ev(max,d1,V9::integer(210,595)),ev(min,d2,V10::integer(810,1050)),ev(lin,rD1,V11::integer(210,630)),ev(lin,rD2,V12::integer(810,1085))]
+
 	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
-	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 800), ev(lin, a1, _26858), ev(lin, a2, _26872), ev(lin, r1, _26886), ev(lin, r2, _26900), ev(lin, l1, _26914), ev(lin, l2, _26928), ev(max, mA1, _26942), ev(lin, r1, _26956), ev(lin, r2, _26970), ev(max, d1, _26984), ev(min, d2, _26998), ev(lin, rD1, _27012), ev(lin, rD2, _27026)],
-	_26858::integer(47, 110),
-	_26928::integer(118, 181),
-	_26914::integer(7, 80),
-	_26942::integer(47, 145),
-	_26984::integer(210, 595),
-	_27012::integer(210, 630),
-	_26886::integer(210, 365),
-	_26872::integer(210, 280),
-	_26900::integer(810, 950),
-	_26998::integer(810, 1050),
-	_27026::integer(810, 1085),
-	_26956::integer(210, 365),
-	_26970::integer(810, 950).
+	Net = [ev(lin, c1, 0), ev(lin, c2, 200), ev(lin, ce, 800), ev(lin, a1, _A), ev(lin, a2, _B), ev(lin, r1, _C), ev(lin, r2, _D), ev(lin, l1, _E), ev(lin, l2, _F), ev(max, mA1, _G), ev(lin, r1, _H), ev(lin, r2, _I), ev(max, d1, _J), ev(min, d2, _K), ev(lin, rD1, _L), ev(lin, rD2, _M)],
+	_A::integer(47, 110),
+	_B::integer(210, 280),
+	_C::integer(210, 365),
+	_D::integer(810, 950),
+	_E::integer(7, 80),
+	_F::integer(118, 181),
+	_G::integer(47, 145),
+	_H::integer(210, 365),
+	_I::integer(810, 950),
+	_J::integer(210, 595),
+	_K::integer(810, 1050),
+	_L::integer(210, 630),
+	_M::integer(810, 1085).
 Another alternative is to use 0 wait states but relax the clock frequency specified in `clock_period/3`, e.g., to 220 ns. :
 eg
 	﻿?- events(Es),define_network(Es,Net),verify(Net),nl,print_interval('Net'=Net),nl,nl.
-	
-	Net=[ev(lin,c1,0),ev(lin,c2,220),ev(lin,ce,660),ev(lin,a1,integer(27,110)),ev(lin,a2,integer(230,300)),ev(lin,r1,integer(230,385)),ev(lin,r2,integer(670,810)),ev(lin,l1,integer(0,80)),ev(lin,l2,integer(118,201)),ev(max,mA1,integer(27,145)),ev(lin,r1,integer(230,385)),ev(lin,r2,integer(670,810)),ev(max,d1,integer(230,595)),ev(min,d2,integer(670,910)),ev(lin,rD1,integer(230,630)),ev(lin,rD2,integer(670,945))]
-	
+
+	Net=[ev(lin,c1,0),ev(lin,c2,220),ev(lin,ce,660),ev(lin,a1,V0::integer(27,110)),ev(lin,a2,V1::integer(230,300)),ev(lin,r1,V2::integer(230,385)),ev(lin,r2,V3::integer(670,810)),ev(lin,l1,V4::integer(0,80)),ev(lin,l2,V5::integer(118,201)),ev(max,mA1,V6::integer(27,145)),ev(lin,r1,V7::integer(230,385)),ev(lin,r2,V8::integer(670,810)),ev(max,d1,V9::integer(230,595)),ev(min,d2,V10::integer(670,910)),ev(lin,rD1,V11::integer(230,630)),ev(lin,rD2,V12::integer(670,945))]
+
 	Es = [lin(c1), lin(c2), lin(ce), lin(a1), lin(a2), lin(r1), lin(r2), lin(l1), lin(l2), max(mA1), lin(r1), lin(r2), max(d1), min(d2), lin(rD1), lin(rD2)],
-	Net = [ev(lin, c1, 0), ev(lin, c2, 220), ev(lin, ce, 660), ev(lin, a1, _26598), ev(lin, a2, _26612), ev(lin, r1, _26626), ev(lin, r2, _26640), ev(lin, l1, _26654), ev(lin, l2, _26668), ev(max, mA1, _26682), ev(lin, r1, _26696), ev(lin, r2, _26710), ev(max, d1, _26724), ev(min, d2, _26738), ev(lin, rD1, _26752), ev(lin, rD2, _26766)],
-	_26598::integer(27, 110),
-	_26668::integer(118, 201),
-	_26654::integer(0, 80),
-	_26682::integer(27, 145),
-	_26724::integer(230, 595),
-	_26752::integer(230, 630),
-	_26626::integer(230, 385),
-	_26612::integer(230, 300),
-	_26640::integer(670, 810),
-	_26738::integer(670, 910),
-	_26766::integer(670, 945),
-	_26696::integer(230, 385),
-	_26710::integer(670, 810).
+	Net = [ev(lin, c1, 0), ev(lin, c2, 220), ev(lin, ce, 660), ev(lin, a1, _A), ev(lin, a2, _B), ev(lin, r1, _C), ev(lin, r2, _D), ev(lin, l1, _E), ev(lin, l2, _F), ev(max, mA1, _G), ev(lin, r1, _H), ev(lin, r2, _I), ev(max, d1, _J), ev(min, d2, _K), ev(lin, rD1, _L), ev(lin, rD2, _M)],
+	_A::integer(27, 110),
+	_B::integer(230, 300),
+	_C::integer(230, 385),
+	_D::integer(670, 810),
+	_E::integer(0, 80),
+	_F::integer(118, 201),
+	_G::integer(27, 145),
+	_H::integer(230, 385),
+	_I::integer(670, 810),
+	_J::integer(230, 595),
+	_K::integer(670, 910),
+	_L::integer(230, 630),
+	_M::integer(670, 945).
 This example is a natural fit between the problem's event timing windows and the underlying CLP/intervals model, necessitating only 50 lines of code plus the circuit description. In reality, most of the work is mapping the timing information in the datasheets' waveform diagrams and timing tables. Execution times for analysing this admittedly simple circuit is a few milliseconds because of the simple nature of the constraints which can be easily narrowed by the fixed point iteration mechanism. Where large numbers of events are required, it's usually possible to de-construct the circuit into sub-circuits which can be analysed independently. To verify correct operation of the whole circuit, recombine the individual results with the same techniques used at the component level in this simple example.
 
 This example can be easily adapted to other memory devices by replacing the EPROM timing information with the corresponding information of the devices, e.g., [2142-3] static RAM (capable of running at the designated CPU clock speed without wait states):

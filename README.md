@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.9
+	Installed version:      0.9.10
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -159,7 +159,6 @@ The `clpBNR` module declaration is:
 	:- module(clpBNR,          % SWI module declaration
 		[
 		op(700, xfx, ::),
-		op(150, xf,  ...),     % postfix op currently just for output
 		(::)/2,                % declare interval
 		{}/1,                  % define constraint
 		interval/1,            % filter for clpBNR constrained var
@@ -219,4 +218,4 @@ This package will not work as intended if these flag values are not respected.
 
 ## Other SWI-Prolog Envirnment Flags
 
-Example output in the documentation is premised on flag `write_attributes` is set to `portray` and flag `answer_write_options` includes `quoted(false)`. These will be set accordingly when `clpBNR` initializes but nothing prevents them from being subsequently overwritten.
+Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This will be set accordingly when `clpBNR` initializes but nothing prevents it from being subsequently overwritten.

@@ -291,7 +291,7 @@ mult_term_(X*Y, N, Op, Exp*Y) :- mult_term_(X,N,Op,Exp).     % maintain Op assoc
 mult_term_(X/Y, N, Op, Exp/Y) :- mult_term_(X,N,Op,Exp).
 mult_term_(T,   N, Op, M*T)   :- val_sign_(N,Op,M).
 
-val_sign_(V,Op,Vp) :- Vp is abs(V), (V<0 -> Op = - ; Op = +).
+val_sign_(V,Op,Vp) :- Vp is abs(V), (V<0 -> Op = (-) ; Op = (+)).
 
 %
 % simplify a term to an "expression" of term structures and constants

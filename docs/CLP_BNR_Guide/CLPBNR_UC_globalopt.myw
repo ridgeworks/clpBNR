@@ -38,9 +38,9 @@ These predicates are general in nature; they can find optima on boundaries (wher
 eg
 	﻿?- [X1,X2,X3]::real,global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
 	X1:: 2.500...,
-	Z::real(-1.8040366808093222e-7, 0),
+	X2:: 3.000...,
 	X3:: 0.400...,
-	X2:: 3.000... .
+	Z::real(-1.8040366808093235e-7, 0).
 
 	﻿?- [X1,X2]::integer(-100,100),global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
 	X1 = 2,
@@ -68,8 +68,8 @@ eg
 	﻿?- [X1,X2,X3]::real(0,2*pi), {-X1*X2**3+X1**2*X3**2==5}, global_maximum(sin(X1*X2+X3),Z),splitsolve([X1,X2,X3]).
 	X1:: 1.49526...,
 	X2:: 0.049725...,
-	Z:: 0.99999951...,
-	X3:: 1.49546... .
+	X3:: 1.49546...,
+	Z:: 0.99999951... .
 	
 	﻿?- [X1,X2,X3]::integer,{X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z),splitsolve([X1,X2,X3]).
 	X1 = 1,
@@ -86,7 +86,53 @@ eg
 	﻿X1:: 1.399230...,
 	X2:: 0.800384...,
 	Z:: 1.800000... .
-Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later. First a few Shaum's examples more grounded in the real world.
+Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later.
+
+##### The Knapsack Problem
+
+The [Knapsack Problem] is a well researched problem in combinatorial optimization with many real world applications. It derives its name the problem of maximizing the value of items placed in a fixed-size knapsack. The example in the reference Wikipedia article describes a knapsack that can carry 15 kg. to be filled with coloured boxes with the following properties:
+.tsv
+	Colour		Weight(kg.)		Value
+	Green		`12`			` 4`
+	Grey		` 1`			` 2`
+	Yellow		` 4`			`10`
+	Orange		` 1`			` 1`
+	Blue		` 2`			` 2`
+First consider the case where there is only one box of each type:
+eg
+	﻿?- Boxes=[Green,Grey,Yellow,Orange,Blue], Boxes::integer(0,1),
+	{Green*12+Grey*1+Yellow*4+Orange*1+Blue*2 =< 15},
+	global_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,Take).
+	Boxes = [0, 1, 1, 1, 1],
+	Green = 0,
+	Grey = Yellow, Yellow = Orange, Orange = Blue, Blue = 1,
+	Take = 15.
+In this case taking every box but the Green provides maximum value (15) even though the total weight is only 8 kg. Also note that the minimizer values are generated without an extra solve step.
+
+Now consider the case where there is an unlimited supply of each coloured box:
+eg
+	﻿?- Boxes=[Green,Grey,Yellow,Orange,Blue], Boxes::integer(0,_),
+	{Green*12+Grey*1+Yellow*4+Orange*1+Blue*2 =< 15},
+	global_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,Take).
+	Boxes = [Green, Grey, Yellow, Orange, Blue],
+	Take = 36,
+	Green::boolean,
+	Grey::integer(0, 15),
+	Yellow::integer(0, 3),
+	Orange::integer(0, 15),
+	Blue::integer(0, 7).
+﻿
+	?- Boxes=[Green,Grey,Yellow,Orange,Blue], Boxes::integer(0,_),
+	{Green*12+Grey*1+Yellow*4+Orange*1+Blue*2 =< 15},
+	global_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,Take), splitsolve(Boxes).
+	Boxes = [0, 3, 3, 0, 0],
+	Green = Orange, Orange = Blue, Blue = 0,
+	Grey = Yellow, Yellow = 3,
+	Take = 36 ;
+	false.
+In this case the optimal solution is to take 3 each of the Grey and Yellow boxes for a total value of 36 and an enumeration step (`splitsolve` or `enumerate`) is necessary to produce the minimizer values.
+
+A variation on this simple knapsack problems is the multi-constraint problem, e.g., if the knapsack was constrained by volume in addition to weight. These can be simpley addressed by adding the additional constraints to the `{}` constraint term as can be seen in the following examples from Schaum's.
  
 ##### The Furniture Maker
 "*A furniture maker has 6 units of wood and 28 h of free time, in which he will make decorative screens. Two models have sold well in the past, so he will restrict himself to those two. He estimates that model I requires 2 units of wood and 7 h of time, while model II requires 1 unit of wood and 8 h of time.  The prices of the models are $120 and $80 respectively. How many screens of each model should the furniture maker assemble if he wishes to maximize his sales revenue?*"
@@ -181,27 +227,27 @@ eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	{
 	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
-	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	},
-	global_maximum(OF,Profit,3), 
+	global_maximum(OF,Profit,3),
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	RegDom::real(13735.04638671875, 40000),
 	RegFor::real(10000, 45019.938151041664),
-	PremFor::real(0, 20000),
 	PremDom::real(0, 16666.666666666668),
+	PremFor::real(0, 20000),
 	Profit::real(124940.185546875, 125059.814453125),
+	Regular::real(23735.04638671875, 85019.93815104167),
 	Premium::real(0, 36666.666666666664),
 	Domestic::real(13735.04638671875, 56666.666666666664),
-	Foreign::real(10000, 65019.938151041664),
-	Regular::real(23735.04638671875, 85019.93815104167).
+	Foreign::real(10000, 65019.938151041664).
 The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated using one of the solve predicates, in this case `splitsolve`:
 eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	{
 	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
-	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	},
 	global_maximum(OF,Profit,3), splitsolve([RegDom,RegFor,PremDom,PremFor]),
@@ -209,13 +255,13 @@ eg
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	RegDom:: 37712.62...,
 	RegFor:: 12287.3...,
-	PremFor:: 2737.95...,
 	PremDom:: 2281.62...,
+	PremFor:: 2737.95...,
 	Profit:: 124940.2...,
+	Regular:: 50000.0...,
 	Premium:: 5019.5...,
 	Domestic:: 39994.2...,
-	Foreign:: 15025.3...,
-	Regular:: 50000.0... .
+	Foreign:: 15025.3... .
 There are very many possible answers given the wide domain of `Profit` and, due to order of the search used by `splitsolve`, a solution at the low end of the profit range is generated: produce 50,000 barrels of regular and ~5020 barrels of premium gas using ~39994 barrels of domestic and ~15025 barrels of foreign oil.
 
 This is quite close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximum` at the expense of longer calculation time:
@@ -223,7 +269,7 @@ eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	{
 	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
-	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	},
 	global_maximum(OF,Profit,4), splitsolve([RegDom,RegFor,PremDom,PremFor]),
@@ -231,13 +277,13 @@ eg
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	RegDom:: 37725.9...,
 	RegFor:: 12274.0...,
-	PremFor:: 2728.2...,
 	PremDom:: 2273.5...,
+	PremFor:: 2728.2...,
 	Profit::real(124994.65942382812, 124994.77394263764),
+	Regular:: 50000.0...,
 	Premium:: 5001.8...,
 	Domestic:: 39999.5...,
-	Foreign:: 15002.3...,
-	Regular:: 50000.0... 
+	Foreign:: 15002.3... .
 But this is a fair amount of additional work for not much gain. A different approach to generating better results in less time is discussed next.
 
 ##### Redundant Constraints using Local Optimization 
@@ -323,42 +369,42 @@ eg
 	local_optima(max,OF,[
 	RegDom>=0, RegFor>=0, PremDom>=0, PremFor>=0,
 	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
-	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	]),
-	global_maximum(OF,Profit,3), 
+	global_maximum(OF,Profit,3),
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	RegDom::real(13735.758463541666, 40000),
 	RegFor::real(10000, 45018.98871527778),
-	PremFor::real(0, 20000),
 	PremDom::real(0, 16666.666666666668),
+	PremFor::real(0, 20000),
 	Profit::real(124943.03385416667, 125056.96614583333),
+	Regular::real(23735.758463541668, 85018.98871527778),
 	Premium::real(0, 36666.666666666664),
 	Domestic::real(13735.758463541666, 56666.666666666664),
-	Foreign::real(10000, 65018.98871527778),
-	Regular::real(23735.758463541668, 85018.98871527778).
+	Foreign::real(10000, 65018.98871527778).
 This really isn't much of a difference from the original example which doesn't use `local_optima` constraints except it executes 2-3 times faster. And now solve produces much sharper values for the minimizers without resorting to tuning using the precision argument:
 eg
-	?- OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	﻿?- OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	local_optima(max,OF,[
 	RegDom>=0, RegFor>=0, PremDom>=0, PremFor>=0,
 	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
-	RegDom+PremDom=<40000, RegFor+PremFor=<60000,  
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	]),
-	global_maximum(OF,Profit,3),  splitsolve([RegDom,RegFor,PremDom,PremFor]), 
+	global_maximum(OF,Profit,3),  splitsolve([RegDom,RegFor,PremDom,PremFor]),
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	RegDom:: 37727.2...,
 	RegFor:: 12272.7...,
-	PremFor:: 2727.2...,
 	PremDom:: 2272.7...,
+	PremFor:: 2727.2...,
 	Profit::real(124999.88278570816, 125000.11721429184),
+	Regular:: 50000.0...,
 	Premium:: 5000.0...,
 	Domestic:: 40000.0...,
-	Foreign:: 15000.0...,
-	Regular:: 50000.0... .
+	Foreign:: 15000.0... .
 In general, it's advantageous to use `local_optima` but this requires that a local critical point exists within the domain defined by the problem. If such is not the case the search may fail, i.e. the global optima is at a boundary. In this case, it make take an excessive amount of time to find it by exhaustive search. Or, as in some of the following relatively simple examples, stack overflows can occur.
 
 ##### "Cheese Shop"
@@ -376,8 +422,8 @@ eg
 	OF = Pd*Xd+Pr*Xr,
 	Xd:: 55.0000...,
 	Xr:: 45.0000...,
-	Pr:: 4.100000...,
 	Pd:: 5.40000...,
+	Pr:: 4.100000...,
 	Income:: 481.50000000000... .
 The maximum income of $481.50 can be realized by making (and selling) 55 pounds of deluxe spread at $5.50/pound, and 45 pounds of of regular at $4.10/pound. (This example runs over 50 times faster with local optima constraints applied.)
 
@@ -418,3 +464,4 @@ Global optimization is a hard problem and the approaches described in this secti
 	[New Computer Methods for Global Optimization] <- link https://pages.cpsc.ucalgary.ca/~rokne/global_book.pdf
 	[Schaum's Outlines, Operations Research] <- link https://www.amazon.com/gp/product/B00AUGCJD0/ref=dbs_a_def_rwt_bibl_vppi_i1
 	[Karush–Kuhn–Tucker] <- link https://en.wikipedia.org/wiki/Karush%E2%80%93Kuhn%E2%80%93Tucker_conditions
+	[Knapsack Problem] <- link https://en.wikipedia.org/wiki/Knapsack_problem

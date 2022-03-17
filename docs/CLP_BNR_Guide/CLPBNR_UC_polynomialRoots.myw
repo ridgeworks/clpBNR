@@ -2,8 +2,8 @@
 
 Finding the roots of a univariate polynomial equation is the same as asking what is the value of `X` given the constraint `{P(X)==0}`. (Some of this section was covered earlier in "Constraints on Real Intervals".) A simple quadratic with two real roots (1 and 3):
 eg
-	?- X::real,{X**2-4*X+3 == 0}.
-	﻿X::real(0.9999999999999998,3.0000000000000027).
+	﻿?- X::real,{X**2-4*X+3 == 0}.
+	X::real(0.9999999999999996, 3.0000000000000044).
 The interval result must include both roots. To produce a single value, the problem must be further constrained:
 eg
 	?- X::real(2,_),{X**2-4*X+3 == 0}.
@@ -11,12 +11,12 @@ eg
 or to find both:
 eg
 	?- X::real,{X**2-4*X+3 == 0},({X=<2};{X>=2}).
-	﻿X:: 1.000000000000000... ;
+	﻿X:: 1.00000000000000... ;
 	X:: 3.00000000000000... .
 Since we're looking for point solutions, `solve/1` is useful rather than guess at addtional constraints to isolate roots:
 eg
 	?- X::real,{X**2-4*X+3 ==0},solve(X).
-	﻿X:: 1.000000000000000... ;
+	﻿X:: 1.00000000000000... ;
 	X:: 3.00000000000000... .
 	
 Formulas exist for solving equations of low degree, so this may hardly seem to be worth the trouble, but this same technique works for pretty much any polynomial:

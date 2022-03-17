@@ -406,21 +406,23 @@ eg
 	M = [6,2,1,0,0,0,1,0,0,0] ;
 	false.
 
-	?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	﻿M = [_22872, _22878, _22884, _22890, _22896, _22902, _22908, _22914, _22920, _22926],
+	﻿?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.22506400000000149), gcTime(0.002), globalStack(52696/524256), trailStack(432/133096), localStack(1992/118648), inferences(1071828), narrowingOps(30406), narrowingFails(73), node_count(190), max_iterations(477/3000)],
-	_22872::integer(0, 10),
-	_22878::integer(0, 10),
-	_22884::integer(0, 10),
-	_22890::integer(0, 10),
-	_22896::integer(0, 10),
-	_22902::integer(0, 10),
-	_22908::integer(0, 10),
-	_22914::integer(0, 10),
-	_22920::integer(0, 10),
-	_22926::integer(0, 10).
-Looking at the statistics for `N=10`, we see that finding the single solution tooke 37429 narrowing operations with 73 failures. In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
+	SS = [userTime(0.146636), gcTime(0.0), globalStack(52816/524256), trailStack(456/133096), localStack(2000/20344), inferences(1053296), narrowingOps(30406), narrowingFails(73), node_count(190), max_iterations(477/3000)],
+	_A::integer(0, 10),
+	_B::integer(0, 10),
+	_C::integer(0, 10),
+	_D::integer(0, 10),
+	_E::integer(0, 10),
+	_F::integer(0, 10),
+	_G::integer(0, 10),
+	_H::integer(0, 10),
+	_I::integer(0, 10),
+	_J::integer(0, 10).
+Looking at the statistics for `N=10`, we see that finding the single solution tooke 30406 narrowing operations with 73 failures.
+
+In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
 .pl
 	magic_series2(N, Ks) :-
 		length(Ks,N), Ks::integer(0,_),
@@ -429,19 +431,19 @@ Looking at the statistics for `N=10`, we see that finding the single solution to
 Now:
 eg
 	﻿?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	M = [_24130, _24136, _24142, _24148, _24154, _24160, _24166, _24172, _24178, _24184],
+	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.07384200000000085), gcTime(0.001), globalStack(56256/524256), trailStack(848/133096), localStack(1992/118648), inferences(370807), narrowingOps(8854), narrowingFails(41), node_count(199), max_iterations(485/3000)],
-	_24130::integer(0, 10),
-	_24136::integer(0, 10),
-	_24142::integer(0, 10),
-	_24148::integer(0, 10),
-	_24154::integer(0, 10),
-	_24160::integer(0, 10),
-	_24166::integer(0, 10),
-	_24172::integer(0, 10),
-	_24178::integer(0, 10),
-	_24184::integer(0, 10).
+	SS = [userTime(0.05138200000000004), gcTime(0.001), globalStack(56344/524256), trailStack(872/133096), localStack(2000/20344), inferences(364444), narrowingOps(8854), narrowingFails(41), node_count(199), max_iterations(485/3000)],
+	_A::integer(0, 10),
+	_B::integer(0, 10),
+	_C::integer(0, 10),
+	_D::integer(0, 10),
+	_E::integer(0, 10),
+	_F::integer(0, 10),
+	_G::integer(0, 10),
+	_H::integer(0, 10),
+	_I::integer(0, 10),
+	_J::integer(0, 10).
 By forcing earlier failure during the enumeration, the redundant constraint reduces the number of narrowing operations by over a factor of 3. This more than outweighs the additional cost of creating and checking that constraint.
 
 One can take this even further by noting that `N` also equals the sum of `M*Mn`:
@@ -459,19 +461,19 @@ One can take this even further by noting that `N` also equals the sum of `M*Mn`:
 leading to further factor of more than 2:
 eg
 	﻿?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
-	M = [_19282, _19288, _19294, _19300, _19306, _19312, _19318, _19324, _19330, _19336],
+	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.03806300000000107), gcTime(0.0), globalStack(54712/262112), trailStack(3320/133096), localStack(1992/118648), inferences(181736), narrowingOps(3596), narrowingFails(41), node_count(159), max_iterations(244/3000)],
-	_19282::integer(0, 10),
-	_19288::integer(0, 10),
-	_19294::integer(0, 5),
-	_19300::integer(0, 3),
-	_19306::integer(0, 2),
-	_19312::integer(0, 2),
-	_19318::boolean,
-	_19324::boolean,
-	_19330::boolean,
-	_19336::boolean.
+	SS = [userTime(0.026521999999999935), gcTime(0.0), globalStack(78000/262112), trailStack(7080/67560), localStack(2000/20344), inferences(179034), narrowingOps(3596), narrowingFails(41), node_count(159), max_iterations(244/3000)],
+	_A::integer(0, 10),
+	_B::integer(0, 10),
+	_C::integer(0, 5),
+	_D::integer(0, 3),
+	_E::integer(0, 2),
+	_F::integer(0, 2),
+	_G::boolean,
+	_H::boolean,
+	_I::boolean,
+	_J::boolean.
 Note that the solution space is considerably reduced (see domains of `M`) even before the enumeration step.
 
 The lesson here is that even though redundant constraints may not be necessary to finding solutions, they can considerably speed up the enumeration process and may even make it unnecessary.

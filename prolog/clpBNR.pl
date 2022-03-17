@@ -86,7 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.9").
+version("0.9.10").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -409,7 +409,7 @@ R::Dom :-  var(Dom), !,         % domain query (if interval(R) else fail)
 
 R::Dom :-                       % interval(R) or number(R) and nonvar(Dom) 
 	Dom=..[Type|Bounds],
-	(Bounds=[] -> Val=(_,_) ; Val=..[,|Bounds]),
+	(Bounds=[] -> Val=(_,_) ; Val=..[','|Bounds]),
 	int_decl_(Type,Val,R).
 
 int_decl_(boolean,_,R) :- !,      % boolean is integer; 0=false, 1=true, ignore any bounds.
@@ -436,7 +436,7 @@ int_decl_(Type,(L,H),R) :- (Type=integer -> integer(R) ; number(R)), !,    % R a
 	lower_bound_val_(Type,L,IL), IL=<R,
 	upper_bound_val_(Type,H,IH), R=<IH.
 
-int_decl_(Type,(,),R) :- !,                   % no bounds, fill with vars
+int_decl_(Type,(','),R) :- !,                   % no bounds, fill with vars
 	int_decl_(Type,(_,_),R).
 
 intervals_([],_Def).
@@ -498,12 +498,15 @@ attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two intervals
 	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)),  %%SWIP attribute def.
 	mergeType_(Type1, Type2, NewType),  % unified Type=integer if either is an integer
-	^(V1,V2,V), !,                      % unified range is intersection (from ia_primitives),
+	^(V1,V2,(L,H)),                     % unified range is intersection (from ia_primitives),
+	lower_bound_val_(NewType,L,IL),     % type check bounds
+	upper_bound_val_(NewType,H,IH),
+	IL=<IH, !,                          % still non-empty
 	mergeNodes_(Nodelist2,Nodelist1,Newlist),  % unified node list is a merge of two lists
 	mergeFlags_(Flags1,Flags2,Flags),
 	(debugging(clpBNR,true) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
 	% update new type, value and constraint list, undone on backtracking
-	put_attr(Int,clpBNR,interval(NewType,V,Newlist,Flags)),
+	put_attr(Int,clpBNR,interval(NewType,(IL,IH),Newlist,Flags)),
 	linkNodeList_(Newlist, T/T, Agenda),
 	stable_(Agenda).                    % broadcast change
 
