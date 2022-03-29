@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019,2020,2021 Rick Workman
+ *	Copyright (c) 2019-2022 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -635,8 +635,8 @@ sin_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-
 	NZl is max(Zl,max(-1,nexttoward(sin(X1l),-1.0Inf))),           % See Note 2
 	NZh is min(Zh,min( 1,nexttoward(sin(X1h), 1.0Inf))),           % See Note 2
 	NZl < NZh,
-	NXl is max(Xl,nexttoward(asin(NZl),-1.0Inf)),
-	NXh is min(Xh,nexttoward(asin(NZh), 1.0Inf)),
+	NXl is max(X1l,nexttoward(asin(NZl),-1.0Inf)),
+	NXh is min(X1h,nexttoward(asin(NZh), 1.0Inf)),
 	NXl < NXh.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -696,8 +696,8 @@ cos_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-
 	NZl is max(Zl,max(-1,nexttoward(cos(X1h),-1.0Inf))),           % See Note 2
 	NZh is min(Zh,min( 1,nexttoward(cos(X1l), 1.0Inf))),           % See Note 2
 	NZl < NZh,
-	NXl is max(Xl,nexttoward(acos(NZh),-1.0Inf)),
-	NXh is min(Xh,nexttoward(acos(NZl), 1.0Inf)),
+	NXl is max(X1l,nexttoward(acos(NZh),-1.0Inf)),
+	NXh is min(X1h,nexttoward(acos(NZl), 1.0Inf)),
 	NXl < NXh.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -731,12 +731,12 @@ tan_((MX,MX), (Xl,Xh), (Zl,Zh), (MX,MX), (NXl,NXh), (NZl,NZh)) :- !,  % same cyl
 	),
 	NZl < NZh,  % See Note 2
 	((rational(NZl) ; float_class(NZl,normal))
-	  -> NXl is max(Xl,nexttoward(atan(NZl),-1.0Inf))
-	  ;  NXl is max(Xl,NZl)
+	  -> NXl is max(X1l,nexttoward(atan(NZl),-1.0Inf))
+	  ;  NXl is max(X1l,NZl)
 	),
 	((rational(NZh) ; float_class(NZh,normal))
-	  -> NXh is min(Xh,nexttoward(atan(NZh), 1.0Inf))
-	  ;  NXh is min(Xh,NZh)
+	  -> NXh is min(X1h,nexttoward(atan(NZh), 1.0Inf))
+	  ;  NXh is min(X1h,NZh)
 	),
 	NXl < NXh.  % See Note 2
 

@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019,2020,2021 Rick Workman
+ *	Copyright (c) 2019-2022 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -86,7 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.11").
+version("0.9.12").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
