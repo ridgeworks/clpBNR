@@ -86,7 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.10").
+version("0.9.11").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -466,22 +466,19 @@ upper_bound_val_(boolean,H,IH) :-          % boolean: narrow to H=1
 
 applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	get_attr(Int,clpBNR,interval(Type,Val,NodeList,Flags)),
-	narrower_type_(NewType,Type), !,
-	(debugging(clpBNR,true) -> check_monitor_(Int, NewType, interval(Type,Val,NodeList,Flags)) ; true),
-	Val = (L,H),
-	lower_bound_val_(NewType,L,IL),
-	upper_bound_val_(NewType,H,IH),
-	(IL=IH
-	 -> Int=IL  % narrowed to point
-	 ; 	(put_attr(Int,clpBNR,interval(integer,(IL,IH),NodeList,Flags)),  % set Type (only case allowed)
-		 linkNodeList_(NodeList, Agenda, NewAgenda)
-		)
+	(NewType @< Type    % standard order of atoms:  boolean @< integer @< real
+	 -> (debugging(clpBNR,true) -> check_monitor_(Int, NewType, interval(Type,Val,NodeList,Flags)) ; true),
+	    Val = (L,H),
+	    lower_bound_val_(NewType,L,IL),
+	    upper_bound_val_(NewType,H,IH),
+	    (IL=IH
+	     -> Int=IL  % narrowed to point
+	     ; 	(put_attr(Int,clpBNR,interval(integer,(IL,IH),NodeList,Flags)),  % set Type (only case allowed)
+		     linkNodeList_(NodeList, Agenda, NewAgenda)
+		    )
+	    )
+	 ; NewAgenda = Agenda
 	).
-applyType_(NewType, Int, Agenda, Agenda).            % anything else: no change
-
-narrower_type_(integer,real).
-narrower_type_(boolean,integer).
-narrower_type_(boolean,real).
 
 %
 % this goal gets triggered whenever an interval is unified, valid for a numeric value or another interval
@@ -497,16 +494,13 @@ attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 
 attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two intervals
 	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)),  %%SWIP attribute def.
-	mergeType_(Type1, Type2, NewType),  % unified Type=integer if either is an integer
-	^(V1,V2,(L,H)),                     % unified range is intersection (from ia_primitives),
-	lower_bound_val_(NewType,L,IL),     % type check bounds
-	upper_bound_val_(NewType,H,IH),
-	IL=<IH, !,                          % still non-empty
+	^(V1,V2,R),                     % unified range is intersection (from ia_primitives),
+	mergeValues_(Type1, Type2, NewType, R, NewR), !,
 	mergeNodes_(Nodelist2,Nodelist1,Newlist),  % unified node list is a merge of two lists
 	mergeFlags_(Flags1,Flags2,Flags),
 	(debugging(clpBNR,true) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
 	% update new type, value and constraint list, undone on backtracking
-	put_attr(Int,clpBNR,interval(NewType,(IL,IH),Newlist,Flags)),
+	put_attr(Int,clpBNR,interval(NewType,NewR,Newlist,Flags)),
 	linkNodeList_(Newlist, T/T, Agenda),
 	stable_(Agenda).                    % broadcast change
 
@@ -521,9 +515,13 @@ monitor_unify_(IntDef, Update) :-  % debbuging, manufacture temporary interval
 	put_attr(Temp,clpBNR,IntDef),
 	check_monitor_(Temp, Update, IntDef).
 
-% if both real, result type is real, else one is integer so result type integer
-mergeType_(real, real, real) :- !.
-mergeType_(_,    _,    integer).
+% if types identical, result type and bounds unchanged,
+% else one is integer so result type integer, and integer bounds applied
+mergeValues_(T, T, T, R, R) :- !.
+mergeValues_(_, _, integer, (L,H), (IL,IH)) :-
+	lower_bound_val_(integer,L,IL),     % type check bounds
+	upper_bound_val_(integer,H,IH),
+	IL =< IH.                           % still non-empty
 
 % optimize for one or both lists (dominant case)
 mergeFlags_([],Flags2,Flags2) :- !.
