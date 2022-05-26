@@ -86,7 +86,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.12").
+version("0.9.13").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -945,7 +945,15 @@ clpStatistics :- !.
 %
 % module initialization
 %
+min_swi_version(80512). % for correct rounding
+
 check_features :-
+/* for future use
+	(current_prolog_flag(version,V), min_swi_version(Min), V < Min
+	 -> print_message(error, clpBNR(swi_version,Min))
+	 ;  true
+	),
+*/
 	(current_prolog_flag(bounded,true)
 	 -> print_message(error, clpBNR(bounded))
 	 ;  true
@@ -963,6 +971,10 @@ set_min_free(Amount) :-
 	(Free < Amount ->	set_prolog_stack(global,min_free(Amount)) ; true).
 
 :- multifile prolog:message//1.	
+
+prolog:message(clpBNR(swi_version,Min)) -->
+	{ Mj is Min div 10000, Mn is (Min-(10000*Mj)) div 100, P is Min rem 100 },
+	[ 'This version of clpBNR requires SWI-Prolog version ~w.~w.~w or better.'-[Mj,Mn,P] ].
 
 prolog:message(clpBNR(bounded)) -->
 	[ 'clpBNR requires unbounded integers and rationals.'-[] ].

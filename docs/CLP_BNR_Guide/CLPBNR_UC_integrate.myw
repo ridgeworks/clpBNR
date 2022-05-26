@@ -94,7 +94,7 @@ The first example specifies an initial condition `Yi=1` and generates the final 
 
 With the basic framework established, the definition of the `step/4` predicate remains. Research in numerical methods for integration has yielded many algorithms for the approximation step (Euler (various), Adams-Bashforth, Runge-Kutta, etc.) with varying performance with respect to accuracy, stability (convergence), and efficiency depending on the problem at hand. For simplicity, we'll start with a simple Euler method.
 
-The `step` predicate takes the differential equation (expressed in `yall` lambda format), the `X,Y` pairs representing the values at the boundaries of the step, and `Ydomain`. The Euler method assumes the slope is the simple interval extension of {`f`} replacing the {`x`} and {`y`} with the `X` and `Y` intervals over the step range. The interval slope is then used to constrain the endpoint `Y` values (which will be "attached" to other step endpoints. An Euler based step predicate using intervals:
+The `step` predicate takes the differential equation (expressed in `yall` lambda format), the `X,Y` pairs representing the values at the boundaries of the step, and `Ydomain`. The Euler method assumes the slope is the simple interval extension of {`f`} replacing the {`x`} and {`y`} with the `X` and `Y` intervals over the step range. The interval slope is then used to constrain the endpoint `Y` values (which will be "attached" to other step endpoints). An Euler based step predicate using intervals:
 .pl
 	step_euler(FxyL, (X0,Y0), (X1,Y1), Ydomain) :-
 		Dx is X1 - X0,         % assumed (X1>X0)
