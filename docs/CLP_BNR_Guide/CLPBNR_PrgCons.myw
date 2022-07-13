@@ -229,7 +229,7 @@ eg
 	Sum::integer(0, 10),
 	V::real(-4, 6).
 	
-	﻿?- sum([1,V-3,3],S), {Sum == S}, Sum::integer(0,10).
+	﻿?- sym_sum([1,V-3,3],S), {Sum == S}, Sum::integer(0,10).
 	S = 1+(V-3+(3+0)),
 	Sum::integer(0, 10),
 	V::real(-1, 9).

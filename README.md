@@ -1,6 +1,6 @@
 # CLP(BNR)
 
-`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog (V8.2 or later).
+`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog. Versions of `clpBNR` 0.10.0 and later require SWI-Prolog 8.5.12 or later for correct rounding of elementary functions. (Versions earlier than 0.10.0 will run on SWIP versions 8.2.0 or later.) Also Version 0.10.0 removes support for the constraint operator '`=>`' (interval inclusion); it's redundant (use '`<=`' instead) and conflicts with SWI-Prolog's use of '`=>`' for [single sided unification](https://www.swi-prolog.org/pldoc/man?section=ssu).
 
 CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. It differs from some other CLP(*R*)'s in that:
 * CLP(BNR) is complete in that any real number can be finitely represented even though the set of reals is infinite. It does this by sacrificing precision: a real number *R* is represented by an interval (*L,U*) where *L=<R=<U* and *L* and *U* are numbers as defined by SWI-Prolog (integers, rationals or floats, including the IEEE infinity values). A precise value (*L=U*) is represented directly by the number.
@@ -110,7 +110,7 @@ Here is the current set of operators and functions supported in this version:
 	abs                                   %% absolute value
 	sqrt                                  %% square root (needed?)
 	min max                               %% min/max (arity 2)
-	<= =>                                 %% inclusion
+	<=                                    %% included (one way narrowing)
 	and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 	- ~                                   %% unary negate and not
 	exp log                               %% exp/ln
@@ -129,7 +129,7 @@ Further explanation and examples, including a complete reference section, can be
 
 ## Getting Started
 
-If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.2 or greater is required.
+If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.5.12 or greater is required for `clpBNR` 0.10.0 or later. (Earlier versions require a minimum of SWIP 8.2.0.)
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://github.com/ridgeworks/clpBNR.git`. Once installed, it can be loaded with `use_module/1`. For example:
 
@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.9.12
+	Installed version:      0.10.0
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -149,7 +149,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.9.12alpha ***.
+	% *** clpBNR v0.10.0 ***.
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
@@ -178,8 +178,7 @@ The `clpBNR` module declaration is:
 		op(500, yfx, nor),     % boolean 'nor'
 		op(500, yfx, xor),     % boolean 'xor'
 		op(700, xfx, <>),      % integer not equal
-		op(700, xfx, <=),      % set inclusion
-		op(700, xfx, =>),      % set inclusion
+		op(700, xfx, <=),      % included (one way narrowing)
 	
 		% utilities
 		print_interval/1, print_interval/2,      % pretty print interval with optional stream
@@ -188,10 +187,14 @@ The `clpBNR` module declaration is:
 		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
 		enumerate/1,           % "enumerate" integers
-		global_minimum/2,      % find interval containing global minimums for an expression
+		global_minimum/2,      % find interval containing global minimum(s) for an expression
 		global_minimum/3,      % global_minimum/2 with definable precision
-		global_maximum/2,      % find interval containing global minimums for an expression
+		global_maximum/2,      % find interval containing global maximum(s) for an expression
 		global_maximum/3,      % global_maximum/2 with definable precision
+		global_minimize/2,     % global_minimum/2 plus narrow vars to found minimizers
+		global_minimize/3,     % global_minimum/3 plus narrow vars to found minimizers
+		global_maximize/2,     % global_maximum/2 plus narrow vars to found maximizers
+		global_maximize/3,     % global_maximum/3 plus narrow vars to found maximizers
 		nb_setbounds/2,        % non-backtracking set bounds (use with branch and bound)
 		partial_derivative/3,  % differentiate Exp wrt. X and simplify
 		clpStatistics/0,       % reset
@@ -201,6 +204,7 @@ The `clpBNR` module declaration is:
 		trace_clpBNR/1         % enable/disable tracing of clpBNR ops
 		]).
 
+Also included with this pack (new in V0.10.0) is module `clpBNR_toolkit`, a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Reference documentation and examples of use are included in the User Guide ([Guide to CLP(BNR)][clpBNR_UG]).
 
 ## SWI-Prolog Arithmetic Flags
 
@@ -216,6 +220,6 @@ This package sets the SWI-Prolog arithmetic flags as follows:
 
 This package will not work as intended if these flag values are not respected.
 
-## Other SWI-Prolog Envirnment Flags
+## Other SWI-Prolog Environment Flags
 
 Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This will be set accordingly when `clpBNR` initializes but nothing prevents it from being subsequently overwritten.

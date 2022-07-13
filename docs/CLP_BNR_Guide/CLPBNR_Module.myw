@@ -24,8 +24,7 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		op(500, yfx, nor),     % boolean 'nor'
 		op(500, yfx, xor),     % boolean 'xor'
 		op(700, xfx, <>),      % integer not equal
-		op(700, xfx, <=),      % set inclusion
-		op(700, xfx, =>),      % set inclusion
+		op(700, xfx, <=),      % included (one way narrowing)
 	
 		% utilities
 		print_interval/1, print_interval/2,      % pretty print interval with optional stream
@@ -34,10 +33,14 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
 		enumerate/1,           % "enumerate" integers
-		global_minimum/2,      % find interval containing global minimums for an expression
+		global_minimum/2,      % find interval containing global minimum(s) for an expression
 		global_minimum/3,      % global_minimum/2 with definable precision
-		global_maximum/2,      % find interval containing global minimums for an expression
+		global_maximum/2,      % find interval containing global maximum(s) for an expression
 		global_maximum/3,      % global_maximum/2 with definable precision
+		global_minimize/2,     % global_minimum/2 plus narrow vars to found minimizers
+		global_minimize/3,     % global_minimum/3 plus narrow vars to found minimizers
+		global_maximize/2,     % global_maximum/2 plus narrow vars to found maximizers
+		global_maximize/3,     % global_maximum/3 plus narrow vars to found maximizers
 		nb_setbounds/2,        % non-backtracking set bounds (use with branch and bound)
 		partial_derivative/3,  % differentiate Exp wrt. X and simplify
 		clpStatistics/0,       % reset

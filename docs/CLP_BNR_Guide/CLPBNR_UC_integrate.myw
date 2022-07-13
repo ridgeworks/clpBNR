@@ -1,14 +1,69 @@
 #### Numerical Solution of Differential Equations
 
-Many of the laws of physics (mechanics, thermodynamics, electromagnetics, ..) are expressed in the form of differential equations. Solving a differential equation is the process of mapping it to an equivalent equation which does not contain derivatives, which typically involves integration and the introduction of new constants. In many real world problems this cannot be done in an "exact" manner so numerical methods are employed to find solutions. This section will cover solving initial boundary problems involving "ordinary differential equations", i.e., those problems involving a single independent variable, based the concepts and implementation described in [Application of Relational Interval Arithmetic to Ordinary Differential Equations].
+Many of the laws of physics (mechanics, thermodynamics, electromagnetics, ..) are expressed in the form of differential equations. Solving a differential equation is the process of mapping it to an equivalent equation which does not contain derivatives, which typically involves integration and the introduction of new constants. In many real world problems this cannot be done in an "exact" manner so numerical methods are employed to find solutions.
 
-##### Basic Integration using Euler Approximation
+##### Simple Integration of {`f(x)`}
 
+Before considering the general problem of solving differential equations with multiple variables, we'll start with the problem of calculating the bounds of a simple integral: {`int_(Xl)^(Xh) f(X) dx`}. The value of an integral can be approximated numerically by multiplying the width of interval {`X`} ({`Xh-Xl`}) by the value of {`f(X)`} over the range of {`X`} (also an interval). However, this is only an approximation the width of the interval so calculated can be quite large. As is done in standard numerical integration techniques, this can be addressed by dividing {`X`} into {`N`} sub-intervals, calculating the integral for each, and adding them together. For sufficiently large {`N`}, the accumulated error can kept within acceptable limits and the result will always contain the real integral value.
+
+Defining an "acceptable" value of {`N`} in general for any {`f(X)`} is problematical, so for the purposes of this example we'll use the {`2^P`} where the default value of {`P`} is the value of the `clpBNR_default_precision` environment flag. The interval value `R` of the integral of a function `F` over interval `X` can be done as follows:
+.pl
+	integrate(F,X,R) :-
+		current_prolog_flag(clpBNR_default_precision,P),
+		integrate(F,X,R,P).
+	
+	integrate(F,X,R,P) :-
+		integrate_step(P,(F,X),X,Exp),
+		clpBNR:constrain_(R is Exp).               %  {R is Exp}.  without checks
+	
+	integrate_step(0, F, Xstep, Fstep*Step) :- !,  % final step, integral is F(Xstep)*delta(Xstep)
+		copy_term(F,(Fstep,Xstep)),                % copy of F for each step
+		Step is delta(Xstep).
+	integrate_step(C, F, XStep, IntL+IntR) :-      % divide current X in two and find integral of each half
+		C > 0,                                     % fail on negative C
+		Xm is midpoint(XStep),
+		range(XStep,[Xl,Xh]),
+		XL::real(Xl,Xm), XH::real(Xm,Xh),          % step for each half
+		NxtC is C-1,
+		integrate_step(NxtC,F,XL,IntL),
+		integrate_step(NxtC,F,XH,IntR).
+`integrate_step/4` produces a expression containing the sum of the sub-integrals, each of which is the product of the sub-interval width and the value of `F` over that sub-interval. As this expression cannot be further simplified, a `clpBNR` internal predicate (`constrain_`) is used to add the constraint for efficiency reasons. (Note that isn't much "constraining" going on here; we're just using interval arithmetic system to calculate the bounds of the integral.)
+
+To integrate {`f(x) = x^2`} over the range {`0`} to {`1`} for `P` ranging from `2` to `10`:
+eg
+	?- X::real(0,1), between(2,10,P), integrate(X**2,X,R,P), range(R,[Rl,Rh]), format("~w:\t[~f,~f]\n",[P,Rl,Rh]),fail.
+	2:	[0.218750,0.468750]
+	3:	[0.273438,0.398438]
+	4:	[0.302734,0.365234]
+	5:	[0.317871,0.349121]
+	6:	[0.325562,0.341187]
+	7:	[0.329437,0.337250]
+	8:	[0.331383,0.335289]
+	9:	[0.332357,0.334311]
+	10:	[0.332845,0.333822]
+	false.
+For this particular function, the width of the result is on the order of {`2^(-P)`} so a more precise value for `R` may require fairly large values of `P` and consequently take some time to calculate.
+
+A more complicated example (from [Introduction to INTERVAL ANALYSIS]) - the elliptic interval of the first kind {`int_0^theta(1-k^2sin^2t)^(-1//2)dt`} with parameters {`theta = 2pi`} and {`k = 0.5`} :
+eg
+	?- T::real(0,2*pi), K = 1r2, integrate(sqrt(1-K**2*sin(T**2)),T,R,12).
+	K = 1r2,
+	T::real(0, 6.283185307179587),
+	R:: 6.18... .
+Note that this technique can be used to evaluate any integral, e.g., even for those functions that have no derivative. The following calculates the total area under the curve {`2*X+X**2-X**3`} between {`-1`} and {`1`} even though the function value is negative in some parts of the range:
+eg
+	?- X::real(-1,1),integrate(abs(2*X+X**2-X**3),X,R,10).
+	X::real(-1, 1),
+	R:: 1.5... .
+
+##### Solving Differential Equations using Euler Approximation
+
+This section will cover how to solve initial boundary problems involving "ordinary differential equations", i.e., those problems involving a single independent variable, based the concepts and implementation described in [Application of Relational Interval Arithmetic to Ordinary Differential Equations].
 To keep things simple, consider only a single first order differential equation of the form:
 math> dy/dx = f(x,y)
 By integration, this can be expressed as:
 math> y = c + int_x f(x,y) dx
-If {`x_1<=x<=x_2`}, by specifying a boundary condition, i.e., the value of {`y`} at {`x_1`} or {`x_2`}, the value of {`c`} can be determined. This leaves the integration which approximates the the integral value over the range of {`x`} of interest. But depending on the function, this approximation can result in a large error, particularly when the range of {`x`} is large, so typically the range is divided into a number of sub-ranges steps with an integration approximation for each step. If the approximation is good the accumulated error is usually (not always) within acceptable limits. Using conventional arithmetic, this is sometimes difficult to verify, but interval arithmetic will express the possible error explicitly in the answer.
+If {`x_1<=x<=x_2`}, by specifying a boundary condition, i.e., the value of {`y`} at {`x_1`} or {`x_2`}, the value of {`c`} can be determined. This leaves the integration which approximates the the integral value over the range of {`x`} of interest. As described above, this approximation can result in a large error, particularly when the range of {`x`} is large, so typically the range is divided into a number of sub-ranges steps with an integration approximation for each step. If the approximation is good the accumulated error is usually (not always) within acceptable limits. Using conventional arithmetic, this is sometimes difficult to verify, but interval arithmetic will express the possible error explicitly in the answer.
 
 A general CLP(BNR) framework for tackling the initial value problem looks like:
 .pl
@@ -172,9 +227,9 @@ eg
 	Yerr::real(-0.02093687589396387, 0.021545353028185943).
 and with the Trapezoidal approximation with the same step size:
 eg
-	﻿?- integrate(d(Y)=Y, X, (0,1), (1,Yf), real),{Yerr==Yf-e}.
+	?- integrate(d(Y)=Y, X, (0,1), (1,Yf), real),{Yerr==Yf-e}.
 	Yf:: 2.718...,
-	Yerr::real(-2.782077432517127e-5, 0.00013843312105699113).
+	Yerr::real(-2.781823253172888e-5, 0.00013843057926266056).
 The accuracy is considerably improved, although it took about 5 times longer due to the additional constraints. (As discussed below, the tradeoff between accuracy and compute time can also be controlled via the `Ctrl` parameter.)
 
 ##### Paratrooper Example
@@ -207,14 +262,14 @@ eg
 	G = 32,
 	B = 4,
 	W = 200,
-	Vf::real(45.579849803232136, 54.387096077205705).
+	Vf::real(45.58578340391216, 54.38116247652567).
 The first result (at 1 sec.) looks quite good - 5 digits of accuracy. But it's down to three digits at 5 sec., and the result is quite wide at 10 sec. (For comparison, the exact solution is given by `﻿V is 50-10*exp(-0.64*T)` for a terminal velocity of 50 ft./sec.) One possible explanation is the weak convergance of the fixed point iteration seen previously. In this case there is no possibility of multiple solutions so `absolve`, which deterministically "nibbles" way at the bounds of an interval, is preferred and seems to do a decent job:
 eg
-	﻿?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_)),absolve(Vf).
+	?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_)),absolve(Vf).
 	G = 32,
 	B = 4,
 	W = 200,
-	Vf::real(49.708246494157244, 50.22933313132091).
+	Vf::real(49.84604514220933, 50.08652260393072).
 Another possibility is that we're observing symptoms of instability where the cumulative effect of approximation errors is severely impacting the accuracy of the result. Instability will be discussed more below, but one cause is a large step size . (The step size between the `T=1` and `T=10` query has increased by a factor of 10.) To compensate for this use the `Ctrl` parameter:
 eg
 	﻿?- G= 32, B=4, W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_), 10).
@@ -241,7 +296,7 @@ eg
 	Af:: 26.6... .
 	
 	?- integrate(d(A)=6-A/5,T,(0,5),(30,Af),real(0,50)).
-	Af::real(23.58515983031275, 36.29144672957917).
+	Af::real(23.592671270766523, 36.2839352891254).
 At 30 minutes the answer is unacceptably wide so increase the number of steps using the `Ctrl` parameter:
 eg
 	﻿?- integrate(d(A)=6-A/5,T,(0,5),(30,Af),real(0,50),10).
@@ -262,9 +317,9 @@ As a last resort, alternative `step` implementations based on conventional numer
 
 In addition to the dependent and independent variables, there may be other interval variables representing fuzzy data which may be contained in the differential equation. For example, the flow in the brine tank example may vary by 5% from the nominal value. This can be modelled by an interval `F` with a domain of `real(1.9,2.1)`, so after 10 sec.:
 eg
-	﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
+	?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
 	F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(22.047161468912186, 31.391469601742028).
+	Af::real(22.047179199371364, 31.391451363505027).
 This result is considerably wider than the original seen previously, but is it due to the fuzzy flow value or is something else going on? Since all values are positive, the rate of change of `A` is positive and monotonically increases with `F`, so evaluating at the boundaries should provide accurate (withing the limits of the integration algorithm) values of `Af`:
 eg
 	﻿?- {F==1.9},integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)).
@@ -276,16 +331,16 @@ eg
 	Af:: 26.9... .
 Before trying anything else, see if `absolve` helps to address any weak convergence issues:
 eg
-	﻿﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)), absolve(Af).
-	﻿F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(25.69728183329884, 27.384202093340335).
+	?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)), absolve(Af).
+	F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(25.697285513486072, 27.36557470866275).
 That actually helped quite a bit, but still not as narrow as it could be. 
 
 Decreasing the step size (increasing `Ctrl`):
 eg
-	﻿?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50),9), absolve(Af).
-	﻿F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(24.869257146716613, 28.23565654323769).
+	?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50),9), absolve(Af).
+	F::real(1.8999999999999997, 2.1000000000000005),
+	Af::real(24.869257159250747, 28.22783073993808).
 actually made it worse, so it's probably not an instability issue. 
 
 The problem is that any uncertainty in one of "constants" is propagated from each integration step to the next, amplified by the approximation error. The end result is correct in that it contains the "real" value, but it may seem more conservative than need be. That's the product of the interaction between input fuzzy data and approximation errors caused by the integration algorithm. Weak convergence may further exacerbate the problem but, to some extent, that can be mitigated through the use of `absolve`.
@@ -364,7 +419,7 @@ eg
 	B = 4,
 	W = 200,
 	X1f:: 49.6...,
-	Xf::real(234.9549618806109, 235.06800774575368).
+	Xf::real(234.95497997335906, 235.06798965300547).
 	
 	?- G= 32, B=4, W=200,
 	integrateV([d(X1)=G-G*B*X1/W, d(X)=X1], T, (0,[40,0]), (10,[X1f,Xf]), [real(0,_),real(0,_)], 10).
@@ -396,27 +451,27 @@ math> (dV)/dt = -g+(b*e_v)/(M_0-b*t)
 
 Using the data in the example and `Tf=15`:
 eg
-	﻿?- G=9.8, M0=25000, B=1000, Ev=400,
+	?- G=9.8, M0=25000, B=1000, Ev=400,
 	integrateV([d(X1)= -G+(B*Ev)/(M0-B*T), d(X)=X1], T, (0,[0,0]), (15,[X1f,Xf]), [real,real]).
 	G = 9.8,
 	M0 = 25000,
 	B = 1000,
 	Ev = 400,
 	X1f:: 219.5...,
-	Xf::real(1232.4139630647717, 1232.6117640383343).
+	Xf::real(1232.4139630647726, 1232.611764038333).
 So after 15 sec. the rocket is travelling at 220 m./sec. at a height of 1232 m. The same query form could be used for 20 sec. but note that at 20 sec. the fuel is exhausted. So a different equation applies for `T>20`; one involving just the force of gravity. The final values for `T=20` can be used as the initial values to calculate the velocity and height at `T=30`:
 eg
-	﻿?- G=9.8, M0=25000, B=1000, Ev=400,
+	?- G=9.8, M0=25000, B=1000, Ev=400,
 	integrateV([d(X1)= -G+(B*Ev)/(M0-B*T), d(X)=X1], T, (0,[0,0]), (20,[V20,H20]), [real,real]),
 	integrateV([d(X1)= -G, d(X)=X1], T, (20,[V20,H20]), (30,[V30,H30]), [real,real]).
 	G = 9.8,
 	M0 = 25000,
 	B = 1000,
 	Ev = 400,
-	V20::real(447.7126142866083, 448.0876142866106),
-	H20::real(2821.436298365495, 2822.6875587684135),
-	V30::real(349.71261428660466, 350.0876142866106),
-	H30::real(6808.56244123154, 6813.563701634558).
+	V20::real(447.7126142866085, 448.08761428661023),
+	H20::real(2821.436298365498, 2822.687558768409),
+	V30::real(349.7126142866049, 350.08761428661387),
+	H30::real(6808.562441231543, 6813.563701634554).
 When the fuel is expended at 20 sec., the rocket has reached a (peak) velocity of 448 m./sec and continues to coast reaching a height of approximately 6810 m. after 30 sec.
 
 ##### Summary

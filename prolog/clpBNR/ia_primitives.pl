@@ -100,19 +100,18 @@ wrap_((Xl,Xh), W, (MXl,MXh), (Xpl,Xph)) :-  % project onto cylinder from -W/2 to
 	MXl is round(Xl/W),
 	MXh is round(Xh/W),
 	MXh-MXl =< 1, Xh-Xl =< W,  % MX check first to avoid overflow
-	Xpl is Xl - (MXl*W), Xph is Xh-(MXh*W).
+	% Negative cylinders possible so be careful of rounding mode for subtraction
+	(MXl >= 0 -> Xpl is Xl-roundtoward(MXl*W, to_positive) ; Xpl is Xl-roundtoward(MXl*W, to_negative)), 
+	(MXh >= 0 -> Xph is Xh-roundtoward(MXh*W, to_negative) ; Xph is Xh-roundtoward(MXh*W, to_positive)).
 
 %
 % unwrap projected interval back to original range
 %
 unwrap_((Xpl,Xph), W, (MXl,MXh), (Xl,Xh)) :-
-	Xl is Xpl+W*MXl, Xh is Xph+W*MXh.
-
-%
-% fuzz a point value for floating point functions
-%
-fuzz_((X,X),(Xl,Xh)) :- !, bounded_number(Xl,Xh,X).
-fuzz_(X,X).
+	X1l is roundtoward(Xpl+W*MXl, to_negative),
+	X1h is roundtoward(Xph+W*MXh, to_positive),
+	% if unwrapped to a point, fuzz it
+	(X1l = X1h -> bounded_number(Xl,Xh,X1l) ; Xl = X1l, Xh = X1h).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -494,18 +493,19 @@ narrowing_op(exp, _, $((Zl,Zh),(Xl,Xh)), $((NZl,NZh),(NXl,NXh))) :-
 
 narrowing_op(pow, P, $(Z,X,Y), $(NewZ,NewX,NewY)) :-
 	powr_(P, Z,X,Y, NewZ,NewX,NewY).
-	
-powr_(p, Z,X,Y, NewZ,X,Y) :-   % 1**Y == Z ==> Z = 1
-	X = (Xl,Xh), equals_one(Xl), equals_one(Xh), !,
-	^(Z,(1,1),NewZ).
 
-powr_(p, Z,X,Y, Z,X,NewY) :-   % X**Y == 1 ==> Y = (1,1)
-	Z = (Zl,Zh), equals_one(Zl), equals_one(Zh), !,
-	^(Y,(0,0),NewY).
-
-powr_(p, Z,X,Y, NewZ,X,Y) :-   % X**0 == Z ==> Z = (1,1)
-	Y = (Yl,Yh), equals_zero(Yl), equals_zero(Yh), !,
-	^(Z,(1,1),NewZ).
+powr_(p, Z,X,Y, NewZ,NewX,NewY) :-                  % (persistant) special cases
+	Z = (Zl,Zh), X = (Xl,Xh), Y = (Yl,Yh), 
+	( equals_one(Xl), equals_one(Xh) ->             % 1**Y == Z
+		!, ^(Z,(1,1),NewZ), NewX = X, NewY = Y      %  ==> Z := (1,1)
+	; equals_one(Zl), equals_one(Zh) ->             % X**Y == 1 , X doesn't contain 1 or -1
+		((Xl =< -1,-1 =< Xh ; Xl =< 1,1 =< Xh)
+		 -> fail                                    % fail to use general pt_powrCase
+		 ;  !, NewZ = Z, NewX = X, ^(Y,(0,0),NewY)  %  ==> Y := (0,0)
+		)
+	; equals_zero(Yl), equals_zero(Yh) ->           % X**0 == Z
+		!, ^(Z,(1,1),NewZ), NewX = X, NewY = Y      %  ==> Z := (1,1)
+	).
 
 powr_(_, Z,X,(R,R), NewZ,NewX,NewY) :- rational(R,N,D), !,   % R = rational point exponent
 	N1 is N mod 2, D1 is D rem 2,  % use `mod` for negative N
@@ -514,22 +514,17 @@ powr_(_, Z,X,(R,R), NewZ,NewX,NewY) :- rational(R,N,D), !,   % R = rational poin
 	pt_powrCase(D1,N1,X,NewZ,Ri,NewX), non_empty(NewX),
 	NewY = (R,R).
 
-powr_(_, Z,(Xl,Xh),Y, NewZ,NewX,NewY) :-           % interval Y 
-	XZl is max(0,Xl), Xp = (XZl,Xh),  Xh >= 0,  % X must be positive (>=0)
-	powr_prim_(Z,Xp,Y,NewZ), non_empty(NewZ),
-	universal_interval(UI), odiv_((1,1),Y,UI,Yi),
-	powr_prim_(Xp,NewZ,Yi,NewX), non_empty(NewX),
-	ln(NewZ,Ynum), ln(NewX,Yden),
-	odiv_(Ynum,Yden,Y,NewY).       % NY := Y ^ log(NZ)/log(NX)*/
+powr_(_, Z,X,Y, NewZ,NewX,NewY) :-  % interval Y
+	intCase(C,X),
+	powr_intY_(C, Z,X,Y, NewZ,NewX,NewY).
 
 equals_zero(0).
 equals_zero(0.0).
 equals_zero(-0.0).
-	
+
 equals_one(1).
 equals_one(1.0).
 
-% requires conservative rounding using nexttoward
 % Assumption : even numerator and denominator can't occur (non-normalized rational).
 pt_powrCase(N1,D1,Z,X,R,NewZ) :-  R < 0, !,  % R negative
 	Rp is -R,
@@ -538,22 +533,17 @@ pt_powrCase(N1,D1,Z,X,R,NewZ) :-  R < 0, !,  % R negative
 	pt_powrCase(N1,D1,Zi,X,Rp,NZi),
 	odiv_((1,1),NZi,Z,NewZ).
 
-pt_powrCase(1,0,(Zl,Zh),(Xl,Xh),R,NewZ) :-  % R positive, numerator odd, denominator even
-	% reflect about X axis to inclide positive and negative roots
+pt_powrCase(1,0,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator even
+	% reflect about X axis to include positive and negative roots
 	Xh >=0,   % some part of X must be positive
-	(float(Xl)
-	 -> Zl1 is max(0, roundtoward(nexttoward(nexttoward(Xl,-1.0Inf),-1.0Inf)**R, to_negative))
-	  ; Zl1 is max(0, roundtoward(Xl**R,to_negative))
-	),
-	(float(Xh)
-	 -> Zh1 is roundtoward(nexttoward(nexttoward(Xh,1.0Inf),1.0Inf)**R, to_positive)
-	  ; Zh1 is roundtoward(Xh**R,to_positive)
-	),
-	Zpl is max(Zl,Zl1),  Zph is min(Zh,Zh1),    % positive case
-	(Zpl =< Zph -> Zps = (Zpl,Zph) ; empty_interval(Zps)),
-	Znl is max(Zl,-Zh1), Znh is min(Zh,-Zl1),   % negative case
-	(Znl =< Znh -> Zns = (Znl,Znh) ; empty_interval(Zns)),
-	union_(Zps,Zns,NewZ).                       % union of positive and negative cases
+	Zl1 is max(0, roundtoward(Xl**R,to_negative)),  % neg Xl ==> nan
+	Zh1 is roundtoward(Xh**R,to_positive),
+	Zpl is max(Zl,Zl1),  Zph is min(Zh,Zh1),     % positive case
+	Znl is max(Zl,-Zh1), Znh is min(Zh,-Zl1),    % negative case
+	( Znl > Znh -> NZl is Zpl, NZh is Zph        % negative case is empty
+	; Zpl > Zph -> NZl is Znl, NZh is Znh        % positive case is empty
+	; NZl is min(Zpl,Znl), NZh is max(Zph,Znh)   % else union of positive and negative cases
+	).
 
 pt_powrCase(0,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator even, denominator odd
 	% reflect about Z axis
@@ -562,170 +552,178 @@ pt_powrCase(0,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator even, d
 	;           Xl1 = 0, Xh1 is max(-Xl,Xh)      % split
 	)),
 	% NZl can't be negative
-	(float(Xl1)
-	 -> NZl is max(Zl,max(0, roundtoward(nexttoward(nexttoward(Xl1,-1.0Inf),-1.0Inf)**R, to_negative)))
-	  ; NZl is max(Zl,max(0, roundtoward(Xl1**R,to_negative)))
-	),
-	(float(Xh1)
-	 -> NZh is min(Zh, roundtoward(nexttoward(nexttoward(Xh1,1.0Inf),1.0Inf)**R, to_positive))
-	  ; NZh is min(Zh, roundtoward(Xh1**R,to_positive))
-	).
+	NZl is max(Zl, roundtoward(Xl1**R,to_negative)),  % Xl1 known to be positive
+	NZh is min(Zh, roundtoward(Xh1**R,to_positive)).
 
 pt_powrCase(1,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator odd
 	% continuous monotonic
-	(float(Xl)
-	 -> NZl is max(Zl, roundtoward(nexttoward(nexttoward(Xl,-1.0Inf),-1.0Inf)**R,to_negative))
-	  ; NZl is max(Zl, roundtoward(Xl**R,to_negative))
-	),
-	(float(Xh)
-	 -> NZh is min(Zh, roundtoward(nexttoward(nexttoward(Xh,1.0Inf),1.0Inf)**R,to_positive))
-	  ; NZh is min(Zh, roundtoward(Xh**R,to_positive))
-	).
+	NZl is max(Zl, roundtoward(Xl**R,to_negative)),
+	NZh is min(Zh, roundtoward(Xh**R,to_positive)).	
+
+% Y is an interval	
+powr_intY_(p, Z,X,Y, NewZ,NewX,NewY) :-              % positive X, interval Y 
+	powr_prim_(Z,X,Y,NewZ), non_empty(NewZ),         % NewZ := X**Y
+	universal_interval(UI), odiv_((1,1),Y,UI,Yi),
+	powr_prim_(X,NewZ,Yi,NewX), non_empty(NewX),     % NewX := NewZ**(1/Y)
+	ln(NewZ,Ynum), ln(NewX,Yden),
+	odiv_(Ynum,Yden,Y,NewY).                         % NewY := Y ^ log(NewZ)/log(NewX)
+
+powr_intY_(n, Z,X,Y, NewZ,NewX,NewY) :-              % negative X, interval Y
+	% In this case Y may contain an rational which is legal for negative X, e.g.,
+	% to calculate an odd power or root. However it still may be able to bound Z.
+	% This case flips X to positive, calculates upper bound Zh1, and then intersects
+	% Z with (-Zh1,Zh1). 
+	X = (Xl,Xh), X1l is -Xh, X1h is -Xl,
+	powr_intY_(p, Z,(X1l,X1h),Y, (_,Z1h),(X2l,X2h),NewY),  % use code for positive case
+	X3l is -X2h, X3h is -X2l, ^(X,(X3l,X3h),NewX),    % flip back for NewX
+	Z1l is -Z1h, ^(Z,(Z1l,Z1h),NewZ).                 % maximal range = (-Z1h,Z1h)  
+
+powr_intY_(s, Z,X,Y, NewZ,NewX,NewY):-                % split X, interval Y
+	% union of positive and negative regions
+	X = (Xl,Xh), Xfl is -Xl,  % flip negative to positive for calculation
+	powr_intY_(p, Z,(0,Xfl),Y, (_,Znh),NXn,NYn),      % Znl always 0,  	
+	powr_intY_(p, Z,(0,Xh), Y, (_,Zph),NXp,NYp),      % Zpl always 0
+	% union and intersect with original
+	NZl is -Znh, NZh is max(Znh,Zph), ^(Z,(NZl,NZh),NewZ),	
+	union_(NXn,NXp,NX), ^(X,NX,NewX),
+	union_(NYn,NYp,NY), ^(Y,NY,NewY).
+	
+powr_prim_((Zl,Zh), (Xl,Xh), (Yl,Yh), (NZl,NZh)) :-  % X assumed positive
+	Zll is roundtoward(Xl**Yl,to_negative),
+	Zlh is roundtoward(Xl**Yh,to_positive),
+	Zhl is roundtoward(Xh**Yl,to_negative),
+	Zhh is roundtoward(Xh**Yh,to_positive),
+	NZl is max(Zl,min(Zll, min(Zlh, min(Zhl, Zhh)))), % intersect with min of all
+	NZh is min(Zh,max(Zll, max(Zlh, max(Zhl, Zhh)))). % intersect with max of all
 
 ln((Xl,Xh), (Zl,Zh)) :-
-	Zl is roundtoward(log(Xl),to_negative), % rounding dependable?
+	Zl is roundtoward(log(Xl),to_negative),
 	Zh is roundtoward(log(Xh),to_positive).
-
-powr_prim_((Zl,Zh), (Xl,Xh), (Yl,Yh), (NZl,NZh)) :-  % X assumed positive
-	Zll is max(0,nexttoward(roundtoward(Xl**Yl,to_negative),-1.0Inf)), 
-	Zlh is nexttoward(roundtoward(Xl**Yh,to_positive), 1.0Inf),
-	Zhl is max(0,nexttoward(roundtoward(Xh**Yl,to_negative),-1.0Inf)),
-	Zhh is nexttoward(roundtoward(Xh**Yh,to_positive), 1.0Inf),
-	NZlmin is min(Zll, min(Zlh, min(Zhl, Zhh))),  % min of all
-	NZl is max(Zl,NZlmin),
-	NZhmax is max(Zll, max(Zlh, max(Zhl, Zhh))),  % max of all
-	NZh is min(Zh,NZhmax).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z== sin(X)
 
 narrowing_op(sin, _, $(Z,X), $(NewZ, NewX)) :-
-	(wrap_(X,2*pi,MX,Xp)            % fails if X too wide
+	(wrap_(X,2*pi,MX,Xp)              % fails if X too wide
 	 -> sin_(MX,Xp,Z,NMX,X1,NewZ),
-	    unwrap_(X1,2*pi,NMX,X2),    % project back to original cylinder
-	    non_empty(NewZ),
+	    unwrap_(X1,2*pi,NMX,X2),      % project back to original cylinder,
 	    ^(X,X2,NewX)
-	 ;  ^(Z,(-1,1),NewZ),           % no narrowing possible, just constrain Z
-	    NewX = X
+	 ;  ^(Z,(-1,1),NewZ), NewX = X     % no narrowing possible
 	).
 
-sin_((MX,MX), X, Z, (MX,MX), NewX, NewZ) :- !,  % same cylinder, split into 3 interval convex sectors
-	Pi_2 is pi/2,
-	sin_sector_(lo, Pi_2, X, Z, NXlo,  NZlo),
-	sin_sector_(mid,Pi_2, X, Z, NXmid, NZmid),
-	sin_sector_(hi, Pi_2, X, Z, NXhi,  NZhi),
-	union_(NXlo,NXmid,NX1), union_(NX1,NXhi,NewX), 
-	union_(NZlo,NZmid,NZ1), union_(NZ1,NZhi,NewZ).
-
-sin_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-  % adjacent cylinders,
+sin_((MX,MX), X, Z, (MX,MX), NewX, NewZ) :-                % same cylinder
+	!,
+	sin_piece(X, C),
+	sin_case(C, X,Z, NewX, NewZ).
+	
+sin_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-    % adjacent cylinders
 	Pi is pi, MPi is -pi,
-	try_sin_((Xl,Pi), Z, NX1, NZ1,MXl,MXh,NMXl),
-	try_sin_((MPi,Xh),Z, NX2, NZ2,MXh,MXl,NMXh),
-	union_(NZ1,NZ2,NewZ),
+	empty_interval(MT),
+	(sin_(_, (Xl,Pi), Z, _, NX1, NZ1) -> NMXl = MXl ; NMXl = NMXh, NX1=MT, NZ1=MT),
+	(sin_(_, (MPi,Xh),Z, _, NX2, NZ2) -> NMXh = MXh ; NMXh = NMXl, NX2=MT, NZ2=MT),
+	union_(NZ1,NZ2,NewZ), non_empty(NewZ),
 	union_(NX1,NX2,NewX).
 
-try_sin_(X,Z,NewX,NewZ,MXS,MXF,MX) :- 
-	sin_((MXS,MXS), X, Z, _, NewX, NewZ) 
-	 -> MX = MXS
-	 ;  (empty_interval(NewX), NewZ = NewX, MX = MXF).
+sin_piece((Xl,Xh), C) :-
+	PiBy2 is pi/2, MiBy2 is -PiBy2,
+	( Xh =< MiBy2 -> C = sinD
+	; Xl >= PiBy2 -> C = sinD
+	; MiBy2 =< Xl, Xh =< PiBy2 -> C = sinI
+	; Xl =< MiBy2, PiBy2 =< Xh -> C = sin3
+	; Xl =< MiBy2, MiBy2 =< Xh -> C = sin2l
+	; Xl =< PiBy2, PiBy2 =< Xh -> C = sin2h
+	).
+	
+sin_case(sinD, X,Z, NewX,NewZ) :-           % Z strictly decreasing
+	sin_primD(X,Z, NewX,NewZ).
+sin_case(sinI, X,Z, NewX,NewZ) :-           % Z strictly increasing
+	sin_primI(X,Z, NewX,NewZ).
+sin_case(sin3, (Xl,Xh),Z, NewX,NewZ) :-     % full range of Z (3 pieces) 
+	SplitL is -pi/2, SplitH is pi/2, empty_interval(MT),
+	(sin_primD((Xl,SplitL),Z, X1,Z1) -> true; (X1=MT, Z1=MT)),
+	(sin_primI((SplitL,SplitH),Z, X2,Z2) -> true; (X2=MT, Z2=MT)),
+	(sin_primD((SplitH,Xh),Z, X3,Z3) -> true; (X3=MT, Z3=MT)),
+	union_(Z1,Z2,Z12), union_(Z12,Z3,NewZ), non_empty(NewZ),
+	union_(X1,X2,X12), union_(X12,X3,NewX).
+sin_case(sin2l, (Xl,Xh),Z, NewX,NewZ) :-     % else split on -pi/2 (2 pieces)
+	Split is -pi/2, empty_interval(MT),
+	(sin_primD((Xl,Split),Z, X1,Z1) -> true ; (X1=MT, Z1=MT)),
+	(sin_primI((Split,Xh),Z, X2,Z2) -> true ; (X2=MT, Z2=MT)),
+	union_(X1,X2,NewX),
+	union_(Z1,Z2,NewZ),non_empty(NewZ).
+sin_case(sin2h, (Xl,Xh),Z, NewX,NewZ) :-     % else split on +pi/2 (2 pieces)
+	Split is pi/2, empty_interval(MT),
+	(sin_primI((Xl,Split),Z, X1,Z1) -> true ; (X1=MT, Z1=MT)),
+	(sin_primD((Split,Xh),Z, X2,Z2) -> true ; (X2=MT, Z2=MT)),
+	union_(X1,X2,NewX),
+	union_(Z1,Z2,NewZ),non_empty(NewZ).
 
-sin_sector_(lo,Pi_2,(Xl,Xh),Z,(NXl,NXh),NewZ) :-
-	Xl =< -Pi_2,                 % X intersects lo sector, flip to mid
-	X1l is max(-pi-Xh,-Pi_2), X1h is -pi-Xl,
-	sin_prim_((X1l,X1h),Z,(NX1l,NX1h),NewZ),
-	!,
-	NXl is -pi-NX1h, NXh is -pi-NX1l.
-
-sin_sector_(hi,Pi_2,(Xl,Xh),Z,(NXl,NXh),NewZ) :-
-	Xh >= Pi_2,                    % X intersects hi sector, flip to mid
-	X1l is pi-Xh, X1h is min(pi-Xl,Pi_2),
-	sin_prim_((X1l,X1h),Z,(NX1l,NX1h),NewZ),
-	!,
-	NXl is pi-NX1h, NXh is pi-NX1l.
-
-sin_sector_(mid,Pi_2,(Xl,Xh),Z,NewX,NewZ) :-
-	Xl =< Pi_2, Xh >= -Pi_2,       % mid sector, valid asin function range
-	X1l is max(Xl,-Pi_2), X1h is min(Xh, Pi_2),
-	sin_prim_((X1l,X1h),Z,NewX,NewZ),
-	!.
-
-sin_sector_(_Any,_,_X,_Z,MT,MT) :- empty_interval(MT).
-
-% both sin and asin monotonic, increasing in range -pi/2 to pi/2
-sin_prim_(X,Z,(NXl,NXh),(NZl,NZh)) :-
-	% Note 1: can't depend on transcendentals to obey rounding
-	% Note 2: end result always a float interval (never precise), range limited to ± 1
-	% Note 3: any precise input will be fuzzed
-	% Note 4: empty ranges checked elsewhere
-	fuzz_(X,(X1l,X1h)), fuzz_(Z,(Z1l,Z1h)),                        % See Note 3
-	NZl is max(Z1l,max(-1,nexttoward(sin(X1l),-1.0Inf))),          % See Note 2
-	NZh is min(Z1h,min( 1,nexttoward(sin(X1h), 1.0Inf))),          % See Note 2
-	NZl < NZh,  % fuzzed value
-	NXl is max(X1l,nexttoward(asin(NZl),-1.0Inf)),
-	NXh is min(X1h,nexttoward(asin(NZh), 1.0Inf)),
-	NXl < NXh.  % fuzzed value
+sin_primI((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-    % Z increasing, X in range -pi/2,pi/2
+	NZl is max(Zl, roundtoward(sin(Xl),to_negative)),
+	NZh is min(Zh, roundtoward(sin(Xh),to_positive)),
+	non_empty(NZl,NZh),  % fails if Z empty
+	NXl is max(Xl,roundtoward(asin(NZl),to_negative)),
+	NXh is min(Xh,roundtoward(asin(NZh),to_positive)).
+	
+sin_primD((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :-    % Z decreasing, X in range -pi,-pi/2 or  pi/2,pi
+	NZl is max(Zl, roundtoward(sin(Xh),to_negative)),
+	NZh is min(Zh, roundtoward(sin(Xl),to_positive)),
+	non_empty(NZl,NZh),  % fails if Z empty
+	Offset is copysign(pi,Xl),
+	NXl is max(Xl,Offset-roundtoward(asin(NZh),to_positive)),
+	NXh is min(Xh,Offset-roundtoward(asin(NZl),to_negative)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z== cos(X)
 
 narrowing_op(cos, _, $(Z,X), $(NewZ, NewX)) :-
-	(wrap_(X,2*pi,MX,Xp)          % fails if X too wide
+	(wrap_(X,2*pi,MX,Xp)              % fails if X too wide
 	 -> cos_(MX,Xp,Z,NMX,X1,NewZ),
-	    unwrap_(X1,2*pi,NMX,X2),  % project back to original cylinder
-	    non_empty(NewZ),
+	    unwrap_(X1,2*pi,NMX,X2),      % project back to original cylinder,
 	    ^(X,X2,NewX)
-	 ;  ^(Z,(-1,1),NewZ),         % no narrowing possible, just constrain Z
-	    NewX = X
+	 ;  ^(Z,(-1,1),NewZ), NewX = X     % no narrowing possible
 	).
 
-cos_((MX,MX), X, Z, (MX,MX), NewX, NewZ) :- !,  % same cylinder, split into 2 interval convex sectors
-	cos_sector_(neg, X, Z, NXneg, NZneg),
-	cos_sector_(pos, X, Z, NXpos, NZpos),
-	union_(NZneg,NZpos,NewZ),
-	union_(NXneg,NXpos,NewX).
-
-cos_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-  % adjacent cylinders,
-	Pi is pi, MPi is -pi,
-	try_cos_((Xl,Pi), Z, NX1, NZ1,MXl,MXh,NMXl),
-	try_cos_((MPi,Xh),Z, NX2, NZ2,MXh,MXl,NMXh),
-	union_(NZ1,NZ2,NewZ),
-	union_(NX1,NX2,NewX).
-
-try_cos_(X,Z,NewX,NewZ,MXS,MXF,MXS) :-
-	cos_((MXS,MXS), X, Z, _, NewX, NewZ) 
-	 -> MX = MXS
-	 ;  (empty_interval(NewX), NewZ = NewX, MX = MXF).
-
-cos_sector_(neg,(Xl,Xh),Z,(NXl,NXh),NewZ) :-     % Lo is -pi, Hi is 0
-	Xl =< 0,
-	X1l is max(0,-Xh), X1h is -Xl,
-	cos_prim_((X1l,X1h),Z,(NX1l,NX1h),NewZ),
+cos_((MX,MX), X, Z, (MX,MX), NewX, NewZ) :-                        % same cylinder
 	!,
-	NXl is -NX1h, NXh is -NX1l.
+	cos_prim_(X,Z,NewX,NewZ).
 
-cos_sector_(pos,(Xl,Xh),Z,NewX,NewZ) :-          % Lo is 0, Hi is pi
-	Xh >=0,
-	X1l is max(0,Xl),
-	cos_prim_((X1l,Xh),Z,NewX,NewZ),
-	!.
+cos_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), (NXl,NXh), (NZl,NZh)) :-  % adjacent cylinders
+	Pi is pi, MPi is -pi,
+	(cos_prim_((Xl,Pi), Z, (NXl,NX1h), (NZ1l,NZ1h))                      % lo cylinder?
+	 -> (cos_prim_((MPi,Xh), Z, (_,NXh), (NZ2l,NZ2h))                    % hi cylinder?
+	      -> NZl = -1.0, NZh is max(NZ1h,NZ2h), NMXl = MXl, NMXh = MXh   % both cylinders
+	      ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h, NMXl = MXl, NMXh = MXl  % only lo
+	    )
+	 ;  cos_prim_((MPi,Xh), Z, (NXl,NXh), (NZl,NZh)),                    % only hi
+	    NMXl = MXh, NMXh = MXh
+	).
 
-cos_sector_(_Any,_X,_Z,MT,MT) :- empty_interval(MT).
+cos_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :- Xh =< 0, !,  % X less than 0
+	NZl is max(Zl, roundtoward(cos(Xl),to_negative)),
+	NZh is min(Zh, roundtoward(cos(Xh),to_positive)),
+	non_empty(NZl,NZh),  % fails if Z empty
+	NXl is max(Xl,-roundtoward(acos(NZl),to_positive)),
+	NXh is min(Xh,-roundtoward(acos(NZh),to_negative)).
 
-% both cos and acos monotonic decreasing in range 0 to pi
-cos_prim_(X,Z,(NXl,NXh),(NZl,NZh)) :-
-	% Note 1: can't depend on transcendentals to obey rounding
-	% Note 2: end result always a float interval (never precise), range limited to ± 1
-	% Note 3: any precise input will be fuzzed
-	% Note 4: empty ranges checked elsewhere
-	fuzz_(X,(X1l,X1h)), fuzz_(Z,(Z1l,Z1h)),                        % See Note 3
-	NZl is max(Z1l,max(-1,nexttoward(cos(X1h),-1.0Inf))),          % See Note 2
-	NZh is min(Z1h,min( 1,nexttoward(cos(X1l), 1.0Inf))),          % See Note 2
-	NZl < NZh,  % fuzzed value
-	NXl is max(X1l,nexttoward(acos(NZh),-1.0Inf)),
-	NXh is min(X1h,nexttoward(acos(NZl), 1.0Inf)),
-	NXl < NXh.  % fuzzed value
+cos_prim_((Xl,Xh),(Zl,Zh),(NXl,NXh),(NZl,NZh)) :- Xl >= 0, !,  % X greater than 0
+	NZl is max(Zl,roundtoward(cos(Xh),to_negative)),
+	NZh is min(Zh,roundtoward(cos(Xl),to_positive)),
+	non_empty(NZl,NZh),  % fails if Z empty
+	NXl is max(Xl,roundtoward(acos(NZh),to_negative)),
+	NXh is min(Xh,roundtoward(acos(NZl),to_positive)).
+	
+cos_prim_((Xl,Xh),Z,(NXl,NXh),(NZl,NZh)) :-                    % X split by 0
+	(cos_prim_((Xl,0),Z,(NXl,NX1h),(NZ1l,NZ1h))         % lo segment ?
+	 -> (cos_prim_((0,Xh),Z,(_,NXh),(NZ2l,NZ2h))        % hi segment ?
+	     -> NZl is min(NZ1l,NZ2l),                      % both segments have values
+	        Z = (_,Zh), NZh is min(1.0,Zh)
+	     ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h          % only lo segment
+	    )
+	 ;  cos_prim_((0,Xh),Z,(NXl,NXh),(NZl,NZh))         % only hi segment ?
+	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -735,52 +733,33 @@ narrowing_op(tan, _, $(Z,X), $(NewZ, NewX)) :-
 	(wrap_(X,pi,MX,Xp)            % fails if X too wide
 	 -> tan_(MX,Xp,Z,NMX,X1,NewZ),
 	    unwrap_(X1,pi,NMX,X2),    % project back to original cylinder
-	    non_empty(NewZ),
 	    ^(X,X2,NewX)
-	 ;  NewZ = Z, NewX = X        % no narrowing possible, e.g., not same or adjacent cylinder.
+	 ;  NewZ = Z, NewX = X        % no narrowing possible
 	).
 
-% both tan and atan monotonic, increasing in range -pi/2 to pi/2
-tan_((MX,MX), X, Z, (MX,MX), (NXl,NXh), (NZl,NZh)) :- !,  % same cylinder
-	% Note 1: can't depend on transcendentals to obey rounding
-	% Note 2: end result always a float interval (never a precise value)
-	% Note 3: for subnormal and zero floats, X==tan(X)
-	% Note 4: any precise input will be fuzzed
-	fuzz_(X,(X1l,X1h)), fuzz_(Z,(Z1l,Z1h)),                        % See Note 4
-	% See Note 3
-	((rational(X1l) ; float_class(X1l,normal))
-	  -> NZl is max(Z1l,nexttoward(tan(X1l),-1.0Inf))
-	  ;  NZl is max(Z1l,X1l)
-	),
-	((rational(X1h) ; float_class(X1h,normal))
-	 -> NZh is min(Z1h,nexttoward(tan(X1h), 1.0Inf))
-	 ;  NZh is min(Z1h,X1h)
-	),
-	NZl < NZh,    % fuzzed value
-	((rational(NZl) ; float_class(NZl,normal))
-	  -> NXl is max(X1l,nexttoward(atan(NZl),-1.0Inf))
-	  ;  NXl is max(X1l,NZl)
-	),
-	((rational(NZh) ; float_class(NZh,normal))
-	  -> NXh is min(X1h,nexttoward(atan(NZh), 1.0Inf))
-	  ;  NXh is min(X1h,NZh)
-	),
-	NXl < NXh.    % fuzzed value
+tan_((MX,MX), X, Z, (MX,MX), NewX, NewZ) :-
+	!,             % same cylinder
+	tan_prim_(X,Z,NewX,NewZ).
 
-% not same cylinder, must span infinite discontinuity but need to assume possibility of
-%  other constraints (E.g., {X>=0,Y>=0, tan(X)==Y, X**2 + Y**2 == 5 } )
-tan_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), NewX, NewZ) :-
-%	MXl is MXh-1,  % adjacent cylinders, Z spans discontinuity, so can't narrow further
+tan_((MXl,MXh), (Xl,Xh), Z, (NMXl,NMXh), (NXl,NXh),(NZl,NZh)) :-
+%	MXl is MXh-1,  % adjacent cylinders
 	PiBy2 is pi/2, MPiBy2 is -PiBy2,
-	try_tan_((Xl,PiBy2),  Z, NX1, NZ1, MXl,MXh,NMXl),  % lower cylinder: 0 to pi/2
-	try_tan_((MPiBy2,Xh), Z, NX2, NZ2, MXh,MXl,NMXh),  % upper cylinder: -pi/2 to 0
-	union_(NX1,NX2,NewX),
-	union_(NZ1,NZ2,NewZ).
-
-try_tan_(X,Z,NewX,NewZ,MXS,MXF,MX) :-  % depends on tan_/6 failure
-	tan_((MXS,MXS), X, Z, _, NewX, NewZ)
-	 -> MX = MXS
-	 ;  (empty_interval(NewX), NewZ = NewX, MX = MXF).
+	(tan_prim_((Xl,PiBy2), Z, (NXl,NX1h), (NZ1l,NZ1h))                   % lo cylinder?
+	 -> (tan_prim_((MPiBy2,Xh), Z, (_,NXh), (NZ2l,NZ2h))                 % hi cylinder?
+	      -> NZl = -1.0Inf, NZh = 1.0Inf, NMXl = MXl, NMXh = MXh         % both cylinders
+	      ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h, NMXl = MXl, NMXh = MXl  % only lo
+	    )
+	 ;  tan_prim_((MPiBy2,Xh), Z, (NXl,NXh), (NZl,NZh)),                 % only hi
+	    NMXl = MXh, NMXh = MXh
+	).
+	
+% both tan and atan monotonic, increasing in range -pi/2 to pi/2
+tan_prim_((Xl,Xh), (Zl,Zh), (NXl,NXh), (NZl,NZh)) :-
+	NZl is max(Zl,roundtoward(tan(Xl),to_negative)),
+	NZh is min(Zh,roundtoward(tan(Xh),to_positive)),
+	non_empty(NZl,NZh),
+	NXl is max(Xl,roundtoward(atan(NZl),to_negative)),
+	NXh is min(Xh,roundtoward(atan(NZh),to_positive)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

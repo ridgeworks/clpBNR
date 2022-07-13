@@ -47,9 +47,9 @@ As a further consequence, as shown in the last example, the distributive law ove
 
 Implementing a mathematically sound arithmetic system over the (infinite) set of real numbers on a finite computer is a challenging task. Commonly only a small subset of the reals, e.g., integers and IEEE floating point numbers, are represented in the finite numeric formats. This sacrifices precision and, as soon as any arithmetic operations requiring rounding are done, mathematical soundness (as shown above). Aribitrary precision can partially achieved for a price using multi-precision libraries, as SWI-Prolog's use of the GNU MP library demonstrates. However even that is insufficient since irrational values cannot concretely be represented in such a system. To address mathematical soundness requires a different approach and interval arithmetic is one way to tackle this problem.
  
-An interval is a pair of numeric values, specifically a lower and upper bound, representing the set of real numbers between (and including) the bounds. Conventional arithmetic operations on numeric values is replaced by the corresponding arithmetic operations over intervals (e.g., see [Interval Arithmetic: from Principles to Implementation]). Since these involve arithmetic on the individual bounds, care must be taken to round any computed bounds outwards, i.e., lower bounds to {`-oo`} and upper bounds toward {`oo`}, to ensure that the interval result contains the real value being computed. This not only guarantees soundness but also quantifies the upper limit on any rounding errors accumulated during the computation. In a CLP context, intervals representing real values initially have large "widths" (the difference between the upper and lower bounds) and use constraints to narrow the bounds in much the same way as Prolog resolution "narrows" logic variables through unification.
+An interval is a pair of numeric values, specifically a lower and upper bound, representing the set of real numbers between (and including) the bounds. Conventional arithmetic operations on numeric values is replaced by the corresponding arithmetic operations over intervals (e.g., see [Interval Arithmetic: from Principles to Implementation]). Since these involve arithmetic on the individual bounds, care must be taken to round any computed bounds outwards, i.e., lower bounds to {`-oo`} and upper bounds toward {`oo`}, to ensure that the interval result contains the real value being computed. This not only guarantees soundness but also quantifies the upper limit on any rounding errors accumulated during the computation. In a CLP context, intervals representing real values initially have large "widths" (the difference between the upper and lower bounds) and use constraints to narrow the bounds in much the same way as Prolog resolution "narrows" logic variables through unification. (For further background on intervals and the theory behind them, see [Introduction to INTERVAL ANALYSIS].)
 
-In CLP(BNR), a real number {`x`} is associating a constrained logic variable with a closed interval defined by a numeric lower bound {`L`} and a numeric upper bound {`U`} such that {`L<=x<=U`}. If the bounds of such an arithmetic variable narrow such that {`L=U`}, then the variable is unified with the bound's value. Any Prolog goal involving an arithmetic operation that narrows an interval such that {`L>U`} will fail. Possible values for bounds include {`+-oo`} as well as any numeric value supported by the underlying Prolog system (SWI-Prolog  supports integers, rational numbers, and floating point numbers).
+In CLP(BNR), a real number {`x`} is represented by a constrained logic variable containing a numeric lower bound {`L`} and a numeric upper bound {`U`} such that {`L<=x<=U`}. If the bounds of such an arithmetic variable narrow such that {`L=U`}, then the variable is unified with the bound's value. Any Prolog goal involving an arithmetic operation that narrows an interval such that {`L>U`} will fail. Possible values for bounds include {`+-oo`} as well as any numeric value supported by the underlying Prolog system (SWI-Prolog  supports integers, rational numbers, and floating point numbers).
 
 One of the ways intervals can be created in CLP(BNR) is by using the `::/2` predicate. (In some previous versions, a single `:` was used, but SWI-Prolog has reserved this for module qualification, as in `mod_name:pred_name`.) `::` is defined as a Prolog infix operator and specifies a relation between a term (usually a logic variable) and its domain (in CLP terminology). The domain consists of the lower and upper bound, and a type; so far we have been discussing type `real`. The bounds may be left unspecified, in which case default values are substituted. Some examples:
 eg
@@ -124,8 +124,8 @@ eg
 
 	?- X::real(-10,10), Y::real(50,100), X=Y.
 	false.
-Note that the `write` family of predicates will output the interval attribute as its domain. For this to occur the write `attribute` option should be set to `portray` (`clpBNR` sets this value as the default). If this option is ever set to `write`, an infinite print loop (and probably a crash) will result due to the internal internal structure of `clpBNR` attributes. Bottom line, never use the `attribute(write)` option when outputting intervals. 
-
+Note that the `write` family of predicates will output the interval attribute as its domain. For this to occur the write `attribute` option should be set to `portray` (`clpBNR` sets this value as the default). If this option is ever set to `write`, an infinite print loop (and probably a crash) will result due to the internal internal structure of `clpBNR` attributes. Bottom line, never use the `attribute(write)` option when outputting intervals.
+ 
 <#TableOfContents>
 
 #### Constraints on Real Intervals
@@ -139,7 +139,7 @@ aside> Aside: Since real values are represented by closed ranges defined by numb
 The left and right hand sides of the (in)equality can be any arithmetic expression using intervals and numbers (constants). (A complete list of supported functions is in "`clpBNR` Reference"). By convention, CLP(BNR) uses the same operators and semantics as the underlying Prolog arithmetic. for example:
 eg
 	?- {X**2==3}.
-	﻿X::real(-1.7320508075688776,1.7320508075688776).
+	X::real(-1.7320508075688776,1.7320508075688776).
 While `X` is initially unbounded, the constraint has narrowed the range to include the two possible values; one positive and one negative. For comparison, here's the standard Prolog calculation of {`sqrt(3)`}:
 eg
 	?- X is sqrt(3).
@@ -273,7 +273,7 @@ For quadratics like this example, one can do additional preprocessing to find th
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-﻿	% 13,257,239 inferences, 2.691 CPU in 2.700 seconds (100% CPU, 4926137 Lips)
+	% 13,257,239 inferences, 2.691 CPU in 2.700 seconds (100% CPU, 4926137 Lips)
 	X::real(-1, 1),
 	Y::real(-0.2500011568168373, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
@@ -287,7 +287,16 @@ eg
 	X:: 0.995842494200498... .
 This is all very general, and very declarative, and is done without the application of any numerical methods or deep understanding of the underlying machinery. But this comes at a computational price. For any particular problem space, e.g., systems of linear equations, it may well be that there are more efficient ways of arriving at the same solutions. Luckily numerical methods that apply to normal floating point arithmetic can also be applied to intervals of reals and, because of the underlying correctness of the arithmetic, you can actually have some confidence in the answers.
 
-A final point on the unification of two intervals: when this occurs, the resulting interval has the intersection of the two ranges (as described above) AND its constraints are the union of the constraints from the two original intervals.
+A final point on the unification of two intervals: when this occurs, the resulting interval has the intersection of the two ranges (as described above) AND its constraints are the union of the constraints from the two original intervals. Semantically, this is a "unification of domains". However, this is weaker than you might think:
+eg
+	?- [Y,Z]::real(0,_), {9 == Y*Z}, Y = Z.
+	Y = Z,
+	Z::real(8.999999999999998e-16, 1.0e+16).
+One might expect that is `9` is the product of two positive reals (`Y` and `Z`) who are "equal", those factors would narrow to `3`. This doesn't happen because even hough the sets will remain forever equal, there are many pairs of values taken from the sets which multiply togeter resulting in `9`. This is just the *dependency problem* in another guise. And it can be addressed in the same way by using `solve/1` to force a narrowing of `Y` (and `Z` because the domains have been unified):
+eg
+	?- [Y,Z]::real(0,_), {9 == Y*Z}, Y = Z, solve(Y).
+	Y = Z,
+	Z:: 3.00000000000000... .
 
 "Verbose" mode is enabled by setting the `clpBNR_verbose` prolog environment flag to `true` (default `false)`. When this is done all interval bounds are transparently output (no float conversion or ellipsis postfix format) and the constraint network is presented in top level answers. This can result in a significant amount of detail which may not be generally useful:
 eg

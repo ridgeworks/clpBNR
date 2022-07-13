@@ -25,7 +25,7 @@ If this is insufficient, tracing of individual narrowing operations can be done 
 	% 6==3*2.
 	M = 6,
 	N = 2.
-For some problems, it's sufficient to just monitor the value of a interval (or a few intervals). When this is true, the sheer volume of tracing can be resduced using the [**watch/2**] predicate:
+For some problems, it's sufficient to just monitor the value of a interval (or a few intervals). When this is true, the sheer volume of tracing can be reduced using the [**watch/2**] predicate:
 eg
 	?- debug(clpBNR).
 	true.

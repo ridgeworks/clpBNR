@@ -29,7 +29,7 @@ The set of operators and functions currently supported are:
 	abs                                   %% absolute value
 	sqrt                                  %% square root (needed?)
 	min max                               %% min/max (arity 2)
-	<= =>                                 %% inclusion
+	<=                                    %% included (one way narrowing)
 	and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 	- ~                                   %% unary negate and not
 	exp log                               %% exp/ln
@@ -271,13 +271,23 @@ eg
 .pred	**enumerate**(*+Intervals*)
 If *Intervals* is a single interval of type `integer`, it is unified with each value in its range, ordered from the lower to upper bound, non-deterministicly (next value generated on backtracking). If *Intervals* is a list of `integer` intervals, each member of the list is enumerated in list order. Any *Intervals* which are not `integer` intervals are skipped. (`enumerate/1` is semantically equivalent to `clpfd:label/1`).
 
+.pred	**global_maximize**(*+Exp, -Interval*), **global_maximize**(*+Exp, -Interval, ++Integer*)
+**global_maximize** unifies *Interval* with the global maximum of expression *Exp* and narrows any  intervals in *Exp* based on the calculated solution - see **global_minimum** for argument details.
+
 .pred	**global_maximum**(*+Exp, -Interval*), **global_maximum**(*+Exp, -Interval, ++Integer*)
-**global_maximum** unifies *Interval* with the global maximum of expression *Exp* - see **global_minimum**.
+**global_maximum** unifies *Interval* with the global maximum of expression *Exp* - see **global_minimum** for argument details.
+
+.pred	**global_minimize**(*+Exp, -Interval*), **global_minimize**(*+Exp, -Interval, ++Integer*)
+**global_minimize** unifies *Interval* with the global minimum of expression *Exp* and narrows any  intervals in *Exp* based on the calculated solution - see **global_minimum** for argument details. The following example has a global mimimum of `6` at `X=0` and `X=3` but only generates the solution at `X=3`:
+eg
+	﻿?- X::real(0,_), global_minimize(X**3-6*X**2+9*X+6,Z,3).
+	X:: 3.0001...,
+	Z:: 6.00... .
 
 .pred	**global_minimum**(*+Exp, -Interval*), **global_minimum**(*+Exp, -Interval, ++Integer*)
-**global_minimum** unifies *Interval* with an interval containing the global minimum of expression *Exp*. *Exp* is an expression of variables using the supported functions of interval arithmetic (see [{ +Constraints }]). This predicate uses the "Moore-Skelboe" algorithm with **splitsolve** to perform a directed search to find the global minimum of *Exp* over the range of its variables. The search stops when the range of the minumum value (*Interval*) meets the precision criteria; the default is defined by the flag `clpBNR_default_precision`, but can be overridden with the third optional argument.
+**global_minimum** unifies *Interval* with an interval containing the global minimum of expression *Exp*. *Exp* is an expression of variables using the supported functions of interval arithmetic (see [{ +Constraints }]). This predicate uses the "Moore-Skelboe" algorithm with **splitsolve** to perform a directed search to find the global minimum of *Exp* over the range of its variables. The search stops when the range of the minumum value (*Interval*) meets the precision criteria; the default is defined by the flag `clpBNR_default_precision`, but can be overridden with the third optional argument. 
 
-**global_minimum** will generate (and impose) the minimum value, but is not guaranteed to narrow the expression variables (the *minimizers*) accordingly since there generally may be more than one set. To generate the minimizers, a further "solving" step is necessary. While **global_minimum** is deterministic, the solving step may not be. The following example has a global mimimum of `6` at `X=0` and `X=3`:
+**global_minimum** will generate (and impose) the minimum value, but is not guaranteed to narrow the expression variables (the *minimizers*) accordingly since there generally may be more than one set. (See  **global_minimize** nad **global_maximize** to narrow variables to specific solution calculated.) To generate the minimizers, a further "solving" step is necessary. While **global_minimum** is deterministic, the solving step may not be. The following example has a global mimimum of `6` at `X=0` and `X=3`:
 eg
 	﻿?- X::real(0,_),global_minimum(X**3-6*X**2+9*X+6,Z).
 	X::real(0, 6.000000066174462),
@@ -320,7 +330,7 @@ eg
 	false.
 
 .pred	**list**(@Term)
-{`O(1)`} filter for lists implemented as `list(X) :- compound(X) ->  X=[_|_] ; X==[].`. This is not equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>).
+{`O(1)`} filter for lists implemented as `list(X) :- compound(X) ->  X=[_|_] ; X==[]. `. This is not equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>).
 
 .pred	**lower_bound**(*+Interval*)
 Unifies *Interval* with its lower bound; equivalent to `range(Interval,[L,_]), Interval=L`. (Supported for historical reasons.)
@@ -553,11 +563,155 @@ Note that in the unification case the original interval variable has been lost (
 
 <#TableOfContents>
 
+### `clpBNR_toolkit` Reference
+
+Module `clpBNR_toolkit` is included in pack `clpBNR` and provides some alternative meta-contractors and useful predicates for optimization problems. It has the following interface:
+.pl
+	:- module(clpBNR_toolkit,       % SWI module declaration
+		[
+		iterate_until/3,            % general purpose iterator
+		mid_split_one/1,            % contractor to split largest interval at midpoint
+		mid_split/1,                % contractor to split an interval at midpoint
+		taylor_contractor/2,        % build cf_contractor based on Taylor expansion
+		taylor_merged_contractor/2, % build merged Taylor cf_contractor from list of equations
+	
+		lin_minimum/3,              % find minimum of linear problem using library(simplex)
+		lin_maximum/3,              % find maximum of linear problem using library(simplex)
+		lin_minimize/3,             % lin_minimum/3 plus bind vars to solution minimizers
+		lin_maximize/3,             % lin_maximum/3 plus bind vars to solution maximizers
+	
+		local_minima/1,             % apply KT constraints for objective function expression (OFE)
+		local_maxima/1,             % semantically equivalent to local_minima/1
+		local_minima/2,             % apply KT constraints for minima with constraints
+		local_maxima/2              % apply KT constraints for maxima with constraints
+		]).
+Note that many of these predicates take `clpBNR` constraints enclosed in curly brackets to reinforce the syntax and semantics. Exported `clpBNR_toolkit` predicates are documented below using the same conventions as the `clpBNR` reference.
+
+.pred	**iterate_until**(*+Count, +Test, +Contractor*)
+**iterate_until** is a general purpose iterator that calls *Contractor* until the iteration count exceeds *Count* or the goal *Test* succeeds. Contractors included with this module include `mid_split/1`, `mid_split_one/1`, `taylor_contractor/2`, and `taylor_merged_contractor/2`. An example using `mid_split/1`:
+eg
+	?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, iterate_until(50,small(X),mid_split(X)).
+	X:: 1.000000... ;
+	X:: 3.00000... ;
+	false.
+
+.pred	**lin_maximize**(*+Exp, +{Constraints}, -Interval*)
+**lin_maximize** narrows *Interval* to the maximum value of *Exp* using `library(simplex)` subject to *Constraints* expressed as `clpBNR` constraints and narrows any independant variables to the generated solution. See **lin_maximum** for argument details.
+
+Example from [SWI-Prolog group discourse] :
+eg
+	﻿?- [Choc,Van,Cit]::integer, 
+	lin_maximize(3*Choc+5*Van+7*Cit,
+	{4*Choc+2*Van+6*Cit=<32, 4*Choc+5*Van+6*Cit=<40, 20*Choc+40*Van+50*Cit=<260},
+	Profit).
+	Choc = Van, Van = 1,
+	Cit = 4,
+	Profit = 36.
+
+.pred	**lin_maximum**(*+Exp, +{Constraints}, -Interval*)
+**lin_maximum** narrows *Interval* to the maximum value of *Exp* using `library(simplex)` subject to *Constraints* expressed as `clpBNR` constraints. A constraint relational operator must be one of `=<`, `==`, or `>=`. *Exp* and the left hand side of any constraint must be linear, i.e., a sum of terms (using `+` or `-`) of the form `Number*Var` (or `Var*Number`). The right hand side of the constraint must be a positive number. Any violation of these conditions will cause a failure; use `debug(clpBNR)` to output messages indicating the cause of failure.
+
+Any variables in the *Exp* or *Constraints* will be constrained to be non-negative as per the conditions defined by `library(simplex)`. These variables will not be narrowed to the minimum solution calculated so that a subsequent labelling step, e.g., using `splitsolve` can be used to generate multiple solutions on backtracking.
+
+Example from [SWI-Prolog group discourse] using `enumerate` for labelling:
+eg
+	﻿?- [Choc,Van,Cit]::integer, 
+	lin_maximum(3*Choc+5*Van+7*Cit,
+	{4*Choc+2*Van+6*Cit=<32, 4*Choc+5*Van+6*Cit=<40, 20*Choc+40*Van+50*Cit=<260},
+	Profit), enumerate([Choc,Van,Cit]), nl.
+	
+	Choc = Van, Van = 1,
+	Cit = 4,
+	Profit = 36 ;
+	
+	Choc = 4,
+	Van = Cit, Cit = 2,
+	Profit = 36 ;
+	false.
+A final note: `library(simplex)` uses rational arithmetic to ensure precise answers and any floating point coefficients in *Exp* and *Constraints* to precise rational values. However, if the rational size tripwire (see [Rational numbers or floats]) is triggered and any rational value is converted to a float, `simplex` will generate an error. To avoid this the environment flag `max_rational_size` must be set to a sufficiently high, application dependent, value. 
+
+.pred	**lin_minimize**(*+Exp, +{Constraints}, -Interval*)
+**lin_maximize** narrows *Interval* to the minimum value of *Exp* using `library(simplex)` subject to *Constraints* expressed as `clpBNR` constraints and narrows any independant variables to the generated solution. See **lin_maximum** for argument details.
+
+.pred	**lin_minimum**(*+Exp, +{Constraints}, -Interval*)
+**lin_minimum** narrows *Interval* to the minimum value of *Exp* using `library(simplex)` subject to *Constraints* expressed as `clpBNR` constraints - see **lin_maximum** for argument details.
+
+.pred	**local_maxima**(*+Exp*), **local_maxima**(*+Exp, +{Constraints}*)
+ **local_maxima** with optional *Constraints* applies additional constraints corresponding to a local maximum of *Exp*.  For unconstrained optimization, this takes the form of constraining the gradient to be zero at the local optima. For constrained optimizations involving equalities and inequalities, techniques involving Lagrangian functions and Karush–Kuhn–Tucker conditions can be used. Both *Exp* and *Constraints* are in `clpBNR` syntax. **local_maxima** may fail if the generated constraints are inconsistent with existing constraints. 
+ 
+The purpose of this predicate is to apply additional constraints to improve the performance characteristices (time and accuracy) of the global optimization predicates. This predicate must be called prior to calling **global_maximum** or **global_maximize** which then generate actual values for the maximum or maximizing values as described above. For example:
+eg
+	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),splitsolve(X).
+	X:: 7.84965...,
+	Z:: 61.6850... .
+	
+	﻿?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
+	OF = X*(5*pi-X),
+	X:: 7.85398163397448...,
+	Z:: 61.685027506808... ;
+	false.
+Other examples can be found in earlier sections of this User Guide.
+
+.pred	**local_minima**(*+Exp*), **local_minima**(*+Exp, +{Constraints}*)
+**local_minima** with optional *Constraints* applies additional constraints corresponding to a local minimum of *Exp* - see **local_maxima** for argument details. Note that **local_minima/1** is semantically equivalent to **local_maxima/1**. The global optimization predicates **global_minimum** or **global_minimize** should be used after a call to **local_minima/2**.
+
+.pred	**mid_split**(*+Interval*)
+**mid_split** is a contractor which splits an interval at its midpoint first constraining the value to be in the lower half of the interval. Upon backtracking the interval value is constrained to be in the upper half of its original range. If the interval is too narrow to split as defined by [**small/1**], no splitting is performed and **mid_split** just succeeds. Failure occurs if the sole argument is not an interval or a number. (Note numbers are too narrow to split.) Implemented as:
+.pl
+	mid_split(X) :- small(X), !.    % too narrow to split
+	mid_split(X) :-
+		M is midpoint(X),
+		({X=<M} ; {M=<X}).
+
+.pred	**mid_split_one**(*+[Intervals]*)
+**mid_split_one** is a contractor which selects the widest interval from a list of intervals and splits it using `mid_split/1`. Failure occurs if the argument is not a list containing just intervals or numbers.
+
+.pred	**taylor_contractor**(*+{Constraint}, -Contractor*)
+**taylor_contractor** builds a centre form contractor from a single *Constraint* equation, i.e., the constraint relational operator must be either `==` of `=:=`, based on the Taylor expansion of the constraint. The constraint must be continuously differentiable. The generated contractor can be used in combination with other contractors, e.g., `mid_split/1`, to generate solutions, e.g.,
+eg
+	?- X::real,taylor_contractor({X**4-12*X**3+47*X**2-60*X==0},T),iterate_until(20,small(X),(mid_split(X),T)).
+	T = cf_contractor([X], [_A]),
+	X:: 0.0000000000000000...,
+	_A::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_A]),
+	X:: 3.00000...,
+	_A::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_A]),
+	X:: 4.00000000...,
+	_A::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_A]),
+	X:: 5.0000000...,
+	_A::real(-1.0Inf, 1.0Inf) ;
+	false.
+Messages will be generated on failure when `debug(clpBNR)` is true.
+
+.pred	**taylor_merged_contractor**(*+{Constraints}, -Contractor*)
+**taylor_merged_contractor** generates a multivariate, centre form contractor from a set of constraints, subject to the rule that each constraint is a permitted equation to **taylor_contractor**. Example 8.4 from [Introduction to INTERVAL ANALYSIS]:
+eg
+	?- [X1,X2]::real, taylor_merged_contractor({X1**2+X2**2==1, X1-X2**2==0},T),
+	iterate_until(20,small([X1,X2]),(mid_split_one([X1,X2]),T)).
+	T = cf_contractor([X2, X1], [_A, _B]),
+	X1:: 0.61803398874989...,
+	X2:: -0.78615137775742...,
+	_B::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X2, X1], [_A, _B]),
+	X1:: 0.61803398874989...,
+	X2:: 0.78615137775742...,
+	_B::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf).
+Messages will be generated on failure when `debug(clpBNR)` is true.
+
+<#TableOfContents>
+
 &
 	[Module `clpBNR`] <- link #toc3Module_clpBNR
 	[{ +Constraints }] <- link #toc4**_**_*+Constraints*_**_**
 	[**delta/2**] <- link #toc4**delta**(*+Interval,_-Number*)
+	[**small/1**] <- link #toc4**small**(*+Intervals*),_**small**(*+Intervals,_++Integer*)
 	[Development Tools for CLP(BNR)] <- link #toc3Development_Tools_for_CLP(BNR)
+	[SWI-Prolog group discourse] <- link https://swi-prolog.discourse.group/t/different-results-when-using-library-simplex-or-r-package-lpsolve-lpsolveapi/5545
+	[Rational numbers or floats] <- link https://www.swi-prolog.org/pldoc/man?section=rational-or-float
 	.pred .. <- pred 4
 	// cloned from x-markup.mmk header definition with added "style" attribute
 	pred       :: (c, level) =>

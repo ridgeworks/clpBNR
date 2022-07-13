@@ -1,5 +1,30 @@
 %
-% integrate/5 for User Guide Examples
+% integrate/3 for User Guide Simple Integration Examples
+%
+% integrate(F,X,R) where X is an interval over which to integrate and F = f(X)
+%
+integrate(F,X,R) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	integrate(F,X,R,P).
+
+integrate(F,X,R,P) :-
+	integrate_step(P,(F,X),X,Exp),
+	clpBNR:constrain_(R is Exp).               % {R is Exp}.
+
+integrate_step(0, F, Xstep, Fstep*Step) :- !,  % final step, integral is F(Xstep)*delta(Xstep)
+	copy_term(F,(Fstep,Xstep)),                % copy of F for each step
+	Step is delta(Xstep).	
+integrate_step(C, F, XStep, IntL+IntR) :-      % divide current X in two and find integral of each half
+	C > 0,                                     % fail on negative C
+	Xm is midpoint(XStep),
+	range(XStep,[Xl,Xh]),
+	XL::real(Xl,Xm), XH::real(Xm,Xh),          % step for each half
+	NxtC is C-1,
+	integrate_step(NxtC,F,XL,IntL),
+	integrate_step(NxtC,F,XH,IntR).
+
+%
+% integrate/5 for User Guide ODE Examples
 %
 integrate(DFxy,X,Initial,Final,YDomain) :-
 	current_prolog_flag(clpBNR_default_precision,Ctrl),

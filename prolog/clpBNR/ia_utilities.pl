@@ -201,28 +201,6 @@ digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
 digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
 %
-%  developer trace debug code only -  used by stable_/1
-% Note: uses direct output which should be avoided in release library
-%
-traceIntOp_(Op, Ints, Ins, Outs) :-
-	debugging(clpBNR,true),  % only while debugging clpBNR
-	format('node:  ~w(',[Op]),
-	traceInts(Ints),
-	traceChanges(Ints, Ins, Outs),
-	nl, !.
-traceIntOp_(_,_,_,_).
-
-traceInts([Int]) :- format('~w)',[Int]).
-traceInts([Int|Ints]) :- format('~w,',[Int]), traceInts(Ints).
-
-traceChanges([_Int], [In], [In]).  % no change
-traceChanges([Int], [_],  [Out]) :-
-	format('\n    ~p <- (~p)',[Int,Out]).
-traceChanges([Int|Ints], [In|Ins], [Out|Outs]) :-
-	traceChanges([Int], [In], [Out]),
-	traceChanges(Ints, Ins, Outs).
-
-%
 % for monitoring changes - all actions defined here
 %
 monitor_action_(trace, Update, Int) :-  !, % log changes to console and enter debugger
@@ -307,22 +285,47 @@ global_minimum(Exp,Z) :-
 global_minimum(Exp,Z,P) :- ground(Exp), !,
 	Z is Exp.
 global_minimum(Exp,Z,P) :-
-	term_variables(Exp,Xs),                      % vars to search on
-	{Z==Exp},                                    % Steps 1. - 4.
-	box_([Z|Xs],[(Zl,Zh)|XVs]),                  % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree).        % and start iteration
+	global_optimum_(Exp,Z,P,false).
 
-iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-
-	continue_MS(Zl,Zh,P,Xs,XVs,False), !,        % Step 12., check termination condition
-	widest_MS(Xs,XVs,Xf,XfMid),                  % Step 5., get midpoint of widest variable
-	eval_MS(False,Z,Xs,XVs,Xf=<pt(XfMid),V1),    % Step 6., 7. & 8. for V1
-	tree_insert(ZTree,V1,ZTree1),                % Step 10. for V1
-	eval_MS(False,Z,Xs,XVs,Xf>=pt(XfMid),V2),    % Step 6., 7. & 8. for V2
-	tree_insert(ZTree1,V2,ZTree2),               % Step 10. for V2
-	select_min(ZTree2,NxtY,ZTreeY),              % Step 9. and 11., remove Y from tree
-	iterate_MS(Z,Xs,P,NxtY,ZTreeY).              % Step 13.
-iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree) :-          % termination criteria (Step 12.) met
-	{Zl=<Z, Z=<Zh}.  % no minimizer narrowing, may be many optima
+% Copy of global_maximum & global_minimum with BindVars=true
+global_maximize(Exp,Z) :-
+	global_minimize(-Exp,NZ),
+	constrain_(Z== -NZ).
+global_maximize(Exp,Z,P) :-
+	global_minimize(-Exp,NZ,P),
+	constrain_(Z== -NZ).
+
+global_minimize(Exp,Z) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	global_minimize(Exp,Z,P).
+global_minimize(Exp,Z,P) :- ground(Exp), !,
+	Z is Exp.
+global_minimize(Exp,Z,P) :-
+	global_optimum_(Exp,Z,P,true).
+
+global_optimum_(Exp,Z,P,BindVars) :-
+	term_variables(Exp,Xs),                         % vars to search on
+	{Z==Exp},                                       % Steps 1. - 4.
+	box_([Z|Xs],[(Zl,Zh)|XVs]),                     % construct initial box
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).  % and start iteration
+
+iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
+	continue_MS(Zl,Zh,P,Xs,XVs,False), !,           % Step 12., check termination condition
+	widest_MS(Xs,XVs,Xf,XfMid),                     % Step 5., get midpoint of widest variable
+	eval_MS(False,Z,Xs,XVs,Xf=<pt(XfMid),V1),       % Step 6., 7. & 8. for V1
+	tree_insert(ZTree,V1,ZTree1),                   % Step 10. for V1
+	eval_MS(False,Z,Xs,XVs,Xf>=pt(XfMid),V2),       % Step 6., 7. & 8. for V2
+	tree_insert(ZTree1,V2,ZTree2),                  % Step 10. for V2
+	select_min(ZTree2,NxtY,ZTreeY),                 % Step 9. and 11., remove Y from tree
+	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).        % Step 13.
+iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-    % termination criteria (Step 12.) met
+	{Zl=<Z,Z=<Zh},
+	(BindVars -> optimize_vars_(Xs,XVs) ; true).    % optional minimizer narrowing
+	
+optimize_vars_([],[]).
+optimize_vars_([X|Xs],[(Xl,Xh)|XVs]) :-
+	{Xl=<X,X=<Xh},
+	optimize_vars_(Xs,XVs).
 
 continue_MS(Zl,Zh,P,_,_,_) :-                    % w(Y) termination criteria
 	Err is 10**(-P),
@@ -560,11 +563,11 @@ xpsolve_each_([X|Xs],Us,Err) :-
 % try to split interval - fails if unsplittable (too narrow)
 %
 
-splitinterval_(real,X,V,Err,({X =< SPt};{SPt =< X})) :-
+splitinterval_(real,X,V,Err,(constrain_(X =< SPt);constrain_(SPt =< X))) :-
 	splitinterval_real_(V,Pt,Err), !,           % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 
-splitinterval_(integer,X,V,_,({X =< Pt};{Pt < X})) :-   % try to split and on failure use enumerate/1 .
+splitinterval_(integer,X,V,_,(constrain_(X =< Pt);constrain_(Pt < X))) :-   % try to split and on failure use enumerate/1 .
 	splitinterval_integer_(V,Pt), !.
 splitinterval_(integer,X,_,_,enumerate(X)).             % failed to split, so enumerate
 
@@ -574,8 +577,7 @@ splitinterval_(integer,X,_,_,enumerate(X)).             % failed to split, so en
 
 %  split a real interval
 split_real_(X,_,Pt,_,pt(Pt)) :-            % Pt not in solution space, split here
-	X\=Pt, !.
-%	not({X==Pt}), !.
+	X\=Pt, !.  %	not({X==Pt}), !.
 split_real_(X,(L,H),Pt,Err,pt(NPt)) :-     % Pt in current solution space, try lower range
 	split_real_lo(X,(L,Pt),NPt,Err), !.
 split_real_(X,(L,H),Pt,Err,pt(NPt)) :-     % Pt in current solution space, try upper range

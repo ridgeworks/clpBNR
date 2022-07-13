@@ -48,46 +48,21 @@ distribute_(C,B,Exp) :-
 	B=..[AddOp,B1,B2], negate_op_(AddOp,_),  % watch out for vars
 	DExp=..[AddOp,C*B1,C*B2],
 	simplify(DExp,Exp).
-distribute_(A,B,Exp) :-  % not always a good thing, e.g., X*(X-1) may be better than X**2-X
-	B=..[Op,B1,B2], negate_op_(Op,_),        % watch out for vars
-	shared_vars_(A,B), !, % any shared vars
-	DExp=..[Op,A*B1,A*B2],
-	simplify(DExp,Exp).
 
 % utility for (in)equality reduction 
-normalize_(A,B,Op,Exp) :-
-	B==0, !,                      % RHS = 0
-	simplify(A,AS),
-	num_separate_(AS,LHS,RHS),
-	Exp=..[Op,LHS,RHS].
-normalize_(A,B,Op,Exp) :-
-	A==0, !,                      % LHS = 0
-	simplify(B,BS),
-	num_separate_(BS,RHS,LHS),
-	Exp=..[Op,LHS,RHS].
-normalize_(A,B,Op,Exp) :-
-	occurs_in_(A,B), !,           % RHS is shared var
-	simplify(A-B,AS),
-	num_separate_(AS,LHS,RHS),
-	Exp=..[Op,LHS,RHS].
-normalize_(A,B,Op,Exp) :-
-	occurs_in_(B,A), !,           % LHS is shared var
-	simplify(B-A,BS),
-	num_separate_(BS,RHS,LHS),
-	Exp=..[Op,LHS,RHS].
-normalize_(A,B,Op,Exp) :-
-	compound(A), compound(B),     % LHS and RHS are expressions with shared vars
-	shared_vars_(A,B), !,
-	simplify(A-B,AS),
-	num_separate_(AS,LHS,RHS),
-	Exp=..[Op,LHS,RHS].
-normalize_(A,B,Op,Exp) :-     % everything else, leave LHS and RHS alone
+normalize_(A,B,Op,Exp) :-         % LHS and RHS are expressions with shared vars
+	num_exp_vars_(A,AVs),         % only consider vars in arithmetic Ops
+	num_exp_vars_(B,BVs),
+	shared_vars_in_(AVs,BVs), !,  % so far just a test, no unification of non-local vars
+	simplify(A-B,ES),             % normalize with non-zero value on RHS
+	num_separate_(ES,LHS,RHS),
+	(RHS =:= 0, LHS = EA-EB -> Exp =.. [Op,EA,EB] ; Exp=..[Op,LHS,RHS]).
+normalize_(A,B,Op,Exp) :-         % everything else, leave LHS and RHS alone
 	simplify(A,AS),
 	num_separate_(AS,LHS,AN),
 	simplify(B,BS),
 	num_separate_(BS,BS1,BN),
-	N is AN-BN,
-	(N =:= 0 -> RHS=BS1 ; RHS = BS1+N),
+	(rational(AN), AN = BN -> RHS = BS1 ; RHS = BS1 + (AN - BN)),  % leave as symbolic, for later fuzzing as req'd
 	Exp=..[Op,LHS,RHS].
 
 num_separate_(Exp,Exp,0) :- var(Exp), !.
@@ -107,30 +82,31 @@ num_separate_(A-B,Out,Num) :- !,
 	).
 num_separate_(Exp,Exp,0).
 
-occurs_in_(Exp, V) :- var(V), term_variables(Exp,Vs), shared_var_(Vs,V).
+num_exp_vars_(Exp,Vars) :-  % collect vars in arithmetic expressions, fails if none
+	exp_vars_(Exp,V/V,Vs/[]),	
+	(Vs=[_|_] -> term_variables(Vs,Vars)).  % removes any duplicates, fails if no vars 
+	
+exp_vars_(X,ListIn,ListIn) :- atomic(X), !.  % includes []
+exp_vars_(X,List/[X|NextTail],List/NextTail) :- var(X), !. 
+exp_vars_([X|Xs],ListIn,ListOut) :- !,
+	exp_vars_(X,ListIn,ListNxt),
+	exp_vars_(Xs,ListNxt,ListOut).
+exp_vars_(Exp,ListIn,ListOut) :-
+	Exp =.. [Op|Xs],
+	(memberchk(Op,[-,+,*,/,**]) -> exp_vars_(Xs,ListIn,ListOut) ; ListIn = ListOut).
 
-shared_vars_(A,B) :-
-	term_variables(A,AVs),
-	term_variables(B,BVs),
-	shared_vars_in_(AVs,BVs).
+shared_vars_in_([AV|AVs],BVs) :-
+	shared_var_(BVs,AV) -> true ; shared_vars_in_(AVs,BVs).
 
-shared_vars_in_([AV|_AVs],BVs) :-
-	shared_var_(BVs,AV), !.
-shared_vars_in_([_AV|AVs],BVs) :-
-	shared_vars_in_(AVs,BVs).
-
-shared_var_([BV|_BVs],AV) :-
-	AV == BV, !.
-shared_var_([_BV|BVs],AV) :-
-	shared_var_(BVs,AV).
-
+shared_var_([BV|BVs],AV) :-
+	AV == BV -> true ; shared_var_(BVs,AV).
 
 %
 % simplify/2
 %
 simplify(A,A) :- var(A),!.
 
-simplify(C,C) :- rational(C),!.  % includes integers
+simplify(N,N) :- number(N),!.
 
 % possible distribute
 simplify(A*B,Exp) :-
@@ -286,7 +262,6 @@ reduce_exp_item_(-Exp,        -, Exp).
 reduce_exp_item_(Exp,         +, Exp).
 
 mult_term_(T,   N, Op, M*T)   :- var(T), val_sign_(N,Op,M).
-mult_term_(T,   N, Op, V)     :- ground(V), T is V*N.
 mult_term_(X*Y, N, Op, Exp*Y) :- mult_term_(X,N,Op,Exp).     % maintain Op associativity
 mult_term_(X/Y, N, Op, Exp/Y) :- mult_term_(X,N,Op,Exp).
 mult_term_(T,   N, Op, M*T)   :- val_sign_(N,Op,M).

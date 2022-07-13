@@ -45,8 +45,7 @@
 	op(500, yfx, nor),     % boolean 'nor'
 	op(500, yfx, xor),     % boolean 'xor'
 	op(700, xfx, <>),      % integer not equal
-	op(700, xfx, <=),      % set inclusion
-	op(700, xfx, =>),      % set inclusion
+	op(700, xfx, <=),      % included (one way narrowing)
 
 	% utilities
 	print_interval/1, print_interval/2,      % pretty print interval with optional stream
@@ -55,10 +54,14 @@
 	splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 	absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
 	enumerate/1,           % "enumerate" integers
-	global_minimum/2,      % find interval containing global minimums for an expression
+	global_minimum/2,      % find interval containing global minimum(s) for an expression
 	global_minimum/3,      % global_minimum/2 with definable precision
-	global_maximum/2,      % find interval containing global minimums for an expression
+	global_maximum/2,      % find interval containing global maximum(s) for an expression
 	global_maximum/3,      % global_maximum/2 with definable precision
+	global_minimize/2,     % global_minimum/2 plus narrow vars to found minimizers
+	global_minimize/3,     % global_minimum/3 plus narrow vars to found minimizers
+	global_maximize/2,     % global_maximum/2 plus narrow vars to found maximizers
+	global_maximize/3,     % global_maximum/3 plus narrow vars to found maximizers
 	nb_setbounds/2,        % non-backtracking set bounds (use with branch and bound)
 	partial_derivative/3,  % differentiate Exp wrt. X and simplify
 	clpStatistics/0,       % reset
@@ -68,7 +71,7 @@
 	trace_clpBNR/1         % enable/disable tracing of clpBNR narrowing ops
 	]).
 
-/*		missing(?) functionality: utility accumulate/2.		*/
+/*		missing(?) functionality from original CLP(BNR): utility accumulate/2.		*/
 
 /* supported interval relations:
 
@@ -78,7 +81,7 @@ abs                                   %% absolute value
 sqrt                                  %% positive square root
 min	max                               %% binary min/max
 ==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
-<=	=>                                %% inclusion
+<=	                                  %% included (one way narrowing)
 and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 -	~                                 %% unary negate and not
 exp	log                               %% exp/ln
@@ -86,7 +89,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.9.13").
+version("0.10.0").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -123,7 +126,7 @@ trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
 
 current_node_(Node) :-  % look back to find current Op being excuted for debug messages
 	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
-	prolog_frame_attribute(F,parent_goal,doNode_(Args,Op,_,_,_,_)),
+	prolog_frame_attribute(F,parent_goal,doNode_(Args,Op,_,_,_,_,_)),
 	map_constraint_op_(Op,Args,Node),
 	!.
 
@@ -511,7 +514,7 @@ attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of ra
 	fail.
 
 % awkward monitor case because original interval gone
-monitor_unify_(IntDef, Update) :-  % debbuging, manufacture temporary interval
+monitor_unify_(IntDef, Update) :-  % debugging, manufacture temporary interval
 	put_attr(Temp,clpBNR,IntDef),
 	check_monitor_(Temp, Update, IntDef).
 
@@ -617,7 +620,7 @@ build_(pt(Num), Num, _, Agenda, Agenda) :-              % point value, must be a
 	number(Num), !.
 build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile ground Exp (including pi and e)
 	ground(Exp),
-	safe_(Exp),                                         % safe to evaluate 
+	safe_(Exp),                                         % safe to evaluate using is/2
 	L is roundtoward(Exp,to_negative),                  % rounding only affects float evaluation
 	H is roundtoward(Exp,to_positive),
 	(L==H 
@@ -640,12 +643,11 @@ safe_(E) :- atomic(E), !.  % all atomics, including []
 safe_([A|As]) :- !,
 	safe_(A),
 	safe_(As).
-safe_(_/Z) :- (Z==0.0 ; Z== -0.0), !,                   % division by 0.0 requires fuzzed 0.0
+safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0.0) requires fuzzed 0.0
 	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),                     % evaluable by is/2
 	F =.. [Op|Args],
-	\+memberchk(Op,[**,sin,cos,tan,asin,acos,atan]),    % unsafe operations due to uncertain precision
 	safe_(Args).
 
 %  a constraint must evaluate to a boolean 
@@ -669,7 +671,6 @@ fmap_(>=,   le,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).
 fmap_(<,    lt,    ZXY,     ZXY,     [boolean,real,real]).
 fmap_(>,    lt,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).
 fmap_(<=,   in,    ZXY,     ZXY,     [boolean,real,real]).  % inclusion/subinterval
-fmap_(=>,   in,    [Z,X,Y], [Z,Y,X], [boolean,real,real]).  % inclusion/subinterval
 
 fmap_(and,  and,   ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(',',  and,   ZXY,     ZXY,     [boolean,boolean,boolean]).  % for usability
@@ -736,11 +737,12 @@ clpStatistics :-
 clpStatistic(node_count(C)) :-
 	g_read('clpBNR:node_count',C).
 
-% extend list with X
+% extend list with N
 newmember([X|Xs],N) :- 
-	nonvar(X), !,       % not end of (indefinite) list
-	newmember(Xs,N).
-newmember([N|_],N).     % end of list
+	(nonvar(X)
+	 -> newmember(Xs,N) % not end of (indefinite) list.
+     ;  X = N           % end of list, insert N and new tail Xs
+    ).
 
 %
 % Process Agenda to narrow intervals (fixed point iteration)
@@ -757,8 +759,10 @@ stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda
 	(OpsLeft<0 -> E is -OpsLeft, debug_clpBNR_('Iteration throttle limit exceeded by ~w ops.',E) ; true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
-	doNode_(Args, Op, P, OpsLeft, Agenda/T, NewAgenda),  % undoable on backtrack
+	doNode_(Args, Op, P, OpsLeft, DoOver, Agenda/T, NxtAgenda),  % undoable on backtrack
 	nb_setarg(3,Node,0),                    % reset linked bit
+	% if doNode_ requested DoOver and above Ops threshold, put Node back at the end of the queue 
+	(atom(DoOver), OpsLeft > 0 -> linkNode_(NxtAgenda,Node,NewAgenda) ; NewAgenda = NxtAgenda),
 	RemainingOps is OpsLeft-1,              % decrement OpsLeft (can go negative)
 	stableLoop_(NewAgenda,RemainingOps).
 
@@ -776,62 +780,55 @@ clpStatistic(max_iterations(O/L)) :-
 	O is L-Ops.  % convert "low" water mark to high water mark
 
 %
-% Execute a node on the queue
+% doNode_/7 : Evaluate a node and add new nodes to end of queue
 %
-:- if(current_predicate(system:expand_goal/2)).
-
-% Comment out the following to enable Op tracing:
-goal_expansion(traceIntOp_(Op, Args, PrimArgs, New),true).
-
-:- endif.
-
-doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, Agenda, NewAgenda) :-  % Arity 3 Op
-	var(P), !,                                    % check persistent bit
-	%	nonground(Args,_), !,  % not safe, unifications happens before attr_unify_hook
+% Note: primitives operate on interval values (sets) only, unaware of common arguments,
+% so additional consistency checks required on update.
+%
+doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-  % Arity 3 Op
+	var(P), !,                                          % check persistent bit
 	getValue(ZArg,ZVal),
 	getValue(XArg,XVal),
 	getValue(YArg,YVal),
 	evalNode(Op, P, $(ZVal,XVal,YVal), $(NZVal,NXVal,NYVal)),  % can fail causing stable_ to fail => backtracking
-	% constraint consistency check - if two var arguments are the same, they must narrow to same value
-	(var(ZArg)
-	 ->	(ZArg==XArg -> NZVal=NXVal ; true),
-		(ZArg==YArg -> NZVal=NYVal ; true)
-	 ; true
-	),
-	(var(XArg)
-	 -> (XArg==YArg -> NXVal=NYVal ; true)   % even if not specified as such
-	 ;	true
-	),
-	traceIntOp_(Op, [ZArg,XArg,YArg], [ZVal,XVal,YVal], [NZVal,NXVal,NYVal]),  % in ia_utilities
-	updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),	
-	updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),	
-	updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda).	
+	% enforce consistency for common arguments by intersecting and redoing as required.
+	(var(ZArg)                % if Z == X and/or Y
+	 -> (ZArg==XArg -> consistent_value_(NZVal,NXVal,NZ1,DoOver) ; NZ1 = NZVal),
+	    (ZArg==YArg -> consistent_value_(NZ1,  NYVal,NZ2,DoOver) ; NZ2 = NZ1),
+	    updateValue_(ZVal, NZ2, ZArg, OpsLeft, Agenda, AgendaZ)
+	 ;  AgendaZ = Agenda
+	 ),
+	(var(XArg), XArg==YArg    % if X==Y
+	 -> consistent_value_(NXVal,NYVal,NVal,DoOver),
+	    updateValue_(XVal, NVal,  XArg, OpsLeft, AgendaZ, NewAgenda)  % only one update needed
+	 ;  updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),
+	    updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda)
+	).
 
-doNode_($(ZArg,XArg), Op, P, OpsLeft, Agenda, NewAgenda) :-        % Arity 2 Op
-	var(P), !,                                    % check persistent bit
-	%	nonground(Args,_), !,  % not safe, unifications happens before attr_unify_hook
+doNode_($(ZArg,XArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-       % Arity 2 Op
+	var(P), !,                                          % check persistent bit
 	getValue(ZArg,ZVal),
 	getValue(XArg,XVal),
-	evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),        % can fail causing stable_ to fail => backtracking
-	% constraint consistency check - if two var arguments are the same, they must narrow to same value
-	(var(ZArg)
-	 -> (ZArg==XArg -> NZVal=NXVal ; true)
-	 ;	true
-	),
-	traceIntOp_(Op, [ZArg,XArg], [ZVal,XVal], [NZVal,NXVal]), % in ia_utilities
-	updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
-	updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda).
+	evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),      % can fail causing stable_ to fail => backtracking
+	% enforce consistency for common arguments by intersecting and redoing as required.
+	(var(ZArg), ZArg==XArg    % if Z==X
+	 -> consistent_value_(NZVal,NXVal,NVal,DoOver),     % consistent value, DoOver if needed
+	    updateValue_(ZVal, NVal,  ZArg, OpsLeft, Agenda, NewAgenda)  % only one update needed
+	 ;  updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
+	    updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda)
+	).
 
-doNode_($(Arg), Op, P, OpsLeft, Agenda, NewAgenda) :-              % Arity 1 Op
-	var(P), !,                                    % check persistent bit
-	%	nonground(Args,_), !,  % not safe, unifications happens before attr_unify_hook
+doNode_($(Arg), Op, P, OpsLeft, _, Agenda, NewAgenda) :-                  % Arity 1 Op
+	var(P), !,                                          % check persistent bit
 	getValue(Arg,Val),
-	evalNode(Op, P, $(Val), $(NVal)),                     % can fail causing stable_ to fail => backtracking
-	traceIntOp_(Op, [Arg], [Val], [NVal]),              % in ia_utilities
+	evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
 	updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda).  % always update value regardless of OpsLeft limiter	
 
-doNode_(Args, Op, p, _, Agenda, Agenda) :-    % persistent bit "set", skip node and trim
+doNode_(Args, Op, p, _, _, Agenda, Agenda) :-           % persistent bit "set", skip node and trim
 	trim_ops_(Args).
+
+consistent_value_(Val,Val,Val,_) :- !.                       % same value
+consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values, intersect
 
 %
 % called whenever a persistent node is encountered in FP iteration
@@ -868,8 +865,6 @@ trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
 updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value (constant?)
 
 updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
-	% New = [NewL,NewH], (NewL > NewH -> trace ; true),
-	% NewL=<NewH,  % check unnecessary if primitives do their job
 	chk_float_overwrite(Old, New, New1),         % change, check for unnecessary float conversions on bounds
 	(OpsLeft>0 -> true ; propagate_if_(Old, New1)), !,  % if OpsLeft >0 or narrowing sufficent
 	putValue_(New1, Int, Nodelist),              % update value (may fail)
@@ -880,8 +875,8 @@ updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with 
 % check that a precise bound isn't overwritten by equivalent float
 % fail if recalculated New same as Old
 chk_float_overwrite((OL,OH), (NL,NH), (NL1,NH1)) :-
-	(rational(OL), float(NL), OL =:= NL -> NL1 = OL ; NL1 = NL),
-	(rational(OH), float(NH), OH =:= NH -> NH1 = OH ; NH1 = NH),
+	(rational(OL), float(NL) -> (NL > OL -> NL1 = NL ; NL1 = OL) ; NL1 = NL),
+	(rational(OH), float(NH) -> (NH < OH -> NH1 = NH ; NH1 = OH) ; NH1 = NH),
 	(NL1 = OL, NH1 = OH -> fail ; true).
 
 % propgate if sufficient narrowing (> 10%)
@@ -895,7 +890,6 @@ linkNodeList_([X|Xs], List, NewList) :-
 	    linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
 	).
 
-% Assumes persistant nodes are pre-trimmed (see putValue_/3)
 linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list
 	setarg(3,X,1).                               % set linked bit
 
@@ -922,7 +916,7 @@ trace_clpBNR(false) :-
 user:prolog_trace_interception(Port,Frame,_Choice,Action) :-
 	debugging(clpBNR(trace),true),  % peg(trace) enabled?
 	prolog_frame_attribute(Frame,goal,Goal),  % separate goal unification required?
-	Goal = clpBNR:doNode_(Args, Op, _P, _, _, _),
+	Goal = clpBNR:doNode_(Args, Op, _P, _, _, _, _),
 	map_constraint_op_(Op,Args,C),
 	clpBNR_trace_port(Port,C,Action),
 	!.  % defensive, remove any CP's
@@ -948,12 +942,10 @@ clpStatistics :- !.
 min_swi_version(80512). % for correct rounding
 
 check_features :-
-/* for future use
 	(current_prolog_flag(version,V), min_swi_version(Min), V < Min
 	 -> print_message(error, clpBNR(swi_version,Min))
 	 ;  true
 	),
-*/
 	(current_prolog_flag(bounded,true)
 	 -> print_message(error, clpBNR(bounded))
 	 ;  true
@@ -974,7 +966,7 @@ set_min_free(Amount) :-
 
 prolog:message(clpBNR(swi_version,Min)) -->
 	{ Mj is Min div 10000, Mn is (Min-(10000*Mj)) div 100, P is Min rem 100 },
-	[ 'This version of clpBNR requires SWI-Prolog version ~w.~w.~w or better.'-[Mj,Mn,P] ].
+	[ 'For correct rounding, this version of clpBNR requires SWI-Prolog version ~w.~w.~w or better.'-[Mj,Mn,P] ].
 
 prolog:message(clpBNR(bounded)) -->
 	[ 'clpBNR requires unbounded integers and rationals.'-[] ].
@@ -984,7 +976,7 @@ prolog:message(clpBNR(no_IEEE)) -->
 
 prolog:message(clpBNR(versionInfo)) -->
 	{ version(Version) },
-	[ '*** clpBNR v~walpha ***.'-[Version] ].
+	[ '*** clpBNR v~w ***.'-[Version] ].
 
 init_clpBNR :-
 	restore_optimise,
