@@ -25,14 +25,6 @@
 % Note floats are treated like variables and no arithmetic is performed on them
 %
 
-% negatable operators
-negate_op_(+,-).
-negate_op_(-,+).
-
-% power operators
-invert_op_(*,/).
-invert_op_(/,*).
-
 % signed multiplier and power values
 sign_val_(+,C,C) :- C>=0.
 sign_val_(-,C,N) :- N is -C.
@@ -45,7 +37,7 @@ pwr_val_(/,C,N) :- N is -C.
 % former is safe for intervals (sub-distributive law), latter is valid
 distribute_(C,B,Exp) :-
 	number(C), !,
-	B=..[AddOp,B1,B2], negate_op_(AddOp,_),  % watch out for vars
+	B=..[AddOp,B1,B2], (AddOp == '+' ; AddOp == '-' ),  % watch out for vars
 	DExp=..[AddOp,C*B1,C*B2],
 	simplify(DExp,Exp).
 
@@ -62,7 +54,7 @@ normalize_(A,B,Op,Exp) :-         % everything else, leave LHS and RHS alone
 	num_separate_(AS,LHS,AN),
 	simplify(B,BS),
 	num_separate_(BS,BS1,BN),
-	(rational(AN), AN = BN -> RHS = BS1 ; RHS = BS1 + (AN - BN)),  % leave as symbolic, for later fuzzing as req'd
+	num_rhs_(AN,BN,BS1,RHS),      % leave as symbolic, for later fuzzing as req'd
 	Exp=..[Op,LHS,RHS].
 
 num_separate_(Exp,Exp,0) :- var(Exp), !.
@@ -82,10 +74,15 @@ num_separate_(A-B,Out,Num) :- !,
 	).
 num_separate_(Exp,Exp,0).
 
+num_rhs_(N,N,E,E)   :- !.
+num_rhs_(0,N,E,RHS) :- !, (E==0 -> RHS = -N ; RHS = E-N).
+num_rhs_(N,0,E,RHS) :- !, (E==0 -> RHS = N ; RHS = E+N).
+num_rhs_(L,R,E,E+N) :- N is L-R, (E==0 -> RHS = N ; RHS = E+N).
+
 num_exp_vars_(Exp,Vars) :-  % collect vars in arithmetic expressions, fails if none
 	exp_vars_(Exp,V/V,Vs/[]),	
 	(Vs=[_|_] -> term_variables(Vs,Vars)).  % removes any duplicates, fails if no vars 
-	
+
 exp_vars_(X,ListIn,ListIn) :- atomic(X), !.  % includes []
 exp_vars_(X,List/[X|NextTail],List/NextTail) :- var(X), !. 
 exp_vars_([X|Xs],ListIn,ListOut) :- !,
@@ -184,7 +181,8 @@ collect_exp_(T, List/[Term|NewT], List/NewT) :-
 	simplify_term(T,Term).
 
 left_exp_(A,A)  :- var(A), !.
-left_exp_(A,A)  :- A=..[AOp|_], negate_op_(AOp,_), !.
+left_exp_(A,A)  :- functor(A,+,2), !.
+left_exp_(A,A)  :- functor(A,-,2), !.
 left_exp_(A,AE) :- simplify(A,AE).
 
 collect_neg_(BT,List/[N|NewT], List/NewT) :-
@@ -202,41 +200,40 @@ negate_term_([N|Es]/T,[NN|NEs]/NewT) :-
 	NN is -N,
 	negate_term_(Es/T,NEs/NewT).
 
-collect_exp_items([],[]).
-collect_exp_items([E|Es],[NE|NEs]) :-
-	collect_exp_item_(Es,E,NE,ENxt), !,
-	collect_exp_items(ENxt,NEs).
+collect_exp_items(Es,NEs) :-
+	sort(0,@>=,Es,Sorted),  % num_separate_/3 depends on sort order
+	collect_exp_items_(Sorted,NEs).
 
-collect_exp_item_([],E,E,[]).
-collect_exp_item_([V|Es],U,Eo,EsNxt) :-
-	rational(U), rational(V),  % constant values must be precise to add
-	S is U+V,
-	collect_exp_item_(Es,S,Eo,EsNxt).
-collect_exp_item_([term(V,N1)|Es],term(U,N2),Eo,EsNxt) :-
+% assume items sorted
+collect_exp_items_([],[]).
+collect_exp_items_([U],[U]) :- !.
+collect_exp_items_([U,V|Es],EsNxt) :-
+	rational(U), rational(V), !,  % constant values must be precise to add
+	S is U+V, 
+	collect_exp_items_([S|Es],EsNxt).
+collect_exp_items_([term(V,N1),term(U,N2)|Es],EsNxt) :-
 	V==U,
-	(ground(V) -> V =\= 1.0Inf ; true),     % infinities don't obey algebraic rules
+	(ground(V) -> V =\= 1.0Inf ; true), !,  % infinities don't obey algebraic rules
 	N is N1+N2,
-	collect_exp_item_(Es,term(V,N),Eo,EsNxt).
-collect_exp_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-  % Note that imprecise floats are not added
-	collect_exp_item_(Es,E,Eo,EsNxt).
+	collect_exp_items_([term(V,N)|Es],EsNxt).
+collect_exp_items_([U,V|Es],[U|EsNxt]) :-   % Note that imprecise floats are not added
+	collect_exp_items_([V|Es],EsNxt).
 
-reduce_exp_items_([V],V) :-                 % terminate: var
-	var(V), !.
-reduce_exp_items_([C],C) :-                 % terminate: constant
-	rational(C), !.
-reduce_exp_items_([term(V,N)],Exp) :- !,    % terminate: single term(_..)
-	reduce_exp_items_([0,term(V,N)],Exp).
-reduce_exp_items_([Exp],Exp).               % terminate: final expression
 reduce_exp_items_([T1,T2|Ts],Exp) :-        % 2 or more terms, combine and continue
 	reduce_exp_item_(T1,Op1,Exp1),
 	reduce_exp_item_(T2,Op2,Exp2),
 	build_exp_(Exp1,Exp2,Op1,Op2,ExpN), !,  % ExpN =.. [Op,Exp1,Exp2], !,
 	reduce_exp_items_([ExpN|Ts],Exp).
+reduce_exp_items_([E],Exp) :-               % terminating case, 1 item left
+	(compound(E), functor(E,term,2)
+	 -> reduce_exp_items_([0,E],Exp)        % terminate single term(_..)
+	 ;  Exp = E                             % already reduced to var, constant or expression
+	).
 
-build_exp_(Z,Exp2,Op1,+,Exp2) :- Z==0.
-build_exp_(Z,Exp2,Op1,-,NExp2) :- Z==0, build_Nexp_(Exp2,NExp2).
-build_exp_(Exp1,Z,+,Op2,Exp1) :- Z==0.
-build_exp_(Exp1,Z,-,Op2,NExp1) :- Z==0, build_Nexp_(Exp1,NExp1).
+build_exp_(Z,Exp2,_Op1,Op2,NExp2) :- Z==0, 
+	(Op2 == '-' -> build_Nexp_(Exp2,NExp2) ;  NExp2 = Exp2).
+build_exp_(Exp1,Z,Op1,_Op2,NExp1) :- Z==0,  
+	(Op1 == '-' -> build_Nexp_(Exp1,NExp1) ; NExp1 = Exp1).
 build_exp_(Exp1,Exp2,+,+,Exp1+Exp2).
 build_exp_(Exp1,Exp2,+,-,Exp1-Exp2).
 build_exp_(Exp1,Exp2,-,+,Exp2-Exp1).
@@ -246,20 +243,26 @@ build_Nexp_(Exp, NExp) :-                                   % constant
 	rational(Exp),
 	NExp is -Exp.
 build_Nexp_(Exp, NExp) :-                                   % * or / expression, find head
-	nonvar(Exp), Exp =.. [Op,A1,A2], invert_op_(Op,_),
+	nonvar(Exp), Exp =.. [Op,A1,A2], (Op == * ; Op == /),
 	build_Nexp_(A1,NA1),
 	NExp =.. [Op,NA1,A2].
 build_Nexp_(Exp, -Exp).                                     % other expression or var
 
-
-reduce_exp_item_(V,           +, V)    :- var(V).
-reduce_exp_item_(term(V,0),   +, 0)    :- (ground(V) -> V  =\= 1.0Inf ; true).
+reduce_exp_item_(V,           +, V)    :- var(V).           % variables
+reduce_exp_item_(R,           +, R)    :- rational(R).      % constants
 reduce_exp_item_(term(V,1),   +, V).
 reduce_exp_item_(term(V,-1),  -, V).
+reduce_exp_item_(term(V,0),   +, 0)    :- finite_(V).       % reduces to +0 if V finite
 reduce_exp_item_(term(V,N),   Op, T)   :- mult_term_(V, N, Op, T).
-reduce_exp_item_(R,           Op, M)   :- rational(R), val_sign_(R,Op,M).  %  constants
 reduce_exp_item_(-Exp,        -, Exp).
 reduce_exp_item_(Exp,         +, Exp).
+
+finite_(V) :- 
+	(ground(V)
+	 -> abs(V) < 1.0Inf  % ground expression, evaluates to finite value
+	 ;  interval_object(V, _Type, (LB,UB), _),  % interval with finite bounds
+	    -1.0Inf < LB, UB < 1.0Inf
+	).
 
 mult_term_(T,   N, Op, M*T)   :- var(T), val_sign_(N,Op,M).
 mult_term_(X*Y, N, Op, Exp*Y) :- mult_term_(X,N,Op,Exp).     % maintain Op associativity
@@ -273,12 +276,15 @@ val_sign_(V,Op,Vp) :- Vp is abs(V), (V<0 -> Op = (-) ; Op = (+)).
 %
 simplify_term(T,Term) :-
 	collect_term_(T, L/L, Ts/[]),    % collect in a difference list
-	collect_term_items_([1|Ts],[C|Is]),  % ensure there's a constant multiplier and collect like terms
-	sort(0, @=<, Is, SIs),
-	reduce_term_items_([1|SIs],ITerm),   % reduce back to expression
+	collect_term_items_(Ts,Is),      % collect like terms
 	% this does constant folding if reduction resulted in a constant
-	(rational(ITerm) -> Term is ITerm*C ; Term = term(ITerm,C)),
+	reduce_term_items_(Is,ITerm),    % reduce back to expression
+	term_final_(ITerm,Term),
 	!.
+
+term_final_(Term,Term) :- rational(Term), !.
+term_final_(C*Term,term(Term,C)) :- rational(C).
+term_final_(Term,term(Term,1)).
 
 collect_term_(A, List, Head/NewT) :-
 	var(A), !,
@@ -330,7 +336,8 @@ simplify_pwr_(AT,NT,elem(Exp,Pwr)) :-
 simplify_pwr_(AT,NT,elem(AT,NT)).
 
 left_term_(A,A)  :- var(A), !.
-left_term_(A,A)  :- A=..[AOp|_], invert_op_(AOp,_), !.
+left_term_(A,A)  :- functor(A,*,2), !.
+left_term_(A,A)  :- functor(A,/,2), !.
 left_term_(A,AE) :- simplify(A,AE).
 
 simplify_list_([],[]).
@@ -347,22 +354,23 @@ invert_term_([N|Es]/T,[NN|NEs]/NewT) :-
 	invert_term_(Es/T,NEs/NewT).
 	
 collect_term_items_([],[]).
-collect_term_items_([E|Es],[NE|NEs]) :-
-	collect_term_item_(Es,E,NE,ENxt),
-	collect_term_items_(ENxt,NEs).
+collect_term_items_(Es,NEs) :-
+	msort([1|Es],Sorted),                  % ensure initial constant multiplier and sort
+	collect_term_item_(Sorted,NEs).
 
-collect_term_item_([],E,E,[]).
-collect_term_item_([V|Es],U,Eo,EsNxt) :-
-	rational(U), rational(V),  % precise for multiply
+collect_term_item_([],[]).
+collect_term_item_([U],[U]) :- !.
+collect_term_item_([U,V|Es],EsNxt) :-
+	rational(U), rational(V), !,           % precise for multiply
 	S is U*V,
-	collect_term_item_(Es,S,Eo,EsNxt).
-collect_term_item_([elem(V,N1)|Es],elem(U,N2),Eo,EsNxt) :-
-	V==U, 
-	(ground(V) -> V =\= 1.0Inf ; true),    % infinities don't obey algebraic rules
+	collect_term_item_([S|Es],EsNxt).
+collect_term_item_([elem(U,N1),elem(V,N2)|Es],EsNxt) :-
+	V==U,
+	(ground(V) -> V =\= 1.0Inf ; true), !, % infinities don't obey algebraic rules
 	N is N1+N2,
-	collect_term_item_(Es,elem(V,N),Eo,EsNxt).
-collect_term_item_([Ei|Es],E,Eo,[Ei|EsNxt]) :-
-	collect_term_item_(Es,E,Eo,EsNxt).
+	collect_term_item_([elem(U,N)|Es],EsNxt).
+collect_term_item_([U,V|Es],[U|EsNxt]) :-
+	collect_term_item_([V|Es],EsNxt).
 
 reduce_term_items_([Exp],Exp) :-           % terminating variable
 	var(Exp), !.

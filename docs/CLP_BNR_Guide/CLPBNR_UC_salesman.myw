@@ -60,7 +60,7 @@ eg
 	Tour = [1, 2, 5, 6, 7, 8, 3, 4, 1],
 	Length = 151
 
-For a list of length {`N`}, this will take {`O((n-1)!)`} time to find the best solution. There are 6,227,020,800 possible tours for `N=14` and the naive Prolog solution takes several hours to find the optimum for this size tour.
+For a list of length {`N`}, this will take {`O((N-1)!)`} time to find the best solution. There are 6,227,020,800 possible tours for `N=14` and the naive Prolog solution takes several hours to find the optimum for this size tour.
 
 ##### A Constraint Version
 
@@ -139,7 +139,7 @@ eg
 
 How do these compare in terms of execution time? The performance graph for N=8..14 (note that the vertical scale is logarithmic so differences are greater than they appear):
 [chart_PK1]
-As you might expect, the naive version is very fast for short lists of points, but around N=12 they're roughly equivalent and at N=14 the constraint versions are about 3 times faster, and the gap will only get bigger for larger `N`. The two constraint versions are very similar - the symbolic sum version is a little slower, due to firing of an additional constraint during each permutation step, but perhaps slightly more elegant. 
+As you might expect, the naive version is very fast for short lists of points, but around N=12 they're roughly equivalent and at N=14 the constraint versions are about 3 times faster, and the gap will only get bigger for larger `N`. The two constraint versions are similar - the symbolic sum version is a little slower (less than a factor of 2) , due to firing of an additional constraint during each permutation step, but perhaps slightly more elegant. 
 
 ##### An Alternative Constraint Algorithm
 

@@ -215,23 +215,28 @@ lin_maximize(ObjF,{Constraints},MinValue) :-
 lin_minimum_(ObjF,{Constraints},MinValue,BindVars) :-
 	init_simplex_(ObjF,Constraints,Objective,S0,Vs),
 	(minimize(Objective,S0,S)
-	 -> objective(S,MinValue),
-	    {ObjF == MinValue},
-	    (BindVars -> bind_vars_(Vs,S) ; remove_names_(Vs))
+	 -> objective(S,MinValue), {ObjF == MinValue},
+	    (BindVars
+	     -> bind_vars_(Vs,S)
+	     ;  remove_names_(Vs),
+	        {Constraints}  % apply constraints
+	    )
 	 ;  fail_msg_('Failed to minimize: ~w',[ObjF])
 	).
 	
 lin_maximum_(ObjF,{Constraints},MaxValue,BindVars) :-
 	init_simplex_(ObjF,Constraints,Objective,S0,Vs),
 	(maximize(Objective,S0,S)
-	 -> objective(S,MaxValue),
-	    {ObjF == MaxValue},
-	    (BindVars -> bind_vars_(Vs,S) ; remove_names_(Vs))
+	 -> objective(S,MaxValue), {ObjF == MaxValue},
+	    (BindVars
+	     -> bind_vars_(Vs,S)
+	     ;  remove_names_(Vs),
+	        {Constraints}  % apply constraints
+	    )
 	 ;  fail_msg_('Failed to maximize: ~w',[ObjF])
 	).
 
 init_simplex_(ObjF,Constraints,Objective,S,Vs) :-
-	{Constraints},
 	gen_state(S0),
 	term_variables((ObjF,Constraints),Vs),
 	(Vs = []
@@ -266,13 +271,17 @@ constrain_ints_([V|Vs],Sin,Sout) :-
 	simplex_var_(V,SV),               % corresponding simplex variable name
 	% if not already an interval, make it one with finite non-negative value
 	(domain(V,D) -> true ; V::real(0,_), domain(V,D)),
-	(D = boolean -> Dom = integer(0,1); Dom = D),
-	Dom =.. [Type,L,Vh],
-	(Type = integer	-> constraint(integral(SV),Sin,S1) ; S1 = Sin),
-	(L < 0 -> Vl = 0, {V >= 0} ; Vl = L),  % apply non-negativity condition
-	constraint([SV] >= Vl,S1,S2),     % add bounds as simplex constraints
-	constraint([SV] =< Vh,S2,S3),
-	constrain_ints_(Vs,S3,Sout).
+	(D == boolean -> Dom = integer(0,1); Dom = D),
+	Dom =.. [Type,L,_],
+	(Type == integer -> constraint(integral(SV),Sin,S1) ; S1 = Sin),
+	(L < 0
+	 -> ({V >= 0}                     % apply non-negativity condition
+	     -> S2 = S1
+	     ;  fail_msg_('Negative vars not supported by \'simplex\': ~w',[V])
+	    )
+	 ;  (L =:= 0 -> S2 = S1 ; constraint([SV] >= L,S1,S2))  % non-zero Lbound constraint
+	),
+	constrain_ints_(Vs,S2,Sout).
 
 bind_vars_([],_).
 bind_vars_([V|Vs],S) :-  
@@ -295,7 +304,7 @@ sim_constraints_(C,Sin,Sout) :-
 sim_constraint_(C,SC) :-
 	C=..[Op,LHS,RHS],              % decompose
 	constraint_op(Op,COp),         % acceptable to simplex
-	number(RHS), RHS >= 0,         % requirement of simplex)
+	number(RHS), RHS >= 0,         % requirement of simplex
 	map_simplex_(LHS,T/T,Sim/[]),  % map to simplex list of terms
 	!,
 	SC=..[COp,Sim,RHS].            % recompose

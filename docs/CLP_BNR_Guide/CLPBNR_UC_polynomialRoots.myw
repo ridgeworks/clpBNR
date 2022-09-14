@@ -64,7 +64,7 @@ eg
 	X:: 4.00000000... ;
 	X:: 5.00000000... ;
 	false.
-The underlying cause of the generation of false positives is the multiple occurence of `X` in the constraint set (the *dependency* problem discussed previously) which limits the narrowing possible via fixed point iteration. In addition, the shape of the polynomial in the vicinity of the X axis may mean a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0. And to make matters worse, it can take a considerable amount of work to generate these false positives.
+The underlying cause of the generation of redundant positives is the multiple occurence of `X` in the constraint set (the *dependency* problem discussed previously) which limits the narrowing possible via fixed point iteration. In addition, the shape of the polynomial in the vicinity of the X axis may mean a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0. And to make matters worse, it can take a considerable amount of work to generate these redundant positives.
 
 The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parobala. `solve` (and `absolve`) can spend a lot of time in the vicinity of the solution (in this case, {`x=1`}) trying to disprove solutions in small intervals of `X`:
 eg

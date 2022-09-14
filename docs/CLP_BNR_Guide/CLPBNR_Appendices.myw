@@ -8,8 +8,17 @@ aside> ( [/*integrateV.pl*/raw text] )
 #### Appendix 2 - `travellingSalesman.pl` Source for all algorithms
 aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/travellingSalesman.pl
+
+#### Appendix 3 - Bin Packing Examples
+##### `camels.pl` ( [/*camels.pl*/raw text] )
+@include supplemental/camels.pl
+
+##### `colouredBins.pl` ( [/*colouredBins.pl*/raw text] )
+@include supplemental/colouredBins.pl
 <#TableOfContents>
 
 &
 	[/*integrateV.pl*/raw text] <- link supplemental/integrateV.pl
 	[/*travellingSalesman.pl*/raw text] <- link supplemental/travellingSalesman.pl
+	[/*camels.pl*/raw text] <- link supplemental/camels.pl
+	[/*colouredBins.pl*/raw text] <- link supplemental/colouredBins.pl

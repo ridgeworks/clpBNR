@@ -144,13 +144,13 @@ While `X` is initially unbounded, the constraint has narrowed the range to inclu
 eg
 	?- X is sqrt(3).
 	X = 1.7320508075688772.
-First note that the arithmetic `sqrt` function is defined to only calculate the positive root, and any consideration of negative roots, if needed, must be built into the higher level applcation. Also notice that the interval bounds above are slightly larger in magnitude than the floating point `sqrt(3)` but the final interval includes that value (as well as its negative). Since floating point arithmetic is imprecise, the result of any floating point calculation on interval bounds has to be rounded outward to ensure that "real" answer is included in the bounds of the interval. Outward rounding is not always required. In some cases arithmetic operations are only applied to "precise" bounds (integers and rationals) so the result is precise. Other relations, e.g., `abs`, `min`, and `max`, only require comparisons and sign changes, so the calculation of new bounds doesn't require floating point arithmetic and no outward rounding is necessary.
+First note that the arithmetic `sqrt` function is defined to only calculate the positive root, and any consideration of negative roots, if needed, must be built into the higher level application. Also notice that the interval bounds above are slightly larger in magnitude than the floating point `sqrt(3)` but the final interval includes that value (as well as its negative). Since floating point arithmetic is imprecise, the result of any floating point calculation on interval bounds has to be rounded outward to ensure that "real" answer is included in the bounds of the interval. Outward rounding is not always required. In some cases arithmetic operations are only applied to "precise" bounds (integers and rationals) so the result is precise. Other relations, e.g., `abs`, `min`, and `max`, only require comparisons and sign changes, so the calculation of new bounds doesn't require floating point arithmetic and no outward rounding is necessary.
 
 If we add another constraint:
 eg
 	?- {X**2==3}, {X>=0}.
 	X:: 1.732050807568877... .
-we see that the interval has almost narrowed to a point solution (the positive `sqrt(3)`), although we can never quite get there due to the limits of floating point precision. This example also demonstrates the alternative top level output format for `real` intervals that are narrow enough to share leading digits between the `L` and `U` values; common digits are output followed by `...` (defined as a postfix operator).
+we see that the interval has almost narrowed to a point solution (the positive `sqrt(3)`), although we can never quite get there due to the limits of floating point precision. This example also demonstrates the alternative top level output format for `real` intervals that are narrow enough to share leading digits between the `L` and `U` values; common digits are output followed by `...` .
 
 For convenience, multiple constraints can be written in a single pair of `{}` using commas as separators. This is interpreted as a conjunction consistent with conventional Prolog use of '`,`' in clause bodies and top level queries. Also note that the order in which the constraints are written doesn't matter:
 eg
@@ -264,7 +264,7 @@ The last form is the only one with a single occurence of `X` and yields the best
 eg
 	?- X::real(-1,1),{Y1==X*(X+1), Y2==X*X+X, Y3==X**2+X, Y4==(X+1/2)**2 - 1/4}.
 	﻿X = X::real(-1,1),
-	Y1 = Y1::real(-1,2),
+	Y1 = Y1::real(-2,2),
 	Y2 = Y2::real(-1,2),
 	Y3 = Y3::real(-1,2),
 	Y4 = Y4::real(-0.25,2).
@@ -273,9 +273,9 @@ For quadratics like this example, one can do additional preprocessing to find th
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 13,257,239 inferences, 2.691 CPU in 2.700 seconds (100% CPU, 4926137 Lips)
+	% 11,747,956 inferences, 2.322 CPU in 2.327 seconds (100% CPU, 5058463 Lips)
 	X::real(-1, 1),
-	Y::real(-0.2500011568168373, 2).
+	Y::real(-0.25000033051854986, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
 
 Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared as shown to avoid floating point overflows when dealing with large powers):
@@ -312,14 +312,14 @@ eg
 	?- set_prolog_flag(clpBNR_verbose,true).
 	true.
 	
-	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
-	X::real(-1.0e-323, 1.0e-323),
-	Y::real(10.009999999999996, 10.010000000000003),
-	(S::real(-5.005000000000004, 5.005000000000004), {S==X+_A}),
+	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	X::real(-5.0e-324, 5.0e-324),
+	Y::real(10.009999999999998, 10.010000000000002),
+	(S::real(-5.005000000000002, 5.005000000000002), {S==_A+X}),
 	Z::real(-1r2, 1r2),
-	(_A::real(-5.0050000000000034, 5.0050000000000034), {_A==Y*Z}).	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	(_A::real(-5.005000000000001, 5.005000000000001), {_A==Y*Z}).
 aside>
-	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) developers.
+	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) users.
 
 <#TableOfContents>
 
@@ -351,12 +351,17 @@ eg
 	R2::real(1.7976931348623157e+308, 1.0Inf).
 `R1` and `R2` can't get much narrower because there aren't any 64-bit floating point values between the two bounds.
 
-Finally, some arithmetic operations involving infinities are undefined. These don't automatically fail, but they don't result in any narrowing either:
+In a few rare cases, intervals can narrow to a point infinity:
 eg
 	﻿?- {X1 == inf*inf, X2 == -inf*inf}.
 	X1 = 1.0Inf,
 	X2 = -1.0Inf.
 	
+	?- {X1 == X1+1, X2 == X2-1}.
+	X1 = 1.0Inf,
+	X2 = -1.0Inf.
+Finally, some arithmetic operations involving infinities are undefined. These don't automatically fail, but they don't result in any narrowing either:
+eg
 	?- {X1 == inf-inf, X2 == -inf/inf}.
 	X1::real(-1.0Inf, 1.0Inf),
 	X2::real(-1.0Inf, 1.0Inf).
@@ -520,11 +525,11 @@ eg
 
 #### Controlling Constraint Propogation
 
-This topic requires a little understanding of what's happening "under the covers". A constraint expression is broken down into a set of primitive narrowing operations like `add`, `mul`, `le`, etc., that share intervals, i.e., constrained logic variables. When a primitive operation results in the narrowing of one of its argument intervals, any operations that share that interval must be "scheduled" so that the constraint network stays consistent and sound. Any narrowing may result in an empty range, which means the constraint network is inconsistent, causing backtracking and the "undoing" of the operation. And since we're mainly interested in finite solutions, intervals are not allowed to narrow to the infinities as point values.
+This topic requires a little understanding of what's happening "under the covers". A constraint expression is broken down into a set of primitive narrowing operations like `add`, `mul`, `le`, etc., that share intervals, i.e., constrained logic variables. When a primitive operation results in the narrowing of one of its argument intervals, any operations that share that interval must be "scheduled" so that the constraint network stays consistent and sound. Any narrowing may result in an empty range, which means the constraint network is inconsistent, causing backtracking and the "undoing" of the operation.
 
-This propogation can take a while to "settle"; one constraint triggering the re-evaluation of another which (directly or indirectly) may cause the original to execute again. Only when no changes in interval ranges occur will the propogation terminate (fixed point achieved), and that can take a while with 64-bit floating point values. To avoid the appearance of non-termination (a steady state network will eventually always be achieved), an internal limit is place on the amount of work that is done for any new constraint added to the network. Once this limit is exceeded, only "significant" changes will be propogated until a steady state is achieved. Note that result of this limiting will always be sound, i.e., if an answer exists, it will be present in the interval set. However, the set may not be as narrow as if the propogation was allowed to continue unchecked.
+This propagation can take a while to "settle"; one constraint triggering the re-evaluation of another which (directly or indirectly) may cause the original to execute again. Only when no changes in interval ranges occur will the propagation terminate (fixed point achieved), and that can take a while with 64-bit floating point values. To avoid the appearance of non-termination (a steady state network will eventually always be achieved), an internal limit is place on the amount of work that is done for any new constraint added to the network. Once this limit is exceeded, only "significant" changes will be propagated until a steady state is achieved. Note that result of this limiting will always be sound, i.e., if an answer exists, it will be present in the interval set. However, the set may not be as narrow as if the propagation was allowed to continue unchecked.
 
-The work limit is a represented by a count of primitive operations that are executed bfore the limiting mechansim is enabled, and is user controllable using the Prolog environment flag `clpBNR_iteration_limit`; the default value should be adequate for most purposes.
+The work limit is a represented by a count of primitive operations that are executed before the limiting mechanism is enabled, and is user controllable using the Prolog environment flag `clpBNR_iteration_limit`; the default value should be adequate for most purposes.
 
 It's usually not possible to predict which problems are affected by this "throttling" mechanism, but here's a simple example:
 eg
@@ -538,7 +543,7 @@ eg
 	﻿T = 0.046844999999962056,
 	I = 3001/3000,
 	X:: 1.00... .
-Propogation was terminated in `0.0455` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
+Propagation was terminated in `0.0455` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
 eg
 	?- set_prolog_flag(clpBNR_iteration_limit,30000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
 	﻿T = 0.4550299999999652,
@@ -565,9 +570,9 @@ eg
 
 In an ideal world, an inconsistent constraint (or mutually inconsistent constraints) should just fail as quickly as possible. In practice, detecting inconsistency may not be simple. The CLP(BNR) constraint compiler can detect some simple inconsistencies within a single constraint:
 eg
-	﻿?- {X==X+1}.
+	?- X::real, {X==X+1}.
 	false.
-However, consider:
+However, mutual inconsistency between variables can be more problematical:
 eg
 	﻿?- {X==Y+1,Y==X}.
 	X = Y,
@@ -577,13 +582,15 @@ eg
 	X = Y,
 	Y::real(-1.0e+16, 1.0e+16).
 	
-	?- X::real(-1e15,1e15), {X==Y+1,Y==X}.
+	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
+	X = Y,
+	Y::real(-7000.000000000002, 10000.000000000002).
+	
+	?- X::real(-1e3,1e3), {X==Y+1,Y==X}.
 	false.
-In the first two cases, the addition of `1` is too small to affect the bounds of the result, i.e., no narrowing occurs. In the last case, it does alter the bounds sufficiently to permit the inconsistency to be detected. In the case of larger bounds, a bigger increment can trigger the same consistency check:
-eg
-	﻿?- X::real,{X==Y+10,Y==X}.
-	false.
-The earlier query is a simple concrete example where a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent). And it also demonstrates why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
+In the first two cases, the addition of `1` is too small to affect the bounds of the result, i.e., no narrowing occurs. And when it is significant enough, throttling may inhibit narrowing enough to prevent failure (case 3). In the last case, the initial interval is narrow enough that failure occurs.
+
+These examples demonstrate that a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent) and why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
 
 Another example using integers and `<` (remember `<` is unsound over reals):
 eg
@@ -593,15 +600,15 @@ eg
 	
 	?- [X,Y]::integer(0,1000), {X<Y, Y<X}.
 	false.
-This somewhat confusing behaviour is a product of the throttling behaviour described above. In the first case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.) In the second case the desired failure occurs before throttling is enabled.
+This somewhat confusing behaviour is again the product of the throttling behaviour described above. In the first case, throttling terminates the iteration before failure but after some narrowing has occurred. (`clpStatistics` can be used to verify this.) In the second case the desired failure occurs before throttling is enabled.
 
 The alternative to this behaviour is the appearance of non-termination; it will take a long time to narrow a wide domain by incremental steps (size `1` in the example above). (The fixed point iteration can be shown to terminate but, at some point, practical considerations must take precedence.)
 
 Another interesting example of an inconsistent constraint:
 eg
-	﻿?- X::integer, {X>abs(X)}.
-	X::integer(1, 72057594037927935).
-The problem here is that constraint propagation gets stuck at a fixed point due to the dependency issue. We can overcome this using `solve` but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
+	?- X::integer, {X>abs(X)}.
+	X::integer(998, 72057594037927928).
+As seen above, throttling can be mitigating by defining tighter constraints (initial range) or something like `solve` can be used after the fact, but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
 	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).
 	false.

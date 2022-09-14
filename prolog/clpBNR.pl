@@ -89,7 +89,7 @@ sin	asin	cos	acos	tan	atan      %% trig functions
 
 */
 
-version("0.10.0").
+version("0.10.1").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 

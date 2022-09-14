@@ -64,7 +64,7 @@ eg
 
 ##### Constrained Optimization
 
-Moving to CLP usually involves a paradigm shift from "generate and test" to to "apply test, then generate". This facilitates solving constrained optimization problems; just apply the constraints before calling the global optimization predicate. Some examples from "Shaum's" (chapter 12):
+Moving to CLP usually involves a paradigm shift from "generate and test" to to "apply test, then generate". This facilitates solving constrained optimization problems; just apply the constraints before calling the global optimization predicate. Some examples from "Schaum's" (chapter 12):
 eg
 	﻿?- {X**2+Y**2==1},global_minimum(X+Y,Z).
 	X:: -0.70...,
@@ -418,9 +418,281 @@ eg
 	PremForF = 2727.2727272727275.
 The last example demonstrates an important feature of `library(simplex)`, namely that it uses rational arithmetic to avoid the unsound properties of floating point arithmetic. Any floating point constants in the objective expression or constraints are treated as precise values and converted to rational numbers before any calculations are done. This remains safe as long as the rational numbers do not exceed the `max_rational_size` value (a SWI-Prolog environment flag - also see section 4.27.2 of [[SWIP Manual - Arithmetic]]). Unfortunately, the rational results can be hard to interpret so this example also generates the (approximate) floating point equivalents.
 
-As an extreme example consider "[The Stigler Diet Problem]" which has 9 linear constraints in 77 variables. Applying a bifurcating search like `splitsolve` or `enumerate` on 77 variables is impractical but `lin_minimize` produces the documented solution (there may be more?) in approximately 1 second. 
+As an extreme example consider "[The Stigler Diet Problem]" which has 9 linear constraints in 77 variables. Applying a bifurcating search like `splitsolve` or `enumerate` on 77 variables is impractical but `lin_minimize` produces the documented solution (there may be more?) in less than 0.1 second. 
 
-Many optimization problems can be modelled as a linear system so it's worthwhile having special purpose tools within a CLP framework to tackle these kinds of problems. For non-linear problems, see the next section.
+##### Bin Packing
+
+A bin packing problem is one where one is given an assortment of objects of different types which are to be grouped into "bins" and where there are restrictions on the number and type of objects that can be placed in a bin. Such problems are often good abstract models for practical problems arising in the configuration of complex systems which often require a mix of boolean and (usually) integer constraints.
+
+The challenge of using constraints on such problems is often that of mapping a symbolic or informal description to numeric constraints. Then a search technique must be defined to find an optimal solution to the problem; generally many such solutions exits but any one of them is normally acceptable. However simple searching strategies, even when constrained, typically do not scale well. Fortunately, bin packing problems are usually linear optimization problems so, using an alternative model formulation, searching can be replaced by `lin_minimize/3` resulting in much better scalability.
+
+The rest of this section examines two hypothetical bin packing problems which illustrate these approaches. (Complete program source for these examples can be found in [Appendix - Bin_Packing_Examples]).
+
+##### Loading Camels
+As a first example, consider the problem of transporting a set of items using a minimum number of camels as defined in [Camels]. The problem input data includes 3 lists which define the properties of the item types; each item type has a value, a weight, and a demand, i.e., the number of items of that type to be transported. A example of such data for a problem with 3 item types is:
+.pl
+	weights(3, [30,20,50]).
+	values( 3, [90,70,20]).
+	demands(3, [12,7,15]).
+(The first argument is just a key so that several such datasets can be defined in a file; in this case the key is just the number of item types.)
+
+A camel is defined by its ability to carry items. In this case the total value of the carried items cannot not exceed 200 and the total weight cannot exceed 100. The following captures this given the `weight` and `values` lists as input:
+.pl
+	% define what a camel can do
+	camel(Weights,Values,Load,Count) :-
+		length(Weights,L), 
+		length(Load,L), Load::integer(0,_),  % Load is list of item counts
+		Weight::integer(1,100),  % weight can't exceed 100 but must be > 0
+		sym_sum_prod(Load,Weights,SumW),
+		{Weight == SumW},
+		Value::integer(1,200),   % value can't exceed 200 but must be > 0
+		sym_sum_prod(Load,Values,SumV),	
+		{Value == SumV},
+		Count::integer(1,_),     % total load (number of items of any kind)
+		sym_sum_list(Load,SumL),
+		{Count == SumL}.
+`Load` is a list (by item type) of the number of each item type carried by a camel. Since no `Load` has been assigned it's just a list of constrained integers. The (redundant but useful) `Count` is just the total count of items carried, also a constrained integer. To produce a list of all the possible camel "configurations", just `enumerate(Load)`:
+eg
+	 ?- weights(3,Weights), values(3,Values), findall((Count,Load), (camel(Weights,Values,Load,Count),enumerate(Load)), Configs).
+	 Weights = [30, 20, 50],
+	 Values = [90, 70, 20],
+	 Configs = [
+	  (1, [0, 0, 1]), 
+	  (2, [0, 0, 2]), 
+	  (1, [0, 1, 0]), 
+	  (2, [0, 1, 1]), 
+	  (2, [0, 2, 0]), 
+	  (3, [0, 2, 1]), 
+	  (1, [1, 0, 0]), 
+	  (2, [1, 0, 1]), 
+	  (2, [1, 1, 0]), 
+	  (3, [1, 1, 1]), 
+	  (2, [2, 0, 0])
+	].
+The general approach is to start with no camels and then keep adding them until a solution that meets the demand is found. This is done in two steps: use predicate `pack_/5` add a camel and reduce the demand by the load applied to the expanded set of camels (as a set of new constraints), then "enumerate" the set of camel `Load`'s using `enum_camels/1` to find a solution that fits. Stop adding camels when the demand is reduced to exactly zero. (This is a slightly different problem than the relaxed linear problem solved in [Camels].) The implementation of these two predicates:
+.pl
+	% load additional camels until residual item count reaches 0
+	% camel load defined by (Count,Load) where Count is sum of Load elements
+	camel_load_(0,Items,_,_,[]) :-
+		zero_list_(Items).
+	camel_load_(Total,Items,Weights,Values,[(Count,Load)|Camels]) :-
+		camel(Weights,Values,Load,Count),          % new camel
+		{NxtTotal == Total-Count, NxtTotal >= 0},  % reduces total item count
+		subtract_clp(Items,Load,Residual),         % and count of each item type
+		camel_load_(NxtTotal,Residual,Weights,Values,Camels).  % adds more as needed
+	
+	zero_list_([]).
+	zero_list_([0|Items]) :-
+		zero_list_(Items).
+	
+	subtract_clp([], [], []).
+	subtract_clp([X|Xs], [Y|Ys], [Z|Zs]) :-
+		{Z == X - Y, Z >= 0},  % can't get to -ve items
+		subtract_clp(Xs,Ys,Zs).
+	
+	enum_camels([]).
+	enum_camels([(_Count,Load)|Camels]) :-
+		enumerate(Load),
+		enum_camels(Camels).
+This all works but has a flaw. Enumeration will generate many equivalent solutions with the same "camels", just in a different order. To break this symmetry, add constraints which requires the list to be sorted by the number of items carried. This doesn't remove all the permutations (no order is defined if the carried items is the same), but it significantly improves the performance for most problems. The "order" constraint on a list of "camels" is defined as:
+.pl
+	camels_ordered_([_]) :- !.         % finish with one item
+	camels_ordered_([X,Y|Xs]) :-
+		order_camels(X,Y),             % order constraint on first two items
+		camels_ordered_([Y|Xs]).       % order second and remaining items
+	
+	order_camels((C1,_L1), (C2,_L2)) :- {C1>=C2}.  % constrain camel order by carried items
+The top level program which packs a "demand" list of items to a list of camels:
+.pl
+	pack_camels(Items,CamelSpec,Required) :-
+		setup_camels_(Items,Total,Weights,Values),
+		camel_load_(Total,Items,Weights,Values,Camels),  % incrementally adds camels as needed
+		camels_ordered_(Camels),        % order list to break order symmetry
+		enum_camels(Camels), !,         % commit to first solution
+		msort(Camels,SCamels),          % sort result by load count for output
+		accumulate_camels_(SCamels,CamelSpec,0,Required).
+
+	setup_camels_(Items,Total,Weights,Values) :- 
+		length(Items,L),
+		weights(L,Weights),
+		values(L,Values),
+		lists:sum_list(Items,Total).
+Note that, due to the '`!`', only the first solution is generated (remove the cut to generate more) and the solution is optimal as defined by the number of camels used, since no solutions using fewer camels have been generated. `msort/2` and `accumulate_camels_/2` are just used to provide more readable top level output:
+eg
+	?- demands(3,Items), pack_camels(Items,Camels,Required).
+	Items = [12, 7, 15],
+	Camels = [4*[0, 0, 2], 1*[1, 0, 1], 3*[2, 0, 0], 1*[0, 2, 1], 5*[1, 1, 1]],
+	Required = 14.
+The value of `Camels` is a list of the form `N*Load` where `Load` is the list of items (by type) carried by that camel and `N` is the number of camels carrying that load. In this case `14` (`4+1+1+5+3`) camels are need to satisfy the demand.
+
+While simple, the problem with this solution is that it doesn't scale well. Increasing the demand or the number of item types can cause exponential increase in the time taken to find a solution. For example, if one doubles the amount of each type (for a demand of `[24, 14, 30]`) results in an increase by a factor of 100 in the execution time. The constraints do an effective job at causing early failure when the number of camels is much less then the eventual minimum required, but as the number approaches a solution, the number of possible solutions to test becomes quite large before ultimately failing.
+
+An alternative model constructs a list of all the possible camel "load configurations" much like was shown above  to test the `camel/4` predicate. The problem can then be restated as how much of each configuration is required to meet the demand; minimizing the total number of used configurations (the objective expression) required defines an optimal solution. The sum of each item type over these used configurations to meet the specified demand, defines the constraints. Both are linear expressions so `lin_minimize/3` can be used to efficiently generate a solution:
+.pl
+	fastpack_camels(Items,CamelSpec,Required) :-
+		setup_camels_(Items,_Total,Weights,Values),  % process input data
+		% generate possible load patterns
+		findall(Load, (camel(Weights,Values,Load,_Count),enumerate(Load)), Loads),
+		% use Items and Loads to define linear objective expression and constraints 
+		camels_lin_summation(Items,Loads,NC,Obj,Constraints),
+		lin_minimize(Obj,{Constraints},_Min),         % and minimize
+		accumulate_camels_(NC,CamelSpec,0,Required).  % format for output
+	
+	camels_lin_summation(Items,Loads,NC,Obj,Constraints) :-
+		map_camel_loads(Loads,Ns,NC),  % lists of pattern counts
+		sym_sum_list(Ns,Obj),          % Objective function is sum of counts
+		length(Items,TLen),            % construct constraint for each type
+		lin_constraints_camels(0,TLen,Items,Loads,Ns,Constraints).
+	
+	map_camel_loads([],[],[]).
+	map_camel_loads([Load|Loads],[N|Ns],[N*Load|NCs]) :-
+		N::integer(0,_),
+		map_camel_loads(Loads,Ns,NCs).
+		
+	lin_constraints_camels(T,T,_,_,_,[]) :- !.
+	lin_constraints_camels(T,TLen,Items,Loads,Ns,[LHS==RHS|Constraints]):-
+		camel_lhs_constraint_(Loads,Ns,T,LHS),  % constraint LHS for item type T
+		nth0(T,Items,RHS),                      % constraint RHS for item type T
+		TNxt is T+1,                            % next type
+		lin_constraints_camels(TNxt,TLen,Items,Loads,Ns,Constraints).
+	
+	% constraint LHS for type T = sum(Load[T]*N)
+	camel_lhs_constraint_([Load],[N],T, L*N) :- !,  % last Load - minimum form
+		nth0(T,Load,L).
+	camel_lhs_constraint_([Load|Loads],[N|Ns],T, RHS) :-
+		nth0(T,Load,L),                         % Load[T]
+		(L==0 -> RHS = RHS1 ; RHS = L*N+RHS1),  % omit if Load[T] == 0
+		camel_lhs_constraint_(Loads,Ns,T,RHS1).
+Note that this generates an optimal solution but not the same one generated by `pack_camels/3`:
+eg
+	?- demands(3,Items), fastpack_camels(Items,Camels,Required).
+	Items = [12, 7, 15],
+	Camels = [2*[0, 0, 2], 1*[0, 1, 1], 4*[1, 0, 1], 6*[1, 1, 1], 1*[2, 0, 0]],
+	Required = 14.
+But unlike `pack_camels`, this solution scales quite well. The 21 item problem from [Camels] is the worst case with 900 possible configurations and takes a couple of seconds, the other examples take less than half a second. Note that constraints are use here primarily to generate the list of configurations; expensive enumeration is replaced by the simplex algorithm tailored to linear optimization problems. Combining well known numerical methods with constraints can lead to effective solutions.
+&
+	[Camels] <- link https://www.metalevel.at/various/colgen/
+
+##### Packing Coloured Bins
+As a second example, consider the problem of packing three types of bins (red, blue, and green) with five types of commodities (glass, plastic, steel, wood, and copper), subject to the following rules:
+- bins have limited capacity: red bins can hold 3 items, blue, 1 item, and green, 4 items.
+- a bin with a wood item must also have a plastic item
+- glass or plastic items cannot be put in the same bin as a copper item
+- blue bins cannot hold wood or plastic items
+- red bins cannot hold steel or plastic items and at most 1 wood item
+- green bins cannot hold steel or glass items and at most 2 wood item
+Using a mixture of integer arithmetic and boolean logic, this can be represented with constraints as:
+.pl
+	% pack 3 bin types with 5 types of commodities
+	bin_types([red,green,blue]).
+	
+	commodities([glass, plastic, steel, wood, copper]).
+	
+	% define a bin with constraints
+	bin(Type, Contents, Total):-
+		Type::integer(1,3),                               % enumeration of 3 bin types
+		{Red == (Type==1), Green == (Type==2), Blue == (Type==3)}, % true if bin the designated colour
+		Binsize::integer(1,4),                            % bin capacity, colour dependent
+		{Binsize == Red*3 + Blue*1 + Green*4},            % "conditional" expression
+		Contents=[Glass,Plastic,Steel,Wood,Copper], Contents::integer(0,_),
+		Total::integer(1,_),                              % % bin contains Total items (at least 1)
+		{Total == Glass + Plastic + Steel + Wood + Copper, Total =< Binsize},  
+		{(Wood >= 1) -> (Plastic >= 1)},                  % wood requires plastic
+		{Glass * Copper == 0},                            % glass excludes copper
+		{Copper * Plastic == 0},                          % copper excludes plastic
+		{Blue  -> (Wood + Plastic == 0)},                 % blue bin -> no plastc or wood
+		{Red   -> ((0==Steel + Plastic) and (Wood=<1))},  % red bin -> no steel or plastic, no more than 1 wood
+		{Green -> ((0==Glass + Steel) and (Wood=<2))}.    % green bin -> no steel or plastic, no more than 2 wood
+`Red`, `Green` and `Blue` are implicit booleans which are used to constrain contents based on bin type, e.g., `{Blue  -> (Wood + Plastic == 0)}` says "the bin is blue implies no wood or plastic". With a definition of a bin established, the rest of the program is very similar to the previous "camels" example (source code for both examples in [Appendix - Bin_Packing_Examples]):
+.pl
+	pack_bins(Items,Bins,Required) :-
+		setup_bins_(Items,Total,ItemsRaw),  % process input
+		bin_load_(Total,ItemsRaw,BinsRaw),  % add a bin (further add on backtracking)
+		bins_ordered_(BinsRaw),             % order bins to break symmetry
+		enum_bins_(BinsRaw), !,             % enumerate bin type and contents - single solution
+		accumulate_bins_(BinsRaw,Bins,0,Required).  % format for output
+		
+	bin_load_(0, [0,0,0,0,0], []).
+	bin_load_(Total, Amounts, [bin(Type,Contents,Size)|Bins]) :-
+		bin(Type,Contents,Size),                    % new bin
+		{T == Total - Size, T>=0},                  % decrease total by bin capacity
+		subtract_clp(Amounts, Contents, Residual),  % decrease each commodity using bin contents
+		bin_load_(T, Residual, Bins).               % repeat until feasible solution exists
+	
+	bins_ordered_([_]) :- !.
+	bins_ordered_([X,Y|Xs]) :- order_bins_(X,Y), bins_ordered_([Y|Xs]).
+	
+	order_bins_(bin(T1,_,S1), bin(T2,_,S2)) :-
+		{(T1<T2) or ((T1==T2) and (S1=<S2))}.
+	
+	subtract_clp([], [], []).
+	subtract_clp([X|Xs], [Y|Ys], [Z|Zs]) :-
+		{Z == X - Y, Z >= 0},  % can't get to -ve items
+		subtract_clp(Xs,Ys,Zs).
+	
+	enum_bins_([]).
+	enum_bins_([bin(T,C,_S)|Bs]):- 
+		enumerate([T|C]),  % enumerate 
+		enum_bins_(Bs).
+A simple example query:
+eg
+	?- pack_bins([3*glass, 4*plastic, 1*steel, 4*wood, 2*copper],Bins,Required).
+	Bins = [1*red(2*copper), 1*red(3*glass), 2*green(2*plastic, 2*wood), 1*blue(1*steel)],
+	Required = 5.
+But as with the camels example, a modest increase in number of items drastically increases the execution time. Applying the same optimization using load "patterns" produces a significantly more scalable solution:
+.pl
+	fastpack_bins(Items,Bins,Required) :-
+		setup_bins_(Items,_Total,ItemsRaw),        % process input
+		% generate possible load patterns
+		findall(bin(Type,Contents,Size), (bin(Type, Contents, Size), enumerate([Type|Contents])), BinDefs),
+		% use ItemsRaw and BinDefs to define linear objective expression and constraints 
+		bins_lin_summation(ItemsRaw,BinDefs,NBins,Obj,Constraints),
+		lin_minimize(Obj,{Constraints},_Min),      % and minimize
+		accumulate_bins_(NBins,Bins,0,Required).   % format for output
+	
+	bins_lin_summation(Items,BinDefs,NBins,Obj,Constraints) :-
+		bins_list(BinDefs,Ns,NBins),  % lists of pattern counts
+		sym_sum_list(Ns,Obj),         % Objective function is sum of counts
+		length(Items,TLen),           % construct constraint for each type
+		lin_constraints_bins(0,TLen,Items,BinDefs,Ns,Constraints).
+	
+	bins_list([],[],[]).
+	bins_list([Bin|BinDefs],[N|Ns],[N*Bin|NBins]) :-
+		N::integer(0,_),
+		bins_list(BinDefs,Ns,NBins).
+		
+	lin_constraints_bins(T,T,_,_,_,[]) :- !.
+	lin_constraints_bins(T,TLen,Items,BinDefs,Ns,[LHS==RHS|Constraints]):-
+		bin_lhs_constraint_(BinDefs,Ns,T,LHS),
+		nth0(T,Items,RHS),
+		T1 is T+1,	
+		lin_constraints_bins(T1,TLen,Items,BinDefs,Ns,Constraints).
+		
+	bin_lhs_constraint_([bin(_,Contents,_)],[N],T, CI*N) :- !,
+		nth0(T,Contents,CI).
+	bin_lhs_constraint_([bin(_,Contents,_)|BinDefs],[N|Ns],T, RHS) :-	
+		nth0(T,Contents,CI),
+		(CI==0
+		 -> bin_lhs_constraint_(BinDefs,Ns,T,RHS)
+		 ;  RHS = CI*N+RHS1,
+			bin_lhs_constraint_(BinDefs,Ns,T,RHS1)
+		).
+	
+	sym_sum_list([X],X) :- !.
+	sym_sum_list([X|Xs],X+XS) :-
+		sym_sum_list(Xs,XS).
+Examples:
+eg
+	?- fastpack_bins([3*glass, 4*plastic, 1*steel, 4*wood, 2*copper],Bins,Required).
+	Bins = [1*red(2*copper), 1*red(3*glass), 2*green(2*plastic, 2*wood), 1*blue(1*steel)],
+	Required = 5.
+
+	?- fastpack_bins([132*glass,414*plastic,1001*steel,414*wood,230*copper],Bins,Required).
+	Bins = [44*red(3*glass), 2*green(3*copper), 56*green(4*copper), 207*green(2*plastic, 2*wood), 1001*blue(1*steel)],
+	Required = 1310.
+It isn't feasible to use `pack_bins/3` to find a solution to the second example, but both examples take roughly the same time (much less than 0.1 sec.) using `fastpack_bins`.
+
+Many optimization problems can be modelled as a linear system so it's worthwhile having special purpose tools within a CLP framework to tackle these kinds of problems. Other techniques that can be applied to non-linear problems are discussed in the next section.
 
 ##### Redundant Constraints using Local Optimization 
 
@@ -501,9 +773,10 @@ eg
 	Y:: 369.331...,
 	Pipe:: 910.543... .
 
+
 ##### Caveats
 
-The number of global, local, and linear optimization predicates, in combination with the labelling predicates (`solve` and friends) are provided because when it comes to optimization probles, not one size fits all. The general techniques are deceptively simple and declarative. However, one must remember that they are based on exhaustive search which can be very expensive. When the problem allows, alternative techniques, e.g., as supported by `library(simplex)` for linear problems, should be used. When this can't be done, applying hidden and redundant constraints can result in a significant improvement, as will any reduction in the precision requirements (third argument of `global_max...` and `global_min...`). 
+A number of global, local, and linear optimization predicates, in combination with the labelling predicates (`solve` and friends) are provided because when it comes to optimization problems, not one size fits all. The general techniques can be deceptively simple and declarative. However, one must remember that they are based on exhaustive search which can be very expensive. When the problem allows, alternative techniques, e.g., as supported by `library(simplex)` for linear problems, should be used. When this can't be done, applying hidden and redundant constraints can result in a significant improvement, as will any reduction in the precision requirements (third argument of `global_max...` and `global_min...`). 
 
 A second issue is that the objective function passed to global optimum predicates must contain sufficient free values (intervals) so that solutions can be fully tested. Consider the following simple change to the "Refinery Location" example:
 eg
@@ -512,9 +785,9 @@ eg
 	local_minima(OF), {OF==Z}, global_minimize(Z,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	Z = Pipe,
-	X::real(253.31280547966463, 478.29843889534044),
-	Y::real(191.61042849565473, 400),
-	Pipe:: 692.769... .
+	X::real(255.67478448957934, 472.3010561622925),
+	Y::real(189.84791399187418, 400),
+	Pipe:: 691.798... .
 Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependancy problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to furether constrain `X` and `Y`, it will fail:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),
@@ -534,3 +807,5 @@ Global optimization is a hard problem and the tools described in this section ar
 	[Knapsack Problem] <- link https://en.wikipedia.org/wiki/Knapsack_problem
 	[[SWIP Manual - Arithmetic]] <- link https://www.swi-prolog.org/pldoc/man?section=arith
 	[The Stigler Diet Problem] <- link https://developers.google.com/optimization/lp/stigler_diet
+	[Appendix - Bin_Packing_Examples] <- link #toc4Appendix_3_-_Bin_Packing_Examples
+	
