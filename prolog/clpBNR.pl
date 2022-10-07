@@ -43,7 +43,7 @@
 	op(500, yfx, or),      % boolean 'or'
 	op(500, yfx, nand),    % boolean 'nand'
 	op(500, yfx, nor),     % boolean 'nor'
-	op(500, yfx, xor),     % boolean 'xor'
+	% op(500, yfx, xor),   % boolean 'xor', but operator already defined (P=400) for arithmetic
 	op(700, xfx, <>),      % integer not equal
 	op(700, xfx, <=),      % included (one way narrowing)
 
@@ -86,19 +86,13 @@ and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 -	~                                 %% unary negate and not
 exp	log                               %% exp/ln
 sin	asin	cos	acos	tan	atan      %% trig functions
+integer                               %% is an integer value
 
 */
 
-version("0.10.1").
+version("0.10.2").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
-
-%
-% clpBNR specific Prolog environment flags
-%
-:- create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)]).
-:- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
-:- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
 
 %
 % SWIP optimise control - set flag to true for compiled arithmetic
@@ -144,18 +138,50 @@ g_read(G,V)    :- nb_getval(G,V).
 	clpBNR:clpStatistics/0, clpBNR:clpStatistic/1, 
 	sandbox:safe_global_variable/1.
 
+sandbox:safe_global_variable('clpBNR:thread_init_done').
 sandbox:safe_global_variable('clpBNR:userTime').
 sandbox:safe_global_variable('clpBNR:inferences').
 sandbox:safe_global_variable('clpBNR:gc_time').
 
-% 
+%  
 % Global var statistics are per thread and therefore must be "lazily" initialized
-% This exception handler will be invoked the first time one of the vars is read
-% 
-user:exception(undefined_global_variable,GlobalVar,retry) :-
-	atom_concat('clpBNR:',_,GlobalVar),
-	% uninitialized clpBNR global, probably in another thread, reinitialize all 
-	clpStatistics.               
+% Also ensures that thread copies of flags are properly set.
+% This exception handler will be invoked the first time 'clpBNR:thread_init_done' is read
+% Public predicates ::. {}. and range read this global before proceeding. 
+%
+user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
+	set_prolog_flags,  % initialize/check environment flags  
+	clpStatistics,     % define remaining globals 
+	g_assign('clpBNR:thread_init_done',1).
+
+%
+% Set required arithmetic flags (see module/thread initialization)
+%
+set_prolog_flags :-
+	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
+	(current_prolog_flag(max_rational_size,_)
+	 -> true                                           % already defined, leave as is
+	 ;  set_prolog_flag(max_rational_size, 16)         % rational size in bytes before ..
+	),
+	set_prolog_flag(max_rational_size_action, float),  % conversion to float
+
+	set_prolog_flag(float_overflow,infinity),          % enable IEEE continuation values
+	set_prolog_flag(float_zero_div,infinity),
+	set_prolog_flag(float_undefined,nan),
+	
+	% clpBNR specific Prolog environment flags - overwrite if necessary
+	(current_prolog_flag(clpBNR_iteration_limit,_)
+	 -> true
+	 ;  create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)])
+	),
+	(current_prolog_flag(clpBNR_default_precision,_)
+	 -> true
+	 ;  create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)])
+	),
+	(current_prolog_flag(clpBNR_verbose,_)
+	 -> true
+	 ;  create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)])
+	).
 
 clpStatistics :-
 	% garbage_collect,  % ? do gc before time snapshots
@@ -182,18 +208,6 @@ clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('clpBNR:inferen
 %
 list(X) :- compound(X) ->  X=[_|_] ; X==[].
 
-%
-% Set required arithmetic flags
-%
-set_prolog_flags :-	
-	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
-	set_prolog_flag(max_rational_size, 16),            % rational size in bytes before ..
-	set_prolog_flag(max_rational_size_action, float),  % conversion to float
-
-	set_prolog_flag(float_overflow,infinity),          % enable IEEE continuation values
-	set_prolog_flag(float_zero_div,infinity),
-	set_prolog_flag(float_undefined,nan).
-	
 :- include(clpBNR/ia_primitives).  % interval arithmetic relations via evalNode/4.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -319,6 +333,7 @@ range(Int, [L,H]) :- getValue(Int, (IL,IH)), number(IL), !,  % existing interval
 	(var(H) -> H=IH ; IH=<H).
 % for var(Int), constrain it to be an interval with specified bounds (like a declaration)
 range(Int, [L,H]) :- var(Int),  % new interval
+	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
 	int_decl_(real, (L,H), Int),
 	getValue(Int, (L,H)).       % will bind any intput var's to values
 
@@ -404,6 +419,7 @@ Ints::Dom :- list(Ints),!,
 	intervals_(Ints,Dom).
 	
 R::Dom :- var(R), var(Dom), !,  % declare R = real(L,H), Note: R can be interval 
+	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
 	int_decl_(real,(_,_),R),
 	domain(R,Dom).
 
@@ -413,6 +429,7 @@ R::Dom :-  var(Dom), !,         % domain query (if interval(R) else fail)
 R::Dom :-                       % interval(R) or number(R) and nonvar(Dom) 
 	Dom=..[Type|Bounds],
 	(Bounds=[] -> Val=(_,_) ; Val=..[','|Bounds]),
+	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
 	int_decl_(Type,Val,R).
 
 int_decl_(boolean,_,R) :- !,      % boolean is integer; 0=false, 1=true, ignore any bounds.
@@ -556,6 +573,7 @@ matching_node_([N|Ns],Op,Ops) :-
 %
 {}.
 {Cons} :-
+	g_read('clpBNR:thread_init_done',_),      % ensures per-thread initialization
 	term_variables(Cons, CVars),
 	declare_vars_(CVars),                     % convert any plain vars to intervals
 	addConstraints_(Cons,T/T,Agenda),         % add constraints
@@ -645,6 +663,10 @@ safe_([A|As]) :- !,
 	safe_(As).
 safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0.0) requires fuzzed 0.0
 	fail.
+safe_(_ xor _) :- !,                                    % clpBNR xor incompatible with `is` xor
+	fail.
+safe_(integer(_)) :- !,                                 % clpBNR integer incompatible with `is` integer
+	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),                     % evaluable by is/2
 	F =.. [Op|Args],
@@ -680,18 +702,19 @@ fmap_(nor,  nor,   ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(xor,  xor,   ZXY,     ZXY,     [boolean,boolean,boolean]).
 fmap_(->,   imB,   ZXY,     ZXY,     [boolean,boolean,boolean]).
 
-fmap_(sqrt,sqrt,  ZX,       ZX,      [real,real]).          % pos. root version vs. **(1/2)
-fmap_(-,   minus, ZX,       ZX,      [real,real]).
-fmap_(~,   not,   ZX,       ZX,      [boolean,boolean]).
-fmap_(exp, exp,   ZX,       ZX,      [real,real]).
-fmap_(log, exp,   [Z,X],    [X,Z],   [real,real]).
-fmap_(abs, abs,   ZX,       ZX,      [real,real]).
-fmap_(sin, sin,   ZX,       ZX,      [real,real]).
-fmap_(asin,sin,   [Z,X],    [X,Z],   [real,real]).
-fmap_(cos, cos,   ZX,       ZX,      [real,real]).
-fmap_(acos,cos,   [Z,X],    [X,Z],   [real,real]).
-fmap_(tan, tan,   ZX,       ZX,      [real,real]).
-fmap_(atan,tan,   [Z,X],    [X,Z],   [real,real]).
+fmap_(sqrt, sqrt,  ZX,      ZX,      [real,real]).          % pos. root version vs. **(1/2)
+fmap_(-,    minus, ZX,      ZX,      [real,real]).
+fmap_(~,    not,   ZX,      ZX,      [boolean,boolean]).
+fmap_(integer,int, ZX,      ZX,      [boolean,real]).
+fmap_(exp,  exp,   ZX,      ZX,      [real,real]).
+fmap_(log,  exp,   [Z,X],   [X,Z],   [real,real]).
+fmap_(abs,  abs,   ZX,      ZX,      [real,real]).
+fmap_(sin,  sin,   ZX,      ZX,      [real,real]).
+fmap_(asin, sin,   [Z,X],   [X,Z],   [real,real]).
+fmap_(cos,  cos,   ZX,      ZX,      [real,real]).
+fmap_(acos, cos,   [Z,X],   [X,Z],   [real,real]).
+fmap_(tan,  tan,   ZX,      ZX,      [real,real]).
+fmap_(atan, tan,   [Z,X],   [X,Z],   [real,real]).
 
 % reverse map node info to a facsimile of the original constraint
 map_constraint_op_(integral,$(V),integral(V)) :- !.
@@ -956,7 +979,8 @@ check_features :-
 	).
 
 version_info :-
-	print_message(informational, clpBNR(versionInfo)).
+	print_message(informational, clpBNR(versionInfo)),
+	print_message(informational, clpBNR(arithmeticFlags)).
 
 set_min_free(Amount) :-
 	once(prolog_stack_property(global,min_free(Free))), % minimum free cells (8 bytes/cell)
@@ -978,11 +1002,13 @@ prolog:message(clpBNR(versionInfo)) -->
 	{ version(Version) },
 	[ '*** clpBNR v~w ***.'-[Version] ].
 
+prolog:message(clpBNR(arithmeticFlags)) -->
+	[ '  Arithmetic global flags set to prefer rationals and IEEE continuation values.'-[] ].
+
 init_clpBNR :-
 	restore_optimise,
 	version_info,
 	check_features,
-	set_prolog_flags,
 	set_min_free(8196),
 	trace_clpBNR(false).  % reset tracing on reload
 

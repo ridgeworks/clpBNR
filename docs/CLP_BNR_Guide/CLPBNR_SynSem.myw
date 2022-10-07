@@ -455,6 +455,23 @@ eg
 	N = 2.
 Since it is generally difficult to infer a domain type from a constraint which contains only arithmetic expressions, `integer` intervals usually require an explicit declaration (using `::/2`). The one exception is that the "not equals" inequality (`<>`) will constrain the right and left hand sides to be of type `integer`. This is not enforced for `<` and `>` inequalities as there may be some obscure cases, e.g., searching for minima and maxima, where they may be potentially useful. Nonetheless, their usage in the `real` domain should be avoided.
 
+Using the interval type `integer` will suffice for most finite domain problems. However, the effect of this is that when the domain of interval of type `integer` doesn't contain an integer, the result is failure. When using constraints in Boolean expressions (see next section), it is desirable to to treat this failure as a *false* value in the Boolean expression. To accommodate this usage, the constraint `integer/1` is provided. As an example, consider the problem of constraining the variable `Year` to be a leap year (see motivating discussion at [
+clpBNR: B or B]). Using `integer/1`:
+.pl
+	leap(Year) :-
+		Year::integer(1583,_),
+		{ integer(Year/4),                         % Y must be multiple of 4
+		 (integer(Year/100) -> integer(Year/400))  % if Y is a multiple of 100, Y must be  a multiple of 400
+		}.
+leading to:
+eg
+	?- leap(Year), member(Year,[1583,1584,1585,1586,1587,1588,1600,1700,1800,1900,2000,2100]).
+	Year = 1584 ;
+	Year = 1588 ;
+	Year = 1600 ;
+	Year = 2000 ;
+	false.
+
 <#TableOfContents>
 
 #### Boolean Algebra with Intervals
@@ -642,3 +659,4 @@ Given sufficient constraints, it's possible to narrow an interval to a small ran
 	[dependency]      <- image images/dependency.png width=25% height=25% style="margin-left:200px"
 	[simple_quad]     <- image images/simple_quad.png width=25% height=25% style="margin-left:200px"
 	[data type]       <- link https://en.wikipedia.org/wiki/Data_type
+	[clpBNR: B or B]  <- link https://swi-prolog.discourse.group/t/clpbnr-b-or-b/5796

@@ -34,6 +34,7 @@ The set of operators and functions currently supported are:
 	- ~                                   %% unary negate and not
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
+	integer                               %% is an integer value
 
 #### Environment Flags
 
@@ -143,6 +144,7 @@ Operators and functions that can be used to compose constraints include:
 * logic - boolean operators `and, or, ~, nand, nor, xor`
 * set inclusion - boolean operators `=>, <=`
 * numeric functions - `abs/1, sqrt/1, min/2, max/2, exp/1, log/1, sin/1, cos/1, tan/1, asin/1, acos/1, atan/1`
+* is integer (*true* if argument must be an integer) - `integer/1`
 
 Notes:
 1..
@@ -151,6 +153,7 @@ Notes:
 	* Inequalities `<`, `>`, and `<>` are mathematically sound only on intervals of type `integer` (and, by extension, `boolean`). Care should be taken when used with `real`'s. `<>` may fail or force its arguments to be typed as `integer`.
 	* `log/1` returns logarithms to base {`e`}. 
 	* Types for variables which aren't intervals will have their initial types inferred from the constraint expression. Bounds will set to `±inf` (even for type `integer`).
+	* `integer/1` is for use primarily in boolean expressions, e.g., (`{(Year < 1583) or integer(Year/4)}`). For most uses, the interval type `integer` will suffice.
 eg
 	?- {X>=Y}.
 	Y::real(-1.0Inf, 1.0Inf),

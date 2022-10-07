@@ -121,12 +121,35 @@ unwrap_((Xpl,Xph), W, (MXl,MXh), (Xl,Xh)) :-
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% integral (contract to integer bounds)
+% integral (contract to integer bounds) - optimized version of (int,P,$(1,X),_)
 
-narrowing_op(integral, P, $((L,H)), $((NL,NH))) :-
-	NL is ceiling(L), NH is floor(H),
-	NL=<NH.
+narrowing_op(integral, P, $(X), $(NewX)) :-
+	integral_(X,NewX).
 	
+integral_((Xl,Xh),(NXl,NXh)) :-
+	NXl is ceiling(Xl), NXh is floor(Xh),
+	NXl=<NXh.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Z == integer(X) % (Z boolean) 
+%  true if X is an integer point, false if it doesn't contain an integer
+%  else if true, narrows X to integer bounds
+
+narrowing_op(int, p, $(Z,X), $(NewZ,X)) :- 
+	X = (Xb,Xb), !,                                                % point value --> 
+	(integer(Xb) -> ^(Z,(1,1),NewZ) ; ^(Z,(0,0),NewZ)).            % true if integer else false
+
+narrowing_op(int, p, $(Z,X), $(NewZ,X)) :- 
+	X = (Xl,Xh), ceiling(Xl) > floor(Xh), !,                       % interval doesn't contain an integer -->
+	^(Z,(0,0),NewZ).                                               % false
+
+narrowing_op(int, P, $(Z,X), $(Z,NewX)) :-
+	Z = (1,1), !,                                                  % true -->
+	integral_(X,NewX).                                             % integral_(X)
+
+narrowing_op(int, P, $(Z,X), $(NewZ,X)) :-  ^(Z,(0,1),NewZ).       % else no change, but narrow Z to boolean
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z==(X==Y)  % (Z boolean)

@@ -141,7 +141,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.10.1
+	Installed version:      0.10.2
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -149,7 +149,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.10.0 ***.
+	% *** clpBNR v0.10.2 ***.
 	true.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
@@ -176,7 +176,6 @@ The `clpBNR` module declaration is:
 		op(500, yfx, or),      % boolean 'or'
 		op(500, yfx, nand),    % boolean 'nand'
 		op(500, yfx, nor),     % boolean 'nor'
-		op(500, yfx, xor),     % boolean 'xor'
 		op(700, xfx, <>),      % integer not equal
 		op(700, xfx, <=),      % included (one way narrowing)
 	
@@ -208,7 +207,7 @@ Also included with this pack (new in V0.10.0) is module `clpBNR_toolkit`, a coll
 
 ## SWI-Prolog Arithmetic Flags
 
-This package sets the SWI-Prolog arithmetic flags as follows:
+This package sets the SWI-Prolog arithmetic gloabl environment flags as follows:
 
 	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
 	set_prolog_flag(max_rational_size, 16),            % rational size in bytes before ..
@@ -222,4 +221,4 @@ This package will not work as intended if these flag values are not respected.
 
 ## Other SWI-Prolog Environment Flags
 
-Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This will be set accordingly when `clpBNR` initializes but nothing prevents it from being subsequently overwritten.
+Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This will be set accordingly when `clpBNR` initializes but nothing prevents it from being subsequently overwritten (as is the case with any global flag).
