@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2022 Rick Workman
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -86,39 +86,27 @@ and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 -	~                                 %% unary negate and not
 exp	log                               %% exp/ln
 sin	asin	cos	acos	tan	atan      %% trig functions
-integer                               %% is an integer value
+integer                               %% must be an integer value
 
 */
 
-version("0.10.2").
+version("0.10.3").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
 %
-% SWIP optimise control - set flag to true for compiled arithmetic
-%
-:-  (current_prolog_flag(optimise,Opt),
-	 nb_setval('clpBNR:temp',Opt),  % save current value to restore on :- initialization/1
-	 set_prolog_flag(optimise,false)
-	).
-
-restore_optimise :-  % by :- initialization.
-	% restore "optimise" flag
-	(nb_current('clpBNR:temp',Opt) 
-	 -> (nb_delete('clpBNR:temp'), set_prolog_flag(optimise,Opt))
-	 ; true
-	).
-
-%
 % Define debug_clpBNR_/2 before turning on optimizer removing debug calls.
+% Note: global "optimise" flag will be restored after load completes.
 %
+:- set_prolog_flag(optimise,false).
+
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
 
 trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
 
 :- set_prolog_flag(optimise,true).
 
-current_node_(Node) :-  % look back to find current Op being excuted for debug messages
+current_node_(Node) :-  % look back to find current Op being executed for debug messages
 	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
 	prolog_frame_attribute(F,parent_goal,doNode_(Args,Op,_,_,_,_,_)),
 	map_constraint_op_(Op,Args,Node),
@@ -251,6 +239,16 @@ finite_interval(integer, (L,H)) :-  %% SWIP:
 	current_prolog_flag(max_tagged_integer,H).
 finite_interval(boolean, (0,1)).
 
+% legal integer bounds values
+integerBnd(1.0Inf).
+integerBnd(-1.0Inf).
+integerBnd(B) :- integer(B).
+
+% precise bounds values
+preciseBnd(1.0Inf).
+preciseBnd(-1.0Inf).
+preciseBnd(B) :- rational(B).
+
 %
 %  non-backtracking set bounds for use with branch and bound
 %
@@ -269,63 +267,40 @@ getValue(Int, Val) :-
 	 ;  get_attr(Int, clpBNR, interval(_, Val, _, _)).  % interval, optimized for SWIP
 
 %
-% set monitor action on an interval
-%
-watch(Int,Action) :-
-	atom(Action), 
-	get_interval_flags_(Int,Flags), !,
-	remove_(Flags,watch(_),Flags1),
-	(Action = none -> Flags2=Flags1 ; Flags2=[watch(Action)|Flags1]),
-	set_interval_flags_(Int,Flags2).
-watch(Ints,Action) :-
-	list(Ints),
-	watch_list_(Ints,Action).
-
-remove_([],_,[]).
-remove_([X|Xs],X,Xs) :- !.
-remove_([X|Xs],X,[X|Ys]) :-
-	remove_(Xs,X,Ys).
-
-watch_list_([],Action).
-watch_list_([Int|Ints],Action) :-
-	watch(Int,Action),
-	watch_list_(Ints,Action).
-
-% check if watch enabled on this interval
-check_monitor_(Int, Update, interval(Type,Val,Nodelist,Flags)) :-
-	(memberchk(watch(Action), Flags)
-	 -> once(monitor_action_(Action, Update, Int))  % in ia_utilities
-	 ; true
-	).
-
-%
 % set interval value (assumes bounds check has already been done)
+% Note: putValue_ cannot modify the new value since the narrowing op is still in the Agenda
+%	and may not be run again. Insert `integral` op for integer bounds adjustment.
 %
 putValue_(New, Int, NodeList) :- 
-	get_attr(Int, clpBNR, Def), !,     % still an interval
+	get_attr(Int, clpBNR, Def),        % still an interval
 	(debugging(clpBNR,true) -> check_monitor_(Int, New, Def) ; true),
-	Def = interval(Type,_,Nodes,_),    % get Type and Nodes
-	(New = (L,H), L=:=H                % narrowed to a point, unify with interval
-	 -> setarg(3,Def,_NL),             % clear node list (so nothing done in unify)
-		(rational(L) -> Int=L ; Int=H) % if either bound rational (precise), use it
-	 ;	setarg(2,Def,New)              % update value in interval (backtrackable)
+	Def = interval(Type,_,Nodes,_),    % get Type and Nodes for queueing
+	New = (L,H),
+	(test_interval_(L,H)               % not a point ->
+	 -> setarg(2,Def,New)              % update value in interval (backtrackable)
+	 ;  (precise_eq(L,H,Pt)            % precise equivalence test for point
+	     -> setarg(3,Def,_NL),         % clear node list (so nothing done in unify)
+	        Int = Pt                   % precisely equivalent, unify (invokes hook)
+	     ; setarg(2,Def,New)           % not precisely equivalent, update
+	    )
 	),
-	queue_nodes_(Type,New,Int,Nodes,NodeList).   % construct node list to schedule
-putValue_((L,H), Num, _) :- number(Num),  % catch things like (0,-0.0)
-	L=:=Num, H=:=Num.
+	% if integer has non-integral bounds, schedule `integral` op to fix it
+	(Type == integer
+	 -> (integerBnd(L), integerBnd(H) -> NodeList = Nodes ; NodeList = [node(integral,_,0,$(Int))|_] )
+	 ;  NodeList = Nodes
+	).
 
-queue_nodes_(real,_,_,Nodes,Nodes).           % type real - just use Nodes
-queue_nodes_(integer,(L,H),_,Nodes,Nodes) :-  % type integer #1 with integral bounds
-	integral_(L), integral_(H), !.              % run Nodes if bounds integers or infinities 
-queue_nodes_(integer,_,Int,_,[node(integral,_,0,$(Int))|_]).  % type integer #2
-	% schedule an "integral" node to re-adjust bounds (Nodes run on adjustment)
+% required due to infinity comparison bug ( 2^1024 =:= inf. )
+test_interval_(L, 1.0Inf) :- !, L \==  1.0Inf.
+test_interval_(-1.0Inf,H) :- !, H \== -1.0Inf.
+test_interval_(L,H) :- L < H.
 
-integral_(1.0Inf).
-integral_(-1.0Inf).
-integral_(B) :- integer(B).
+precise_eq( 1.0Inf, 1.0Inf, 1.0Inf) :- !.                    % point infinities
+precise_eq(-1.0Inf,-1.0Inf,-1.0Inf) :- !.
+precise_eq(L,H,Pt) :- Pt is rational(L), Pt is rational(H).  % finite point values
 
 %
-%  range(Int, Bounds) for compatability 
+%  range(Int, Bounds) for compatibility 
 %
 % for interval(Int) and number(Int), check if value is (always) in specified range, unifying any vars with current value
 range(Int, [L,H]) :- getValue(Int, (IL,IH)), number(IL), !,  % existing interval
@@ -335,16 +310,16 @@ range(Int, [L,H]) :- getValue(Int, (IL,IH)), number(IL), !,  % existing interval
 range(Int, [L,H]) :- var(Int),  % new interval
 	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
 	int_decl_(real, (L,H), Int),
-	getValue(Int, (L,H)).       % will bind any intput var's to values
+	getValue(Int, (L,H)).       % will bind any input var's to values
 
 %
-%  domain(Int, Dom) for interval(Int) for compatability 
+%  domain(Int, Dom) for interval(Int)
 %
 domain(Int, Dom) :-
 	interval_object(Int, Type, Val, _),
 	interval_domain_(Type, Val, Dom).
 
-interval_domain_(integer,(0,1),boolean) :- !.  % integer(0,1) is synonomous with boolean
+interval_domain_(integer,(0,1),boolean) :- !.  % integer(0,1) is synonymous with boolean
 interval_domain_(T,(L,H),Dom) :- Dom=..[T,L,H].
 
 %
@@ -467,8 +442,11 @@ intervals_([Int|Ints],Def) :-
 lower_bound_val_(Type,L,IL) :- var(L), !,  % unspecified bound, make it finite
 	finite_interval(Type,(IL,_)).
 lower_bound_val_(real,L,IL) :-             % real: evaluate and round outward (if float)
-	Lv is L, Lv\= 1.0Inf,
-	(rational(Lv) -> IL=Lv ; IL is nexttoward(Lv,-1.0Inf)).
+	((L == pi ; L == e)
+	 -> IL is roundtoward(L,to_negative)
+	 ;  Lv is L,
+	    (preciseBnd(Lv) -> IL=Lv ; IL is nexttoward(Lv,-1.0Inf)) 
+	).
 lower_bound_val_(integer,L,IL) :-          % integer: make integer, fail if inf
 	IL is ceiling(L), IL \= 1.0Inf.
 lower_bound_val_(boolean,L,IL) :-          % boolean: narrow to L=0
@@ -477,8 +455,11 @@ lower_bound_val_(boolean,L,IL) :-          % boolean: narrow to L=0
 upper_bound_val_(Type,H,IH) :- var(H), !,  % unspecified bound, make it finite
 	finite_interval(Type,(_,IH)).
 upper_bound_val_(real,H,IH) :-             % real: evaluate and round outward (if float)
-	Hv is H, Hv\= -1.0Inf,
-	(rational(Hv) -> IH=Hv ; IH is nexttoward(Hv,1.0Inf)).
+	((H == pi ; H == e)
+	 -> IH is roundtoward(H,to_positive)
+	 ;  Hv is H,
+	    (preciseBnd(Hv) -> IH=Hv ; IH is nexttoward(Hv,1.0Inf)) 
+	).
 upper_bound_val_(integer,H,IH) :-          % integer: make integer, fail if -inf
 	IH is floor(H), IH \= -1.0Inf.
 upper_bound_val_(boolean,H,IH) :-          % boolean: narrow to H=1
@@ -609,7 +590,8 @@ constrain_(C) :-
 	
 buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('Add ~p',{C}),
-	build_(C, 1, boolean, Agenda, NewAgenda), !.
+	% need to catch errors from ground expression evaluation
+	catch(build_(C, 1, boolean, Agenda, NewAgenda),_Err,fail), !.
 buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('{} failure due to bad constraint: ~p',{C}),
 	fail.
@@ -625,8 +607,6 @@ build_(Int, Int, VarType, Agenda, NewAgenda) :-
 build_(Var, Var, VarType, Agenda, Agenda) :-            % implicit interval creation.
 	var(Var), !,
 	new_interval_(Var,VarType).
-build_(Num, Num, _, Agenda, Agenda) :-                  % rational numeric value is precise
-	rational(Num), !.
 build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constant, may not be precise
 	float(Num), !,
 	(
@@ -634,17 +614,25 @@ build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constan
 	 -> Int=Num                                         % infinities are point values
 	 ;	int_decl_(VarType,(Num,Num),Int)                % may be fuzzed, so not a point
 	).
-build_(pt(Num), Num, _, Agenda, Agenda) :-              % point value, must be a number
-	number(Num), !.
-build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile ground Exp (including pi and e)
+build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal
+	number(L), number(H), !,
+	S is integer(sign(H-L)), 
+	(S == 0
+	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
+	 ;  S == 1,                                         % new interval, fail if empty (S = -1)
+	    once(VarType == real ; true),                   % if undefined Type, use 'real'
+	    put_attr(Int, clpBNR, interval(VarType, (L,H), _NL, []))  % create clpBNR attribute
+	).
+build_(Num, Int, VarType, Agenda, Agenda) :-            % pre-compile constants pi and e
+	(Num == pi ; Num == e), !,
+	int_decl_(VarType,(Num,Num),Int).  
+build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile any ground precise Exp
 	ground(Exp),
 	safe_(Exp),                                         % safe to evaluate using is/2
-	L is roundtoward(Exp,to_negative),                  % rounding only affects float evaluation
-	H is roundtoward(Exp,to_positive),
-	(L==H 
-	 -> build_(L, Num, VarType, Agenda, Agenda)         % point value
-	 ;	int_decl_(VarType,(L,H),Num)                    % imprecise so interval
-	), !.
+	Num is Exp,
+	% (Num == 1.5NaN -> !, fail ; preciseBnd(Num))      % fail build_ if nan
+	preciseBnd(Num),                                    % precise result
+	!.
 build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primitives
 	Exp =.. [F|Args],
 	fmap_(F,Op,[Z|Args],ArgsR,Types), !,                % supported arithmetic op
@@ -657,15 +645,15 @@ build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
 	build_args_(ArgsR,Objs,Types,NxtAgenda,NewAgenda).
 
 % only called when argument is ground
-safe_(E) :- atomic(E), !.  % all atomics, including []
+safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types
 safe_([A|As]) :- !,
 	safe_(A),
 	safe_(As).
-safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0.0) requires fuzzed 0.0
-	fail.
 safe_(_ xor _) :- !,                                    % clpBNR xor incompatible with `is` xor
 	fail.
 safe_(integer(_)) :- !,                                 % clpBNR integer incompatible with `is` integer
+	fail.
+safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0.0) requires fuzzed 0.0
 	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),                     % evaluable by is/2
@@ -803,70 +791,70 @@ clpStatistic(max_iterations(O/L)) :-
 	O is L-Ops.  % convert "low" water mark to high water mark
 
 %
-% doNode_/7 : Evaluate a node and add new nodes to end of queue
+% doNode_/7 : Evaluate a node and add new nodes to end of queue. `evalNode` primitives can
+%	 fail, resulting in eventual failure of `stable_`, i.e., inconsistent constraint set.
 %
 % Note: primitives operate on interval values (sets) only, unaware of common arguments,
 % so additional consistency checks required on update.
 %
 doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-  % Arity 3 Op
-	var(P), !,                                          % check persistent bit
-	getValue(ZArg,ZVal),
-	getValue(XArg,XVal),
-	getValue(YArg,YVal),
-	evalNode(Op, P, $(ZVal,XVal,YVal), $(NZVal,NXVal,NYVal)),  % can fail causing stable_ to fail => backtracking
-	% enforce consistency for common arguments by intersecting and redoing as required.
-	(var(ZArg)                % if Z == X and/or Y
-	 -> (ZArg==XArg -> consistent_value_(NZVal,NXVal,NZ1,DoOver) ; NZ1 = NZVal),
-	    (ZArg==YArg -> consistent_value_(NZ1,  NYVal,NZ2,DoOver) ; NZ2 = NZ1),
-	    updateValue_(ZVal, NZ2, ZArg, OpsLeft, Agenda, AgendaZ)
-	 ;  AgendaZ = Agenda
-	 ),
-	(var(XArg), XArg==YArg    % if X==Y
-	 -> consistent_value_(NXVal,NYVal,NVal,DoOver),
-	    updateValue_(XVal, NVal,  XArg, OpsLeft, AgendaZ, NewAgenda)  % only one update needed
-	 ;  updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),
-	    updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda)
+	(var(P)                                          % check persistent bit
+	 -> getValue(ZArg,ZVal),
+	    getValue(XArg,XVal),
+	    getValue(YArg,YVal),
+	    evalNode(Op, P, $(ZVal,XVal,YVal), $(NZVal,NXVal,NYVal)),  % can fail
+	    % enforce consistency for common arguments by intersecting and redoing as required.
+	    (var(ZArg)                % if Z == X and/or Y
+	     -> (ZArg==XArg -> consistent_value_(NZVal,NXVal,NZ1,DoOver) ; NZ1 = NZVal),
+	        (ZArg==YArg -> consistent_value_(NZ1,  NYVal,NZ2,DoOver) ; NZ2 = NZ1),
+	        updateValue_(ZVal, NZ2, ZArg, OpsLeft, Agenda, AgendaZ)
+	     ;  AgendaZ = Agenda
+	    ),
+	    (var(XArg), XArg==YArg    % if X==Y
+	     -> consistent_value_(NXVal,NYVal,NVal,DoOver),
+	        updateValue_(XVal, NVal,  XArg, OpsLeft, AgendaZ, NewAgenda)  % only one update needed
+	     ;  updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),
+	        updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda)
+	    )
+	 ; % P = p, trim persistent nodes from all arguments
+	    trim_op_(ZArg), trim_op_(XArg), trim_op_(YArg),  
+	    NewAgenda = Agenda
 	).
 
 doNode_($(ZArg,XArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-       % Arity 2 Op
-	var(P), !,                                          % check persistent bit
-	getValue(ZArg,ZVal),
-	getValue(XArg,XVal),
-	evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),      % can fail causing stable_ to fail => backtracking
-	% enforce consistency for common arguments by intersecting and redoing as required.
-	(var(ZArg), ZArg==XArg    % if Z==X
-	 -> consistent_value_(NZVal,NXVal,NVal,DoOver),     % consistent value, DoOver if needed
-	    updateValue_(ZVal, NVal,  ZArg, OpsLeft, Agenda, NewAgenda)  % only one update needed
-	 ;  updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
-	    updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda)
+	(var(P)                                          % check persistent bit
+	 -> getValue(ZArg,ZVal),
+	    getValue(XArg,XVal),
+	    evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),      % can fail
+	    % enforce consistency for common arguments by intersecting and redoing as required.
+	    (var(ZArg), ZArg==XArg    % if Z==X
+	     -> consistent_value_(NZVal,NXVal,NVal,DoOver),     % consistent value, DoOver if needed
+	        updateValue_(ZVal, NVal,  ZArg, OpsLeft, Agenda, NewAgenda)  % only one update needed
+	     ;  updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
+	        updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda)
+	    )
+	 ; % P = p, trim persistent nodes from all arguments
+	    trim_op_(ZArg), trim_op_(XArg),
+	    NewAgenda = Agenda
 	).
-
+ 
 doNode_($(Arg), Op, P, OpsLeft, _, Agenda, NewAgenda) :-                  % Arity 1 Op
-	var(P), !,                                          % check persistent bit
-	getValue(Arg,Val),
-	evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
-	updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda).  % always update value regardless of OpsLeft limiter	
-
-doNode_(Args, Op, p, _, _, Agenda, Agenda) :-           % persistent bit "set", skip node and trim
-	trim_ops_(Args).
+	(var(P)                                          % check persistent bit
+	 -> getValue(Arg,Val),
+	    evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
+	    updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda)   % always update value regardless of OpsLeft limiter	
+	 ;  % P = p, trim persistent nodes from argument
+	    trim_op_(Arg),
+	    NewAgenda = Agenda
+	).
 
 consistent_value_(Val,Val,Val,_) :- !.                       % same value
 consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values, intersect
 
 %
-% called whenever a persistent node is encountered in FP iteration
-%	remove it from any node arguments
+% remove any persistent nodes from Arg
+%	called whenever a persistent node is encountered in FP iteration
 %
-trim_ops_($(Op1,Op2,Op3)) :-
-	trim_op_(Op1),
-	trim_op_(Op2),
-	trim_op_(Op3).
-trim_ops_($(Op1,Op2)) :-
-	trim_op_(Op1),
-	trim_op_(Op2).
-trim_ops_($(Op1)) :-
-	trim_op_(Op1).
-
 trim_op_(Arg) :- 
 	(number(Arg)
 	 -> true
@@ -900,7 +888,7 @@ updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with 
 chk_float_overwrite((OL,OH), (NL,NH), (NL1,NH1)) :-
 	(rational(OL), float(NL) -> (NL > OL -> NL1 = NL ; NL1 = OL) ; NL1 = NL),
 	(rational(OH), float(NH) -> (NH < OH -> NH1 = NH ; NH1 = OH) ; NH1 = NH),
-	(NL1 = OL, NH1 = OH -> fail ; true).
+	(NL1 == OL, NH1 == OH -> fail ; true).
 
 % propgate if sufficient narrowing (> 10%)
 propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
@@ -917,6 +905,53 @@ linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list
 	setarg(3,X,1).                               % set linked bit
 
 :- include(clpBNR/ia_utilities).  % print,solve, etc.
+
+%
+% set monitor action on an interval using `watch` flags
+%
+watch(Int,Action) :-
+	atom(Action), 
+	get_interval_flags_(Int,Flags), !,
+	remove_(Flags,watch(_),Flags1),
+	(Action = none -> Flags2=Flags1 ; Flags2=[watch(Action)|Flags1]),
+	set_interval_flags_(Int,Flags2).
+watch(Ints,Action) :-
+	list(Ints),
+	watch_list_(Ints,Action).
+
+remove_([],_,[]).
+remove_([X|Xs],X,Xs) :- !.
+remove_([X|Xs],X,[X|Ys]) :-
+	remove_(Xs,X,Ys).
+
+watch_list_([],Action).
+watch_list_([Int|Ints],Action) :-
+	watch(Int,Action),
+	watch_list_(Ints,Action).
+
+% check if watch enabled on this interval
+check_monitor_(Int, Update, interval(Type,Val,Nodelist,Flags)) :-
+	(memberchk(watch(Action), Flags)
+	 -> once(monitor_action_(Action, Update, Int))
+	 ; true
+	).
+
+%
+% for monitoring changes - all actions defined here
+%
+monitor_action_(trace, Update, Int) :-  !, % log changes to console and enter debugger
+	monitor_action_(log, Update, Int),
+	trace.
+monitor_action_(log, Update, Int) :-  var(Update), !,  % log interval unify
+	debug_clpBNR_('Unify ~p with ~p',[Int,Update]).
+monitor_action_(log, Update, Int) :-  number(Update), !,    % log interval unify with number
+	domain(Int,Dom),
+	debug_clpBNR_('Unify _?{~p} with ~p',[Dom,Update]).
+monitor_action_(log, integer, Int) :-  !,  % change type to integer
+	debug_clpBNR_('Set type of  ~p to ~p',[Int,integer]).
+monitor_action_(log, Val, Int) :-  !,  % narrow range
+	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
+monitor_action_(_, _, _).  % default to noop (as in 'none')
 
 %
 % tracing doNode_ support - depends on SWI-Prolog hook prolog_trace_interception/4
@@ -984,7 +1019,7 @@ version_info :-
 
 set_min_free(Amount) :-
 	once(prolog_stack_property(global,min_free(Free))), % minimum free cells (8 bytes/cell)
-	(Free < Amount ->	set_prolog_stack(global,min_free(Amount)) ; true).
+	(Free < Amount -> set_prolog_stack(global,min_free(Amount)) ; true).
 
 :- multifile prolog:message//1.	
 
@@ -1006,10 +1041,10 @@ prolog:message(clpBNR(arithmeticFlags)) -->
 	[ '  Arithmetic global flags set to prefer rationals and IEEE continuation values.'-[] ].
 
 init_clpBNR :-
-	restore_optimise,
 	version_info,
 	check_features,
 	set_min_free(8196),
+	set_prolog_flags,     % initialize/check environment flags (can't rely on lazy init via `thread_init_done`)  
 	trace_clpBNR(false).  % reset tracing on reload
 
 :- initialization(init_clpBNR, now).

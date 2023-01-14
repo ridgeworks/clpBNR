@@ -92,37 +92,37 @@ However consider {`I_s`}. From the equations, it is not obvious that it cannot b
 		]).
 Again, no narrowing occurs in the initial fixed point iteration, but it's not obvious which variables to use with `solve`. As `solve` takes a list of variables (breadth first across all intervals named) there's no reason not to use the entire set of interval values:
 eg
-	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs).
-	﻿Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs).
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is::real(-9.99999999999999e+15, 1.0e+16),
-	I8::real(-6.25e+15, 6.25e+15),
 	I2::real(-1.0e+16, 1.0e+16),
-	I5::real(-1.0e+16, 1.0e+16),
-	I9::real(-8.888888888888889e+15, 8.888888888888889e+15),
 	I3::real(-1.0e+16, 1.0e+16),
 	I4::real(-1.0e+16, 1.0e+16),
+	I5::real(-1.0e+16, 1.0e+16),
 	I6::real(-1.0e+16, 1.0e+16),
-	I7::real(-1.0e+16, 9.99999999999999e+15).
+	I7::real(-1.0e+16, 9.99999999999999e+15),
+	I8::real(-6.25e+15, 6.25e+15),
+	I9::real(-8.888888888888889e+15, 8.888888888888889e+15).
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),solve(Vs).
-	﻿Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.8282986...,
-	I8:: 0.2592087...,
 	I2:: 0.5690898...,
-	I5:: 0.2572598...,
-	I9:: 0.0389787...,
 	I3:: -0.3118300...,
 	I4:: 0.5320600...,
+	I5:: 0.2572598...,
 	I6:: 0.2962385...,
-	I7:: 0.8282986... ;
+	I7:: 0.8282986...,
+	I8:: 0.2592087...,
+	I9:: 0.0389787... ;
 	false.
 Using `solve` finds the solution in a few seconds, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
 eg
-	﻿?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
-	% 11,668,722 inferences, 2.882 CPU in 2.890 seconds (100% CPU, 4048864 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
+	% 10,580,391 inferences, 2.335 CPU in 2.346 seconds (100% CPU, 4531927 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.8282986...,
 	I2:: 0.5690898...,
@@ -135,8 +135,8 @@ eg
 	I9:: 0.0389787... .
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),{Is>=0},time(solve(Vs)).
-	% 2,922,465 inferences, 0.849 CPU in 0.853 seconds (99% CPU, 3442361 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
+	% 2,705,241 inferences, 0.873 CPU in 0.876 seconds (100% CPU, 3100012 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.828298...,
 	I2:: 0.5690898...,
@@ -244,7 +244,7 @@ eg
 	Am = #(#(-1, -1, 0, 0, 0, 0, 0, -1, 0, 1), #(1, 0, 0, 0, 0, 0, 1, 0, 0, -1), #(0, 1, 1, 0, -1, 0, 0, 0, 0, 0), #(0, 0, -1, -1, 0, 0, 0, 1, -1, 0), #(0, 0, 0, 1, 0, 1, -1, 0, 0, 0), #(0, 0, 0, 0, 1, -1, 0, 0, 1, 0), #(0, 2, -3, 0, 0, 0, 0, -8, 0, 0), #(0, 0, 3, 0, 5, 0, 0, 0, -9, 0), #(0, 0, 0, -4, 0, 6, 0, 0, 9, 0), #(-1, 0, 0, 4, 0, 0, 7, 8, 0, 0)),
 	Det = 0.
 Since it's not obvious which equation may be redundant, experimentation can be used to find a non-zero determinant by replacing the first equation by `I1 = 10`. A new predicate to support the matrix form of the circuit definition:
-eg
+.pl
 	simpleCircuitDef(Currents,Am,Bs,Xs) :-
 		Xs is transpose(ndarray(Currents)),
 		Am is ndarray([

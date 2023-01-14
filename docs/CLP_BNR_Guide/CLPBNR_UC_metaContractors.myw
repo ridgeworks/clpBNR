@@ -28,7 +28,7 @@ If the interval is splittable, a constraint is applied to first test the lower h
 	iterate_until(_N,_,_).  % non-positive N --> exit
 The labelling predicates exported from module `clpBNR`, e.g., `solve` and `splitsolve`, include both a contractor and an iterator. The contractor implemented by `splitsolve/1` is equivalent to `midpoint_split_one/1` which is also exported by `clpBNR_toolkit`; it takes a a list of intervals, selects the one with the largest width, and then uses `mid_split/1` (described above).   
 
-A few simple examples from [Solving Polynomial Equations in one Variable] using the `mid_split` and `mid_split_one` contractors with `iterate_until`:
+A few simple examples from previous sections using the `mid_split` and `mid_split_one` contractors with `iterate_until`:
 eg
 	?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, iterate_until(50,small(X),mid_split(X)).
 	X:: 1.000000... ;
@@ -59,9 +59,9 @@ eg
 	X::real(0.9999999999999998, 3.0000000000000018),
 	_A::real(-1.0Inf, 1.0Inf).
 	
-	﻿?- X::real,taylor_contractor({X**2-4*X+3==0},T),iterate_until(20,small(X),(mid_split_one([X]),T)).
-	T = cf_contractor([X], [_A]),
-	X:: 1.000000000000000...,
+	?- X::real,taylor_contractor({X**2-4*X+3==0},T),iterate_until(20,small(X),(mid_split_one([X]),T)).
+	X = 1,
+	T = cf_contractor([1], [_A]),
 	_A::real(-1.0Inf, 1.0Inf) ;
 	T = cf_contractor([X], [_A]),
 	X:: 3.00000000000000...,
@@ -124,23 +124,23 @@ eg
 	X:: 1.0000001...,
 	_A::real(-1.0Inf, 1.0Inf) ;
 	false.
-Comparing `solve` and iteration using the metalevel Taylor contractor in terms of narrowing operations performed (should be relatively implementation and machine independent):
+Comparing `solve` and iteration using the metalevel Taylor contractor in terms of narrowing operations performed (should be relatively implementation and machine independent). And for a subset of the examples the effects of using Horner notation has been added to highlight the effects of combining techniques:
 .myw
 	.tsv
-		Polynomial						`solve`			Taylor
-		`X**2-4*X+3`					`    776`		` 1368`
-		`X**4-4*X**3+4*X**2-4*X+3`		`  22056`		`15832`
-		`17*X**256+35*X**17-99*X`		`    226`		`  352`
-		`35*X**256-14*X**17+X`			`   2539`		`  971`
-		`X**4-12*X**3+47*X**2-60*X`		` 350324`		`16469`
-		`X**2-2*X+1`					`1998181`		`96327`
+		Polynomial						`solve`			`solve_Hnr`		`Taylor`		`Taylor_Hnr`
+		`X**2-4*X+3`					`    776`		`     233`		`  1370`		`    527`
+		`X**4-4*X**3+4*X**2-4*X+3`		`  22053`		`    4849`		` 15974`		`  11161`
+		`17*X**256+35*X**17-99*X`		`    225`		` `				`   350`		` `
+		`35*X**256-14*X**17+X`			`   2405`		` `				`   971`		` `
+		`X**4-12*X**3+47*X**2-60*X`		` 350419`		`   21285`		` 19287`		`  23335`
+		`X**2-2*X+1`					`2094226`		` 1035840`		`147532`		`  99187`
 	&	// local styles for table
 		@css
 			table.my_array { border-collapse:collapse; }
 			table.my_array tr td { background:whitesmoke; padding: 4px 16px; }
 			table.my_array tr:nth-child(1) td { background:lightgray; }
 
-Other than the simple cases where minimal splitting is required, iteration using the Taylor contractor is significantly faster (sometimes by a factor of 20) and does a better job at eliminating false positives due to precision limits. (Multiple roots at one value are usually problematical since it can be difficult to separate them within precision limits; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
+Other than the simple cases where minimal splitting is required, iteration using the Taylor contractor is significantly faster (sometimes by a factor of 20) and does a better job at eliminating false positives due to precision limits. Combining contractors with Horner representation can yield further gains in many (but not all) cases. (Multiple roots at one value are usually problematical since it can be difficult to separate them within precision limits; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
 
 Problems involving multiple variables typically require more than one equation. Since the variables are shared, the generated Taylor contractors (one per equation) can be merged into a single contractor by omitting duplicates. `taylor_merged_contractor/2` takes a list of equations and constructs a single `cf_contractor` for use in an iterator. Examples of using this predicate follow.
 
@@ -164,11 +164,11 @@ An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polyno
 		).
 Because there is only a single occurrence of any variable in any equation, the fixed point iteration forces considerable narrowing by itself:
 eg
-	﻿?- combustion(Vs,Es),Vs::real(0,1),{Es}.
+	?- combustion(Vs,Es),Vs::real(0,1),{Es}.
 	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
 	_A:: 0.0000001...,
-	_B:: 0.000000...,
+	_B:: 0.0000002...,
 	_C:: 0.00001...,
 	_D:: 0.0000000000625149...,
 	_E:: 0.000000...,
@@ -179,34 +179,33 @@ eg
 	_J:: 0.000003... .
 Adding `solve` further refines the answer:
 eg
-	﻿?- combustion(Vs,Es),Vs::real(0,1),{Es},solve(Vs).
+	?- combustion(Vs,Es),Vs::real(0,1),{Es},solve(Vs).
 	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
-	_A:: 0.000000147...,
-	_B:: 0.000000226...,
-	_C:: 0.0000151...,
+	_A:: 0.0000001471...,
+	_B:: 0.0000002262...,
+	_C:: 0.00001512...,
 	_D:: 0.0000000000625149...,
-	_E:: 0.000000421...,
-	_F:: 0.00000101...,
+	_E:: 0.000000420...,
+	_F:: 0.000001016...,
 	_G:: 0.0000049999687425...,
 	_H:: 0.00001487...,
-	_I:: 0.00000053...,
-	_J:: 0.00000360... .
+	_I:: 0.000000537...,
+	_J:: 0.000003602... .
 The same problem using metalevel contractors:
 eg 
-	﻿?- combustion(Vs,Es),Vs::real(0,1),taylor_merged_contractor({Es},T),
-	iterate_until(50,small(Vs),(T,mid_split_one(Vs))).
+	?- combustion(Vs,Es),Vs::real(0,1),taylor_merged_contractor({Es},T), iterate_until(50,small(Vs),(T,mid_split_one(Vs))).
 	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
 	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I, _F, _B], [_K, _L, _M, _N, _O, _P, _Q, _R, _S, _T]),
 	_A:: 0.0000001...,
 	_B:: 0.0000002...,
-	_C:: 0.000015...,
+	_C:: 0.00001...,
 	_D:: 0.0000000000625149...,
-	_E:: 0.0000004...,
+	_E:: 0.000000...,
 	_F:: 0.000001...,
 	_G:: 0.0000049999687425...,
-	_H:: 0.000015...,
+	_H:: 0.00001...,
 	_I:: 0.000000...,
 	_J:: 0.000003...,
 	_T::real(-1.0Inf, 1.0Inf),
@@ -218,16 +217,14 @@ eg
 	_N::real(-1.0Inf, 1.0Inf),
 	_M::real(-1.0Inf, 1.0Inf),
 	_L::real(-1.0Inf, 1.0Inf),
-	_K::real(-1.0Inf, 1.0Inf) ;
-	false.
+	_K::real(-1.0Inf, 1.0Inf).
 This halts when the default precision limit is reached (`clpBNR_default_precision= 6`). To achieve the same precision as `solve`, it is necessary to tune the test via the second argument to `small`,to get the same precision:
 eg
-	﻿?- combustion(Vs,Es),Vs::real(0,1),taylor_merged_contractor({Es},T),
-	iterate_until(50,small(Vs,9),(T,mid_split_one(Vs))).
+	?- combustion(Vs,Es),Vs::real(0,1),taylor_merged_contractor({Es},T), iterate_until(50,small(Vs,9),(T,mid_split_one(Vs))).
 	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
 	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I, _F, _B], [_K, _L, _M, _N, _O, _P, _Q, _R, _S, _T]),
-	_A:: 0.0000001470...,
+	_A:: 0.00000014709...,
 	_B:: 0.0000002262...,
 	_C:: 0.000015128...,
 	_D:: 0.0000000000625149...,
@@ -235,7 +232,7 @@ eg
 	_F:: 0.000001016...,
 	_G:: 0.0000049999687425...,
 	_H:: 0.000014872...,
-	_I:: 0.000000537...,
+	_I:: 0.0000005371...,
 	_J:: 0.000003602...,
 	_T::real(-1.0Inf, 1.0Inf),
 	_S::real(-1.0Inf, 1.0Inf),
@@ -246,8 +243,7 @@ eg
 	_N::real(-1.0Inf, 1.0Inf),
 	_M::real(-1.0Inf, 1.0Inf),
 	_L::real(-1.0Inf, 1.0Inf),
-	_K::real(-1.0Inf, 1.0Inf) ;
-	false.
+	_K::real(-1.0Inf, 1.0Inf).
 The builtin `solve` and fixed point iteration does a credible job on this problem so it turns out adding the metalevel contractor redundant constraints is not worth the additional overhead incurred. It is often the case some experimentation is required to achieve required precision within a given time budget.
 
 ##### The Broyden Banded Function

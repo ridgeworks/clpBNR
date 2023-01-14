@@ -72,13 +72,13 @@ eg
 	﻿X::real(0.0,1.0e+16).
 
 	?- X::real(-pi/2,pi/2).
-	X = ﻿X::real(-1.570796326794897,1.570796326794897).
+	﻿X::real(-1.5707963267948968,1.5707963267948968).
 
 	?- X::real(-1/2,1/2).
 	X = ﻿X::real(-0.5,0.5).
 	
-	﻿?- [X,Y]::real(-1r2,1r2), write([X,Y]).
-	﻿[_179276{real(-0.5,0.5)},_179348{real(-0.5,0.5)}]
+	?- [X,Y]::real(-1r2,1r2), write([X,Y]).
+	[_38776{real(-1r2,1r2)},_38854{real(-1r2,1r2)}]
 	X::real(-0.5, 0.5),
 	Y::real(-0.5, 0.5).
 These simple examples illustrate a number of points:
@@ -612,8 +612,8 @@ These examples demonstrate that a positive answer does not necessarily guarantee
 Another example using integers and `<` (remember `<` is unsound over reals):
 eg
 	﻿?- [X,Y]::integer, {X<Y, Y<X}.
-	X::integer(-72057594037924936, 72057594037924936),
-	Y::integer(-72057594037924937, 72057594037924935).
+	X::integer(-72057594037925648, 72057594037925645),
+	Y::integer(-72057594037925648, 72057594037925646).
 	
 	?- [X,Y]::integer(0,1000), {X<Y, Y<X}.
 	false.

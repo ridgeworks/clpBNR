@@ -13,7 +13,7 @@ eg
 	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
 	X:: 7.8...,
 	Z:: 61.6850... .
-The predicates provided use the Moore-Skelboe algorithm (see Ratschek&Rokne) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). They do not provide the *minimisers* - indeed there may be more than one minimiser value. In the example above some narrowing of `X` has occurred but, in general, one of the solve predicates can be used to separate and sharpen minimizer values. Since there really aren't any "point solutions" to the objective function (unlike like finding roots of an equation discussed earlier), `splitsolve` is usually better suited to this problem.
+The predicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). They do not provide the *minimisers* - indeed there may be more than one set of minimiser values. In the example above some narrowing of `X` has occurred but, in general, one of the solve predicates can be used to separate and sharpen minimizer values. Since there really aren't any "point solutions" to the objective function (unlike like finding roots of an equation discussed earlier), `splitsolve` is usually better suited to this problem.
 eg
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), splitsolve(X).
 	X:: 7.84965...,
@@ -25,7 +25,7 @@ eg
 	X:: 7.84967...,
 	Z:: 61.6850... .
 	
-	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
+	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
 	X:: 7.8...,
 	Z:: 61.6850... ;
 	false.
@@ -43,7 +43,7 @@ eg
 All the global aptimizing predicates take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
 eg
 	?- X::real(0,20),global_maximum(X*(5*pi-X),Z,3).
-	X::real(7.715508871420747, 7.992454396528267),
+	X::real(7.715508871420848, 7.992454396528164),
 	Z:: 61.7... .
 These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
 eg
@@ -93,15 +93,15 @@ eg
 	X3 = 19,
 	Z = -1091.
 	
-	﻿?- [X1,X2]::real(_,_),{X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z),splitsolve([X1,X2]).
-	X1:: 0.333333...,
-	X2:: 1.666666...,
-	Z:: 2.249340... .
+	?- [X1,X2]::real(_,_),{X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z),splitsolve([X1,X2]).
+	X1:: 0.33333...,
+	X2:: 1.66666...,
+	Z:: 2.24934... .
 	
-	﻿?- [X1,X2]::real(0,_),{X1+2*X2=<3,8*X1+5*X2>=10}, global_minimum((X1-2)**2+(X2-2)**2,Z),splitsolve([X1,X2]).
-	﻿X1:: 1.399230...,
-	X2:: 0.800384...,
-	Z:: 1.800000... .
+	?- [X1,X2]::real(0,_),{X1+2*X2=<3,8*X1+5*X2>=10}, global_minimum((X1-2)**2+(X2-2)**2,Z),splitsolve([X1,X2]).
+	X1:: 1.39923...,
+	X2:: 0.800381...,
+	Z:: 1.80000... .
 Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later.
 
 ##### The Knapsack Problem

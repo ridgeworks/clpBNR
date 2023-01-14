@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019,2020 Rick Workman
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -201,23 +201,6 @@ digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
 digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
 %
-% for monitoring changes - all actions defined here
-%
-monitor_action_(trace, Update, Int) :-  !, % log changes to console and enter debugger
-	monitor_action_(log, Update, Int),
-	trace.
-monitor_action_(log, Update, Int) :-  var(Update), !,  % log interval unify
-	debug_clpBNR_('Unify ~p with ~p',[Int,Update]).
-monitor_action_(log, Update, Int) :-  number(Update), !,    % log interval unify with number
-	domain(Int,Dom),
-	debug_clpBNR_('Unify _?{~p} with ~p',[Dom,Update]).
-monitor_action_(log, integer, Int) :-  !,  % change type to integer
-	debug_clpBNR_('Set type of  ~p to ~p',[Int,integer]).
-monitor_action_(log, Val, Int) :-  !,  % narrow range
-	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
-monitor_action_(_, _, _).  % default to noop (as in 'none')
-
-%
 %  enumerate integer and boolean intervals
 %
 enumerate(X) :-
@@ -304,24 +287,24 @@ global_minimize(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,true).
 
 global_optimum_(Exp,Z,P,BindVars) :-
-	term_variables(Exp,Xs),                         % vars to search on
-	{Z==Exp},                                       % Steps 1. - 4.
-	box_([Z|Xs],[(Zl,Zh)|XVs]),                     % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).  % and start iteration
+	term_variables(Exp,Xs),                           % vars to search on
+	{Z==Exp},                                         % Steps 1. - 4.
+	box_([Z|Xs],[(Zl,Zh)|XVs]),                       % construct initial box
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).    % and start iteration
 
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
-	continue_MS(Zl,Zh,P,Xs,XVs,False), !,           % Step 12., check termination condition
-	widest_MS(Xs,XVs,Xf,XfMid),                     % Step 5., get midpoint of widest variable
-	eval_MS(False,Z,Xs,XVs,Xf=<pt(XfMid),V1),       % Step 6., 7. & 8. for V1
-	tree_insert(ZTree,V1,ZTree1),                   % Step 10. for V1
-	eval_MS(False,Z,Xs,XVs,Xf>=pt(XfMid),V2),       % Step 6., 7. & 8. for V2
-	tree_insert(ZTree1,V2,ZTree2),                  % Step 10. for V2
-	select_min(ZTree2,NxtY,ZTreeY),                 % Step 9. and 11., remove Y from tree
-	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).        % Step 13.
-iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-    % termination criteria (Step 12.) met
+	continue_MS(Zl,Zh,P,Xs,XVs,False), !,             % Step 12., check termination condition
+	widest_MS(Xs,XVs,Xf,XfMid),                       % Step 5., get midpoint of widest variable
+	eval_MS(False,Z,Xs,XVs,Xf=< ::(XfMid,XfMid),V1),  % Step 6., 7. & 8. for V1
+	tree_insert(ZTree,V1,ZTree1),                     % Step 10. for V1
+	eval_MS(False,Z,Xs,XVs,Xf>= ::(XfMid,XfMid),V2),  % Step 6., 7. & 8. for V2
+	tree_insert(ZTree1,V2,ZTree2),                    % Step 10. for V2
+	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
+	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
+iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-      % termination criteria (Step 12.) met
 	{Zl=<Z,Z=<Zh},
-	(BindVars -> optimize_vars_(Xs,XVs) ; true).    % optional minimizer narrowing
-	
+	(BindVars -> optimize_vars_(Xs,XVs) ; true).      % optional minimizer narrowing
+
 optimize_vars_([],[]).
 optimize_vars_([X|Xs],[(Xl,Xh)|XVs]) :-
 	{Xl=<X,X=<Xh},
@@ -442,16 +425,16 @@ select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
 	 ;  select_wide_([X2|Xs],D2,X)
 	).
 	
-%	bisect_interval(real,X,[Xl,Xh],Xmid,Err,({X=<pt(Xmid)};{pt(Xmid)=<X})) :-
+%	bisect_interval(real,X,[Xl,Xh],Xmid,Err,({X=< ::(Xmid,Xmid)};{::(Xmid,Xmid)=<X})) :-
 choice_generator_(real,X,(Xl,Xh),Xmid,Err,bisect_interval_(real,X,Xmid)) :-
 	\+ chk_small(Xl,Xh,Err), !.  % choice_generator_ fails if X is small real
 choice_generator_(integer,X,(Xl,Xh),_,_,enumerate(X)):-            % enumerate narrow integers
 	Xh-Xl =< 16, !.
 choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
 
-bisect_interval_(_,X,Pt) :-	constrain_(X=<pt(Pt)). 
-bisect_interval_(real,X,Pt) :- constrain_(pt(Pt)=<X).   % must use =<
-bisect_interval_(integer,X,Pt) :-constrain_(pt(Pt)<X).  % can use <
+bisect_interval_(_,X,Pt) :-	constrain_(X=< ::(Pt,Pt)). 
+bisect_interval_(real,X,Pt) :- constrain_(::(Pt,Pt)=<X).   % must use =<
+bisect_interval_(integer,X,Pt) :-constrain_(::(Pt,Pt)<X).  % can use <
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -497,8 +480,8 @@ absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
 	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
 	Split is LB1 + DL1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not({X=<pt(Split)}),!,
-	{X>=pt(Split)},                           % so X must be >
+	not(constrain_(X=< ::(Split,Split))),!,
+	constrain_(X>= ::(Split,Split)),          % so X must be >
 	absolve_l(X,Type, DL1, NL1, Limit).
 absolve_l(_,_,_,_,_).                         % final result
          
@@ -507,8 +490,8 @@ absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
 	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
 	Split is UB1 - DU1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not({X>=pt(Split)}),!,
-	{X=<pt(Split)},                           % so X must be <
+	not(constrain_(X>= ::(Split,Split))),!,
+	constrain_(X=< ::(Split,Split)),          % so X must be <
 	absolve_r(X,Type, DU1, NU1,Limit).
 absolve_r(_,_,_,_,_).                         % final result
 
@@ -576,31 +559,34 @@ splitinterval_(integer,X,_,_,enumerate(X)).             % failed to split, so en
 
 
 %  split a real interval
-split_real_(X,_,Pt,_,pt(Pt)) :-            % Pt not in solution space, split here
-	X\=Pt, !.  %	not({X==Pt}), !.
-split_real_(X,(L,H),Pt,Err,pt(NPt)) :-     % Pt in current solution space, try lower range
+split_real_(X,_,Pt,_,::(Pt,Pt)) :-          % Pt not in solution space, split here
+	X\=Pt, !.  % not({X==Pt}).
+split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try lower range
 	split_real_lo(X,(L,Pt),NPt,Err), !.
-split_real_(X,(L,H),Pt,Err,pt(NPt)) :-     % Pt in current solution space, try upper range
+split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try upper range
 	split_real_hi(X,(Pt,H),NPt,Err).
 
 split_real_lo(X,(L,Pt),NPt,Err) :-         % search lower range for a split point 
-	splitinterval_real_((L,Pt),SPt,Err), !,
+	splitinterval_real_((L,Pt),SPt,Err),
 	(X\=SPt -> NPt=SPt ; split_real_lo(X,(L,SPt),NPt,Err)).
 
 split_real_hi(X,(Pt,H),NPt,Err) :-         % search upper range for a split point 
-	splitinterval_real_((Pt,H),SPt,Err), !,
+	splitinterval_real_((Pt,H),SPt,Err),
 	(X\=SPt -> NPt=SPt ; split_real_hi(X,(SPt,H),NPt,Err)).
 
-
 %
-% splitinterval_integer_ and splitinterval_real_ require ! at point of call.
+% splitinterval_integer_ and splitinterval_real_
 %
 splitinterval_integer_((L,H),0) :-
-	L < 0, H > 0.                     % contains 0 but not bounded by 0 
+	L < 0, H > 0, !.                  % contains 0 but not bounded by 0 
 splitinterval_integer_((-1.0Inf,H),Pt) :-
-	Pt is H*10-5.                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
+	!,
+	Pt is H*10-5,                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
+	float(Pt) > -1.0Inf.
 splitinterval_integer_((L,1.0Inf), Pt) :-
-	Pt is L*10+5.                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
+	!,
+	Pt is L*10+5,                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
+	float(Pt) < 1.0Inf.
 splitinterval_integer_((L,H),Pt) :- 
 	H-L >= 16,                        % don't split ranges smaller than 16
 	Pt is (L div 2) + (H div 2).      % avoid overflow
@@ -609,14 +595,14 @@ splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on (precis
 	L < 0, H > 0, !,                  % cut in case error criteria fails
 	(H-L) > E.                        % fail if width is less than error criteria, overflow is OK
 
-splitinterval_real_((-1.0Inf,H),Pt,_) :-   % neg. infinity to H=<0
+splitinterval_real_((-1.0Inf,H),Pt,_) :-  % neg. infinity to H=<0
 	!,  % if following overflows, split failed
-	Pt is H*10-1,                         % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
-	Pt > -1.0Inf.                         % Pt must be finite
+	Pt is float(H*10-1),               % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
+	Pt > -1.0Inf.                      % Pt must be finite
 splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
 	!,  % if following overflows, split failed
-	Pt is L*10+1,
-	Pt < 1.0Inf.                          % Pt must be finite
+	Pt is float(L*10+1),               % add 1 in case L is 0. (1, 11, 101, 1001, ...)
+	Pt < 1.0Inf.                       % Pt as float must be finite
 
 splitinterval_real_((L,H),Pt,E) :-     % finite L,H, positive or negative but not split, Pt\=0.
 	\+ chk_small(L,H,E),               % only split if not small 
