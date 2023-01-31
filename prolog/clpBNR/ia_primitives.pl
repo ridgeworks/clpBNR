@@ -144,7 +144,7 @@ narrowing_op(eq, P, $(Z,X,Y), Out) :-
 	         -> ^(Z,(1,1),NewZ),      % Z true
 	            P = p                 % persistant
 	         ;  ^(Z,(0,1),NewZ)       % ensure Z boolean
-	        )
+	        ),
 	        Out = $(NewZ,X,Y)
 	    )
 	 ;  % X and Y do not intersect  
