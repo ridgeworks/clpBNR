@@ -139,12 +139,13 @@ narrowing_op(eq, P, $(Z,X,Y), Out) :-
 	        New = (L,H),
 	        (L < H -> true ; P = p)   % persistent if a point
 	     ; % intersect and Z false or indeterminate, all things possible
-	        (X = (Xb,Xb), Y = (Yb,Yb), Xb =:= Yb  % X and Y same point
-	         -> ^(Z,(1,1),NewZ),	              % Z true     	    
-	            Out = $(NewZ,New,New), P = p      % persistant
-	         ;  ^(Z,(0,1),NewZ),          % ensure Z boolean
-	            Out = $(NewZ,X,Y)
+	        ( X = (Xl,Xh), Y = (Yl,Yh), 
+	          Xl =:= Xh, Yl =:= Yh, Xl =:= Yl  % X and Y same point
+	         -> ^(Z,(1,1),NewZ),      % Z true
+	            P = p                 % persistant
+	         ;  ^(Z,(0,1),NewZ)       % ensure Z boolean
 	        )
+	        Out = $(NewZ,X,Y)
 	    )
 	 ;  % X and Y do not intersect  
 	    ^(Z, (0,0), NewZ),            % fail primitive if Z cannot be false
@@ -594,6 +595,9 @@ narrowing_op(sin, _, $(Z,X), $(NewZ, NewX)) :-
 	sin_(X,S,Z1), ^(Z,Z1,NewZ),
 	asin_(NewZ,S,X1), ^(X,X1,NewX).
 
+sin_((X,X),S,NZ) :-  % point infinity special case
+	abs(X) =:= 1.0Inf, !,
+	S = (-10,10), NZ = (-1,1). 
 sin_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	Sl is round(Xl/pi),                    % determine monotonic sector of width pi
 	Sh is round(Xh/pi),                    % sector 0 is (-pi/2,pi/2)
@@ -653,6 +657,9 @@ narrowing_op(cos, _, $(Z,X), $(NewZ, NewX)) :-
 	cos_(X,S,Z1), ^(Z,Z1,NewZ),
 	acos_(NewZ,S,X1), ^(X,X1,NewX).
 
+cos_((X,X),S,NZ) :-  % point infinity special case
+	abs(X) =:= 1.0Inf, !,
+	S = (-10,10), NZ = (-1,1). 
 cos_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	Sl is floor(Xl/pi),
 	Sh is floor(Xh/pi),  % sector 0 is (0,pi)
@@ -717,6 +724,8 @@ narrowing_op(tan, _, $(Z,X), $(NewZ, NewX)) :-
 	
 % Need to maintain adequate width applying offset, otherwise loss of precision
 %	leads to unintentional rounding. This is done by fuzzing offset. 
+tanCase(Z,(X,X),_,_,Z,(X,X)) :-    % point infinity special case
+	abs(X) =:= 1.0Inf, !.
 tanCase((Zl,Zh),(Xl,Xh),S,S,(NZl,NZh),(NXl,NXh)) :-  !,   % same sector
 	Z1l is roundtoward(tan(Xl),to_negative),
 	Z1h is roundtoward(tan(Xh),to_positive),

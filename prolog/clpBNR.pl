@@ -488,7 +488,7 @@ attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 	number(Num),
 	IntDef = interval(Type,(L,H),Nodelist,Flags),
 	(Type=integer -> integer(Num) ; true),   % check that Num is consistent with Type
-	L=<Num, Num=<H, !,                       % and in range
+	L=<Num, Num=<H, !,                       % and in range (not NaN)
 	(debugging(clpBNR,true) -> monitor_unify_(IntDef, Num) ; true),
 	linkNodeList_(Nodelist, T/T, Agenda),
 	stable_(Agenda).                    % broadcast change
