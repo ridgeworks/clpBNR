@@ -287,7 +287,6 @@ putValue_(New, Int, NodeList) :-
 	    ( 0 is cmpr(L,H)                   % point interval ->
 	     -> setarg(3,Def,_NL),             % clear node list (so nothing done in unify)
 	        pointValue_(L,H,Int),          % unify, avoiding -0.0 and preferring rational (invokes hook)
-% %	        (rational(L) -> Int = L ; Int = H),  % unify, preferring rational (invokes hook)
 	        NodeList = Nodes               % still add Nodes to Agenda
 	     ;  setarg(2,Def,New),             % update value in interval (backtrackable)
 	        % if integer has non-integral bounds, schedule `integral` op to fix it
