@@ -146,7 +146,7 @@ Problems involving multiple variables typically require more than one equation. 
 
 ##### The Numerica "Combustion" Problem
 
-An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polynomial Systems Using Continuation for Scientic and Engineering Problems, Prentice-Hall, 1987) refers to a combustion problem for a temperature of 3000˚ represented by a system of 9 equations in 9 unknowns. Expressed in Prolog it looks like:
+An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polynomial Systems Using Continuation for Scientific and Engineering Problems, Prentice-Hall, 1987) refers to a combustion problem for a temperature of 3000˚ represented by a system of 9 equations in 9 unknowns. Expressed in Prolog it looks like:
 .pl
 	combustion(
 		[X1,X2,X3,X4,X5,X6,X7,X8,X9,X10],
@@ -303,7 +303,7 @@ eg
 	Vs = [_A, _B, _C, _D, _E],
 	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+ ... * ... + _B*(... + ...)+_C*(1+_C)+_E*(1+_E), 2*_E+5* ... ** ... + 1== ... + ... + ... * ... + _C*(... + ...)+_D*(1+_D)],
 	T = cf_contractor([_E, _D, _C, _B, _A], [_F, _G, _H, _I, _J]),
-	_A:: -0.428302864642701...,
+	_A:: -0.42830286464270...,
 	_B:: -0.476596531501095...,
 	_C:: -0.51963772210075...,
 	_D:: -0.55886195652702...,
@@ -313,7 +313,7 @@ eg
 	_H::real(-1.0Inf, 1.0Inf),
 	_G::real(-1.0Inf, 1.0Inf),
 	_F::real(-1.0Inf, 1.0Inf).
-When the initial domains can't be predicted so precisely, the `mid_split_one` contactor can be used to sub-divide the solution space; the redundant constraints will often quickly prune the search space:
+When the initial domains can't be predicted so precisely, the `mid_split_one` contractor can be used to sub-divide the solution space; the redundant constraints will often quickly prune the search space:
 eg
 	?- broyden(5,Vs,Es),Vs::real(-1,1),taylor_merged_contractor({Es},T),
 	iterate_until(50,small(Vs),(T,mid_split_one(Vs))).
@@ -344,19 +344,19 @@ eg
 	_D:: -0.558099324856152...,
 	_E:: -0.592506155965083...,
 	_F:: -0.624503707410516...,
-	_G:: -0.62323866913245...,
+	_G:: -0.623238669132451...,
 	_H:: -0.62141967671364...,
 	_I:: -0.61961584283347...,
-	_J:: -0.61822601791985...,
+	_J:: -0.618226017919857...,
 	_K:: -0.61751802484149...,
 	_L:: -0.61773183031864...,
-	_M:: -0.61790031625335...,
-	_N:: -0.6180077985408...,
-	_O:: -0.6180570617550...,
-	_P:: -0.6180626997163...,
-	_Q:: -0.6180471993508...,
-	_R:: -0.6180111957386...,
-	_S:: -0.6188720794950...,
+	_M:: -0.617900316253351...,
+	_N:: -0.618007798540868...,
+	_O:: -0.61805706175504...,
+	_P:: -0.618062699716298...,
+	_Q:: -0.61804719935080...,
+	_R:: -0.61801119573861...,
+	_S:: -0.61887207949504...,
 	_T:: -0.58627694540011...,
 	_N1::real(-1.0Inf, 1.0Inf),
 	_M1::real(-1.0Inf, 1.0Inf),
@@ -450,7 +450,7 @@ This is just the first solution returned. Again, throttling prevents running fix
 
 ##### Summary
 
-CISC based interval constraint systems overcame deficiencies in RISC, such as slow convergence, by building sophisticated narrowing algorithms into the constraint engine. But metalevel contractors can overcome some of these deficiencies without complicating the underlying engine design. Advances in hardware and software (Prolog) results in comparable performance to earlier CISC implementations, although the comparison is a bit unfair and CISC engine implemented in C will always be faster than this implementation of CLP(BNR) on equivalent hardware. The other advantage of this metalevel design is that it facilitates experimentation with new contractors without understanding (or compromising) the details of the underlying constraint system. This faciliates the addition of "specialized" contractors that may be more effective for particular problem domains.
+CISC based interval constraint systems overcame deficiencies in RISC, such as slow convergence, by building sophisticated narrowing algorithms into the constraint engine. But metalevel contractors can overcome some of these deficiencies without complicating the underlying engine design. Advances in hardware and software (Prolog) results in comparable performance to earlier CISC implementations, although the comparison is a bit unfair and CISC engine implemented in C will always be faster than this implementation of CLP(BNR) on equivalent hardware. The other advantage of this metalevel design is that it facilitates experimentation with new contractors without understanding (or compromising) the details of the underlying constraint system. This facilitates the addition of "specialized" contractors that may be more effective for particular problem domains.
 
 <#TableOfContents>
 

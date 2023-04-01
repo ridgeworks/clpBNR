@@ -23,6 +23,14 @@
  *	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  *	SOFTWARE.
  */
+
+:- if((current_prolog_flag(version,V), V < 90105)).
+
+:- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
+user:message_hook(_Err, _Level, _) :- integer(7286315884).
+
+:- else.
+
 :- module(clpBNR,          % SWI module declaration
 	[
 	op(700, xfx, ::),
@@ -90,7 +98,7 @@ integer                               %% must be an integer value
 
 */
 
-version("0.10.3").
+version("0.11.0").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -272,40 +280,34 @@ getValue(Int, Val) :-
 %	and may not be run again. Insert `integral` op for integer bounds adjustment.
 %
 putValue_(New, Int, NodeList) :- 
-	get_attr(Int, clpBNR, Def),        % still an interval
-	(debugging(clpBNR,true) -> check_monitor_(Int, New, Def) ; true),
-	Def = interval(Type,_,Nodes,_),    % get Type and Nodes for queueing
-	New = (L,H),
-	(test_interval_(L,H)               % not a point ->
-	 -> setarg(2,Def,New)              % update value in interval (backtrackable)
-	 ;  (precise_eq(L,H,Pt)            % precise equivalence test for point
-	     -> setarg(3,Def,_NL),         % clear node list (so nothing done in unify)
-	        Int = Pt                   % precisely equivalent, unify (invokes hook)
-	     ; setarg(2,Def,New)           % not precisely equivalent, update
+	get_attr(Int, clpBNR, Def)             % still an interval ?
+	 -> (debugging(clpBNR,true) -> check_monitor_(Int, New, Def) ; true),
+	    Def = interval(Type,_,Nodes,_),    % get Type and Nodes for queueing
+	    New = (L,H),
+	    ( 0 is cmpr(L,H)                   % point interval ->
+	     -> setarg(3,Def,_NL),             % clear node list (so nothing done in unify)
+	        pointValue_(L,H,Int),          % unify, avoiding -0.0 and preferring rational (invokes hook)
+% %	        (rational(L) -> Int = L ; Int = H),  % unify, preferring rational (invokes hook)
+	        NodeList = Nodes               % still add Nodes to Agenda
+	     ;  setarg(2,Def,New),             % update value in interval (backtrackable)
+	        % if integer has non-integral bounds, schedule `integral` op to fix it
+	        (Type == integer
+	         -> ( integerBnd(L), integerBnd(H) -> NodeList = Nodes ; NodeList = [node(integral,_,0,$(Int))|_] )
+	         ;  NodeList = Nodes
+	        )
 	    )
-	),
-	% if integer has non-integral bounds, schedule `integral` op to fix it
-	(Type == integer
-	 -> (integerBnd(L), integerBnd(H) -> NodeList = Nodes ; NodeList = [node(integral,_,0,$(Int))|_] )
-	 ;  NodeList = Nodes
-	).
+	 ; true.  % no longer an interval, NodeList is empty
 
-% required due to infinity comparison bug ( 2^1024 =:= inf. )
-test_interval_(L, 1.0Inf) :- !, L \==  1.0Inf.
-test_interval_(-1.0Inf,H) :- !, H \== -1.0Inf.
-test_interval_(L,H) :- L < H.
-
-precise_eq( 1.0Inf, 1.0Inf, 1.0Inf) :- !.                    % point infinities
-precise_eq(-1.0Inf,-1.0Inf,-1.0Inf) :- !.
-precise_eq(L,H,Pt) :- Pt is rational(L), Pt is rational(H).  % finite point values
+pointValue_(-0.0,_,0.0) :-!.
+pointValue_(L,H,Int) :- (rational(L) -> Int = L ; Int = H).
 
 %
 %  range(Int, Bounds) for compatibility 
 %
 % for interval(Int) and number(Int), check if value is (always) in specified range, unifying any vars with current value
 range(Int, [L,H]) :- getValue(Int, (IL,IH)), number(IL), !,  % existing interval
-	(var(L) -> L=IL ; L=<IL),  % range check, no narrowing
-	(var(H) -> H=IH ; IH=<H).
+	(var(L) -> L=IL ; non_empty(L,IL)),  % range check (L=<IL,IH=<H), no narrowing
+	(var(H) -> H=IH ; non_empty(IH,H)).
 % for var(Int), constrain it to be an interval with specified bounds (like a declaration)
 range(Int, [L,H]) :- var(Int),  % new interval
 	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
@@ -421,15 +423,16 @@ int_decl_(Type,(L,H),R) :- interval_object(R,_IType,CVal,_NL), !,  % already int
 int_decl_(Type,(L,H),R) :- var(R), !,        % new interval (R can't be existing interval)
 	lower_bound_val_(Type,L,IL),
 	upper_bound_val_(Type,H,IH),
-	IL=<IH,           % valid range
-	(IL=IH -> 
-		R=IL ;  % point range, can unify now
-		put_attr(R, clpBNR, interval(Type, (IL,IH), _NL, []))  % attach clpBNR attribute
+	C is cmpr(IL,IH),  % compare bounds
+	(C == 0
+	 -> (rational(IL) -> R=IL ; R = IH)  % point range, can unify now
+	 ;  C == -1,                         % necessary condition: IL < IH
+	    put_attr(R, clpBNR, interval(Type, (IL,IH), _NL, []))  % attach clpBNR attribute
 	).
 
 int_decl_(Type,(L,H),R) :- (Type=integer -> integer(R) ; number(R)), !,    % R already a point value, check range
-	lower_bound_val_(Type,L,IL), IL=<R,
-	upper_bound_val_(Type,H,IH), R=<IH.
+	lower_bound_val_(Type,L,IL), non_empty(IL,R),  % IL=<R,
+	upper_bound_val_(Type,H,IH), non_empty(R,IH).  % R=<IH.
 
 int_decl_(Type,(','),R) :- !,                   % no bounds, fill with vars
 	int_decl_(Type,(_,_),R).
@@ -488,10 +491,14 @@ attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 	number(Num),
 	IntDef = interval(Type,(L,H),Nodelist,Flags),
 	(Type=integer -> integer(Num) ; true),   % check that Num is consistent with Type
-	L=<Num, Num=<H, !,                       % and in range (not NaN)
+	% L=<Num, Num=<H, assumes L < H
+	cmpr(L,Num) + cmpr(Num,H) < 0, !,        % and in range (not NaN)
 	(debugging(clpBNR,true) -> monitor_unify_(IntDef, Num) ; true),
-	linkNodeList_(Nodelist, T/T, Agenda),
-	stable_(Agenda).                    % broadcast change
+	(var(Nodelist)
+	 -> true                                 % nothing to do
+	 ;  linkNodeList_(Nodelist, T/T, Agenda),
+	    stable_(Agenda)                      % broadcast change
+	).
 
 attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two intervals
 	get_attr(Int, clpBNR, interval(Type2,V2,Nodelist2,Flags2)),  %%SWIP attribute def.
@@ -502,8 +509,11 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 	(debugging(clpBNR,true) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
 	% update new type, value and constraint list, undone on backtracking
 	put_attr(Int,clpBNR,interval(NewType,NewR,Newlist,Flags)),
-	linkNodeList_(Newlist, T/T, Agenda),
-	stable_(Agenda).                    % broadcast change
+	(var(Newlist)
+	 -> true                                 % nothing to do
+	 ;  linkNodeList_(Newlist, T/T, Agenda),
+	    stable_(Agenda)                      % broadcast change
+	).
 
 attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of range
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
@@ -522,7 +532,7 @@ mergeValues_(T, T, T, R, R) :- !.
 mergeValues_(_, _, integer, (L,H), (IL,IH)) :-
 	lower_bound_val_(integer,L,IL),     % type check bounds
 	upper_bound_val_(integer,H,IH),
-	IL =< IH.                           % still non-empty
+	non_empty(IL,IH).                   % still non-empty
 
 % optimize for one or both lists (dominant case)
 mergeFlags_([],Flags2,Flags2) :- !.
@@ -583,7 +593,7 @@ addConstraints_(C,Agenda,NewAgenda) :-
 	simplify(C,CS),    % optional
 	buildConstraint_(CS, Agenda, NewAgenda).
 
-% low overhead version for internal use	
+% low overhead version for internal use (also used by arithmetic_types pack)
 constrain_(C) :- 
 	buildConstraint_(C,T/T,Agenda),
 	stable_(Agenda).
@@ -617,9 +627,10 @@ build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constan
 build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal
 	number(L), number(H), !,
 	S is integer(sign(H-L)), 
-	(S == 0
+	C is cmpr(L,H),  % compare bounds
+	(C == 0
 	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
-	 ;  S == 1,                                         % new interval, fail if empty (S = -1)
+	 ;	C == -1,                                        % necessary condition: L < H
 	    once(VarType == real ; true),                   % if undefined Type, use 'real'
 	    put_attr(Int, clpBNR, interval(VarType, (L,H), _NL, []))  % create clpBNR attribute
 	).
@@ -638,9 +649,16 @@ build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primiti
 	fmap_(F,Op,[Z|Args],ArgsR,Types), !,                % supported arithmetic op
 	build_args_(ArgsR,Objs,Types,Agenda,ObjAgenda),
 	newNode_(Op,Objs,ObjAgenda,NewAgenda).
+build_(Exp, Z, _, Agenda, NewAgenda) :-                 % user defined
+	Exp =.. [F|Args],
+	UsrHead =..[F,'$op',_,_,_],
+	current_predicate(_,clpBNR:UsrHead),
+	build_args_([Z|Args],Objs,Types,Agenda,ObjAgenda),
+	newNode_(user(F),Objs,ObjAgenda,NewAgenda).
 
 build_args_([],[],_,Agenda,Agenda).
 build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
+	(var(Type) -> Type=real ; true),                    % var if user defined
 	build_(Arg,Obj,Type,Agenda,NxtAgenda),
 	build_args_(ArgsR,Objs,Types,NxtAgenda,NewAgenda).
 
@@ -706,6 +724,8 @@ fmap_(atan, tan,   [Z,X],   [X,Z],   [real,real]).
 
 % reverse map node info to a facsimile of the original constraint
 map_constraint_op_(integral,$(V),integral(V)) :- !.
+map_constraint_op_(user(Func),Args,C) :- !,
+	remap_(Func,Args,C).
 map_constraint_op_(Op,Args,C) :-
 	fmap_(COp,Op,_,_,_),
 	remap_(COp,Args,C),
@@ -856,13 +876,12 @@ consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values,
 %	called whenever a persistent node is encountered in FP iteration
 %
 trim_op_(Arg) :- 
-	(number(Arg)
-	 -> true
-	 ;	get_attr(Arg, clpBNR, Def),     % an interval ?
-		arg(3,Def,NList),  %%Def = interval(_, _, NList, _),
+	( get_attr(Arg, clpBNR, Def)     % an interval ?
+	 -> arg(3,Def,NList),  %%Def = interval(_, _, NList, _),
 		trim_persistent_(NList,TrimList),
 		% if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
 		(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList))  % write trimmed node list
+	 ; true  % assumed to be a number, nothing to trim
 	).
 
 trim_persistent_(T,T) :- var(T), !.    % end of indefinite node list
@@ -876,19 +895,11 @@ trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
 updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value (constant?)
 
 updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
-	chk_float_overwrite(Old, New, New1),         % change, check for unnecessary float conversions on bounds
-	(OpsLeft>0 -> true ; propagate_if_(Old, New1)), !,  % if OpsLeft >0 or narrowing sufficent
-	putValue_(New1, Int, Nodelist),              % update value (may fail)
+	(OpsLeft>0 -> true ; propagate_if_(Old, New)), !,  % if OpsLeft >0 or narrowing sufficent
+	putValue_(New, Int, Nodelist),               % update value (may fail)
 	linkNodeList_(Nodelist, Agenda, NewAgenda).  % then propagate change
 
 updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with Agenda
-
-% check that a precise bound isn't overwritten by equivalent float
-% fail if recalculated New same as Old
-chk_float_overwrite((OL,OH), (NL,NH), (NL1,NH1)) :-
-	(rational(OL), float(NL) -> (NL > OL -> NL1 = NL ; NL1 = OL) ; NL1 = NL),
-	(rational(OH), float(NH) -> (NH < OH -> NH1 = NH ; NH1 = OH) ; NH1 = NH),
-	(NL1 == OL, NH1 == OH -> fail ; true).
 
 % propgate if sufficient narrowing (> 10%)
 propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
@@ -997,20 +1008,10 @@ clpStatistics :- !.
 %
 % module initialization
 %
-min_swi_version(80512). % for correct rounding
-
 check_features :-
-	(current_prolog_flag(version,V), min_swi_version(Min), V < Min
-	 -> print_message(error, clpBNR(swi_version,Min))
-	 ;  true
-	),
 	(current_prolog_flag(bounded,true)
 	 -> print_message(error, clpBNR(bounded))
 	 ;  true
-	),
-	(current_prolog_flag(float_overflow,_)
-	 -> true
-	 ;  print_message(error, clpBNR(no_IEEE))
 	).
 
 version_info :-
@@ -1023,15 +1024,8 @@ set_min_free(Amount) :-
 
 :- multifile prolog:message//1.	
 
-prolog:message(clpBNR(swi_version,Min)) -->
-	{ Mj is Min div 10000, Mn is (Min-(10000*Mj)) div 100, P is Min rem 100 },
-	[ 'For correct rounding, this version of clpBNR requires SWI-Prolog version ~w.~w.~w or better.'-[Mj,Mn,P] ].
-
 prolog:message(clpBNR(bounded)) -->
 	[ 'clpBNR requires unbounded integers and rationals.'-[] ].
-
-prolog:message(clpBNR(no_IEEE)) -->
-	[ 'clpBNR requires support for IEEE arithmetic.'-[] ].
 
 prolog:message(clpBNR(versionInfo)) -->
 	{ version(Version) },
@@ -1045,6 +1039,11 @@ init_clpBNR :-
 	check_features,
 	set_min_free(8196),
 	set_prolog_flags,     % initialize/check environment flags (can't rely on lazy init via `thread_init_done`)  
+	clpStatistics,        % reset statistics
 	trace_clpBNR(false).  % reset tracing on reload
 
 :- initialization(init_clpBNR, now).
+
+:- endif.
+
+:- ignore(retract(user:message_hook(_Err, _Level, _) :- integer(7286315884))).

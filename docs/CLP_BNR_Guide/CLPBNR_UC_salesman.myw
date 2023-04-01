@@ -23,7 +23,7 @@ The ["travelling salesman" problem] is a well known example of a classical [NP-c
 	distance( 3,  5,  21).
 	distance( 4,  5,  15).
 
-aside>	Aside: Unfortunately this data set seems to violate one of the principles of basic geometry, the so-called "[triangle inequality]". Independent of the definition of "distance" the data should define the shortest path between any two points; otherwise the shortest overall tour length can't be derived from the data. Given a third point, the length of a path visiting all three can't be less than the shortest distance between any two of the points. (It can be equal if one of the points is on the path between the other two.) But the RAND dataset allows this possibilty. For example, the distance from `2` to `4` is `47` but `2` to `1` to `4` is `45`. So there is a shorter path by going through point `1` than the "shortest" defined distance between '2' and '4'. While this questions the validity of the answer (real world shortest tour), it doesn't impact the correctness of the algorithms described below.
+aside>	Aside: Unfortunately this data set seems to violate one of the principles of basic geometry, the so-called "[triangle inequality]". Independent of the definition of "distance" the data should define the shortest path between any two points; otherwise the shortest overall tour length can't be derived from the data. Given a third point, the length of a path visiting all three can't be less than the shortest distance between any two of the points. (It can be equal if one of the points is on the path between the other two.) But the RAND dataset allows this possibility. For example, the distance from `2` to `4` is `47` but `2` to `1` to `4` is `45`. So there is a shorter path by going through point `1` than the "shortest" defined distance between '2' and '4'. While this questions the validity of the answer (real world shortest tour), it doesn't impact the correctness of the algorithms described below.
 
 A solution for all 42 cities is well beyond the capabilities of any of the algorithms described below so we'll be using a small subset for comparison purposes. Each algorithm will be expressed as a predicate of the form `salesman_XX(Points, Tour, Length)` where `Points` is a list of integers identifying the cities to be used, `Tour` is an ordered list of those integers defining the shortest length tour (returning to the starting point), and `Length` is sum of the  distances between the the points on the tour.
 
@@ -100,7 +100,7 @@ Other than replacing `min_search/1` with `min_ratchet/2` the differences between
 
 aside>	Aside: In general, use of `nb_setbounds` will invalidate any backtracking `clpBNR` program. It has very limited use cases such as a branch and bound optimization (via side-effect) as shown here. In general, backtracking should remove constraints that have been applied (analogous to unification).
 
-Constraint based algorithms incur additonal overheads to define and enforce the constraints. For performance to be competitive, the additional pruning of the search space enabled by the constraints must more than compensate for this.
+Constraint based algorithms incur additional overheads to define and enforce the constraints. For performance to be competitive, the additional pruning of the search space enabled by the constraints must more than compensate for this.
 
 Running the same example with `salesman_K`:
 eg

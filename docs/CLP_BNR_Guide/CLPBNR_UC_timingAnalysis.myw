@@ -16,7 +16,7 @@ The actual table of timing values is available in the 8086 datasheet and won't b
 
 In addition, a common solution in the literature is to optimize the separation of event times which can be an NP-complete problem. However, the underlying objective is to prove that the timing specification is consistent and all timing requirements are met when components are inter-connected. So the solution described below directly tackles these objectives in a (hopefully) more transparent way while provided additional diagnostic information when these objectives aren't met.
 
-For the purposes of timing analysis, capturing the circuit properties can be broken down into two steps. The first step is to identify the timing events and give them a label and a type. The type of event is necessary because any particular event may be dependent on more than one "parent" event. In some cases these are simple constraints which must be mutually satisified, but in others the event may depend on the earliest or latest parent. The names corresponding to these types are `lin` (mutual constraints), `min` (earliest parent), and `max` (latest parent).
+For the purposes of timing analysis, capturing the circuit properties can be broken down into two steps. The first step is to identify the timing events and give them a label and a type. The type of event is necessary because any particular event may be dependent on more than one "parent" event. In some cases these are simple constraints which must be mutually satisfied, but in others the event may depend on the earliest or latest parent. The names corresponding to these types are `lin` (mutual constraints), `min` (earliest parent), and `max` (latest parent).
 
 The events themselves are things like clocks, address available on CPU address bus, etc. For the purposes of this example, some signals and associated events will be ignored, e.g., M/IO, Status controls, etc. The events are declared in a list containing elements of the form: `Type(Label)`:
 .pl
@@ -114,7 +114,7 @@ aside> Aside: some published papers use the term "produced timing" for `timing/3
 
 The process of timing analysis requires that the network be defined, which will include checking that the `timing` rules are consistent. The second step validates the circuit by checking the hazard conditions.
 
-The pocess of defining the network involves creating the `Net` list and setting the reference event time to 0. The constraints implied by the `timing` rules are then applied. Any failure is an indication that the timing rules are inconsistent (an event time interval is empty) and a diagnostic message is output.
+The process of defining the network involves creating the `Net` list and setting the reference event time to 0. The constraints implied by the `timing` rules are then applied. Any failure is an indication that the timing rules are inconsistent (an event time interval is empty) and a diagnostic message is output.
 .pl
 	define_network(Evs, Net) :-
 		label_events(Evs, Net),  % from above

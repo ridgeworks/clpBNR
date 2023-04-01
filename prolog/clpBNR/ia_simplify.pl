@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019,2020 Rick Workman
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -283,7 +283,7 @@ simplify_term(T,Term) :-
 	!.
 
 term_final_(Term,Term) :- rational(Term), !.
-term_final_(C*Term,term(Term,C)) :- rational(C).
+term_final_(Term,term(T,C)) :- compound(Term), Term = C*T, rational(C), !.
 term_final_(Term,term(Term,1)).
 
 collect_term_(A, List, Head/NewT) :-

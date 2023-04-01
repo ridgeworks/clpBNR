@@ -170,7 +170,7 @@ eg
 	
 	?- integrate(d(Y)= -2*X*Y, X, (0,Yi), (1,0.36788), real(0,1.0)).
 	Yi:: 1.0... .
-Note the loss of accuracy from the previous (undisclosed) method. Euler is a low order method so the uncertaintly is large and only improves slowly with smaller step sizes. An improved step algorithm is the subject of the next section.
+Note the loss of accuracy from the previous (undisclosed) method. Euler is a low order method so the uncertainty is large and only improves slowly with smaller step sizes. An improved step algorithm is the subject of the next section.
 
 ##### Trapezoidal Approximation
 
@@ -262,14 +262,14 @@ eg
 	G = 32,
 	B = 4,
 	W = 200,
-	Vf::real(45.58578340391216, 54.38116247652567).
-The first result (at 1 sec.) looks quite good - 5 digits of accuracy. But it's down to three digits at 5 sec., and the result is quite wide at 10 sec. (For comparison, the exact solution is given by `﻿V is 50-10*exp(-0.64*T)` for a terminal velocity of 50 ft./sec.) One possible explanation is the weak convergance of the fixed point iteration seen previously. In this case there is no possibility of multiple solutions so `absolve`, which deterministically "nibbles" way at the bounds of an interval, is preferred and seems to do a decent job:
+	Vf::real(45.585783403912075, 54.381162476525745).
+The first result (at 1 sec.) looks quite good - 5 digits of accuracy. But it's down to three digits at 5 sec., and the result is quite wide at 10 sec. (For comparison, the exact solution is given by `﻿V is 50-10*exp(-0.64*T)` for a terminal velocity of 50 ft./sec.) One possible explanation is the weak convergence of the fixed point iteration seen previously. In this case there is no possibility of multiple solutions so `absolve`, which deterministically "nibbles" way at the bounds of an interval, is preferred and seems to do a decent job:
 eg
 	?- G= 32,B=4,W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_)),absolve(Vf).
 	G = 32,
 	B = 4,
 	W = 200,
-	Vf::real(49.84604514220933, 50.08652260393072).
+	Vf::real(49.70861734419974, 50.2096451917699).
 Another possibility is that we're observing symptoms of instability where the cumulative effect of approximation errors is severely impacting the accuracy of the result. Instability will be discussed more below, but one cause is a large step size . (The step size between the `T=1` and `T=10` query has increased by a factor of 10.) To compensate for this use the `Ctrl` parameter:
 eg
 	﻿?- G= 32, B=4, W=200, integrate(d(V)=G-G*B*V/W, T, (0,40), (10,Vf), real(0,_), 10).
@@ -333,21 +333,21 @@ Before trying anything else, see if `absolve` helps to address any weak converge
 eg
 	?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50)), absolve(Af).
 	F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(25.697285513486072, 27.36557470866275).
+	Af::real(25.697285513486072, 27.365574721575186).
 That actually helped quite a bit, but still not as narrow as it could be. 
 
 Decreasing the step size (increasing `Ctrl`):
 eg
 	?- F::real(1.9,2.1),integrate(d(A)=F*(3-A/10),T,(0,5),(10,Af),real(0,50),9), absolve(Af).
 	F::real(1.8999999999999997, 2.1000000000000005),
-	Af::real(24.869257159250747, 28.22783073993808).
+	Af::real(24.869257159250747, 28.227830739958648).
 actually made it worse, so it's probably not an instability issue. 
 
 The problem is that any uncertainty in one of "constants" is propagated from each integration step to the next, amplified by the approximation error. The end result is correct in that it contains the "real" value, but it may seem more conservative than need be. That's the product of the interaction between input fuzzy data and approximation errors caused by the integration algorithm. Weak convergence may further exacerbate the problem but, to some extent, that can be mitigated through the use of `absolve`.
 
 ##### Systems of Differential Equations
 
-A useful extension of this "single independent variable, single dependent variable" implementation is to add support for muliple dependent variables as defined by multiple differential equations sharing a single dependent variable, i.e., a set of ordinary differential equations. This requires replacing the single equation with a list of such equations, the `Y` in `Initial` and `Final` values with a list of `Y`'s, and the domain with a list of domains. The core clause of the new predicate (replacing `integrate/5`):
+A useful extension of this "single independent variable, single dependent variable" implementation is to add support for multiple dependent variables as defined by multiple differential equations sharing a single dependent variable, i.e., a set of ordinary differential equations. This requires replacing the single equation with a list of such equations, the `Y` in `Initial` and `Final` values with a list of `Y`'s, and the domain with a list of domains. The core clause of the new predicate (replacing `integrate/5`):
 .pl
 	integrateV(DFxys,X,(Xi,Yis),(Xf,Yfs),Ydomains,Ctrl,Out) :-
 		integer(Ctrl), Ctrl>0,           % Ctrl must be positive integer
@@ -419,7 +419,7 @@ eg
 	B = 4,
 	W = 200,
 	X1f:: 49.6...,
-	Xf::real(234.95497997335906, 235.06798965300547).
+	Xf::real(234.95497997335914, 235.0679896530054).
 	
 	?- G= 32, B=4, W=200,
 	integrateV([d(X1)=G-G*B*X1/W, d(X)=X1], T, (0,[40,0]), (10,[X1f,Xf]), [real(0,_),real(0,_)], 10).
@@ -458,7 +458,7 @@ eg
 	B = 1000,
 	Ev = 400,
 	X1f:: 219.5...,
-	Xf::real(1232.4139630647726, 1232.611764038333).
+	Xf::real(1232.4139630647726, 1232.6117640383331).
 So after 15 sec. the rocket is travelling at 220 m./sec. at a height of 1232 m. The same query form could be used for 20 sec. but note that at 20 sec. the fuel is exhausted. So a different equation applies for `T>20`; one involving just the force of gravity. The final values for `T=20` can be used as the initial values to calculate the velocity and height at `T=30`:
 eg
 	?- G=9.8, M0=25000, B=1000, Ev=400,
@@ -468,15 +468,15 @@ eg
 	M0 = 25000,
 	B = 1000,
 	Ev = 400,
-	V20::real(447.7126142866085, 448.08761428661023),
-	H20::real(2821.436298365498, 2822.687558768409),
-	V30::real(349.7126142866049, 350.08761428661387),
-	H30::real(6808.562441231543, 6813.563701634554).
+	V20::real(447.7126142866085, 448.0876142866102),
+	H20::real(2821.436298365498, 2822.6875587684085),
+	V30::real(349.7126142866049, 350.0876142866138),
+	H30::real(6808.562441231543, 6813.563701634553).
 When the fuel is expended at 20 sec., the rocket has reached a (peak) velocity of 448 m./sec and continues to coast reaching a height of approximately 6810 m. after 30 sec.
 
 ##### Summary
 
-This topic just covers a small but useful subclass of science and engineering problems involving differential equations, namely initial (or final) value problems using ordinary differential equations. And the examples just cover a few of the many possible applications in mechanics, heat flow, electrical circuits, optics, radioactivity, chemistry, etc. It's not uncommon that the equations that arise are incapable of exact (analytical) treatment and numerical methods are required. A particular advantage of using intervals in this domain is automatic error analysis which provides explict evidence of algorithm instability which may not be so obvious using conventional floating point methods.
+This topic just covers a small but useful subclass of science and engineering problems involving differential equations, namely initial (or final) value problems using ordinary differential equations. And the examples just cover a few of the many possible applications in mechanics, heat flow, electrical circuits, optics, radioactivity, chemistry, etc. It's not uncommon that the equations that arise are incapable of exact (analytical) treatment and numerical methods are required. A particular advantage of using intervals in this domain is automatic error analysis which provides explicit evidence of algorithm instability which may not be so obvious using conventional floating point methods.
 
 <#TableOfContents>
 

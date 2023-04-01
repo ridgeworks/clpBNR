@@ -74,7 +74,7 @@ eg
 	false.
 	
 	?- X::real,{X*(-60+X*(47+X*(-12+X)))==0},solve(X).
-	X = 0 ;
+	X = 0.0 ;
 	X:: 3.000000... ;
 	X:: 4.00000000000... ;
 	X:: 5.000000... ;
@@ -87,17 +87,50 @@ eg
 	X:: 1.00... .
 
 	?- X::real,{X**2-2*X+1==0},solve(X),absolve(X).
-	﻿X:: 0.99999637... ;
-	X:: 0.999997944... ;
-	X:: 0.999997996... ;
-	X:: 0.999998110... ;
-	X:: 0.999998305... ;
+	X:: 0.999993780... ;
+	X:: 0.99999635... ;
+	X:: 0.999997703... ;
+	X:: 0.9999979329... ;
+	X:: 0.999997983... ;
+	X:: 0.999998411... ;
 	X:: 0.9999985... ;
-	X:: 0.9999986... ;
-			.
-			.
-			.
-	﻿X:: 0.999999... ;
+	        .
+	        .
+	        .
+	X:: 0.999999... ;
+	X:: 0.999999... ;
+	X:: 0.999999... ;
+	X:: 0.9999999... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
+	X:: 1.0000003... ;
+	        .
+	        .
+	        .
+	X:: 1.000001... ;
+	X:: 1.000001... ;
+	X:: 1.0000017... ;
+	X:: 1.0000018... ;
+	X:: 1.0000023318... ;
+	X:: 1.000003381... ;
+	X:: 1.000004781... ;
+	false.
+Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while, even using `absolve`, generating many, many false positives. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
+
+The Horner from doesn't even narrow for the base case, but does improve the performance when used with `solve` and `absolve`.
+eg
+	?- X::real,{1+X*(-2+X) == 0}.
+	X::real(-1.0e+16, 1.0e+16).
+	
+	?- X::real,{1+X*(-2+X) == 0},solve(X),absolve(X).
+?- X::real,{1+X*(-2+X) == 0},solve(X),absolve(X).
+	X:: 0.999998968... ;
+	X:: 0.999999... ;
+	X:: 0.999999... ;
+	X:: 0.9999993... ;
+	X:: 0.999999... ;
 	X:: 0.999999... ;
 	X:: 0.999999... ;
 	X:: 0.9999996... ;
@@ -108,66 +141,26 @@ eg
 	X:: 1.000000... ;
 	X:: 1.000000... ;
 	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.0000004... ;
-			.
-			.
-			.
-	X:: 1.0000015... ;
-	X:: 1.000001... ;
-	X:: 1.000001... ;
-	X:: 1.0000017... ;
-	X:: 1.0000018... ;
-	X:: 1.000003391... ;
-	X:: 1.000004791... ;
-	false.
-Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while, even using `absolve`, generating many, many false positives. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
-
-The Horner from doesn't even narrow for the base case, but does improve the performance when used with `solve` and `absolve`.
-eg
-	?- X::real,{1+X*(-2+X) == 0}.
-	X::real(-1.0e+16, 1.0e+16).
-	
-	?- X::real,{1+X*(-2+X) == 0},solve(X),absolve(X).
-	X:: 0.99999768... ;
-	X:: 0.999998891... ;
-	X:: 0.999999005... ;
-	X:: 0.99999927... ;
-	X:: 0.9999993... ;
-	X:: 0.9999994... ;
-	X:: 0.9999994... ;
-	X:: 0.9999995... ;
-	X:: 0.9999995... ;
-	X:: 0.9999996... ;
-	X:: 0.9999996... ;
-	X:: 0.9999997... ;
-	X:: 0.9999997... ;
-	X:: 0.9999998... ;
-	X:: 0.9999998... ;
-	X:: 0.999999... ;
-	X:: 1.000000... ;
-	X:: 1.0000001... ;
-	X:: 1.000000... ;
-	X:: 1.0000002... ;
 	X:: 1.0000003... ;
-	X:: 1.0000003... ;
-	X:: 1.0000004... ;
-	X:: 1.0000004... ;
-	X:: 1.0000005... ;
-	X:: 1.0000005... ;
-	X:: 1.0000006... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
 	X:: 1.0000007... ;
-	X:: 1.00000072... ;
+	X:: 1.000000... ;
+	X:: 1.000000... ;
+	X:: 1.00000098... ;
+	X:: 1.00000124... ;
 	false.
 And, in this particular case, it can actually help to reduce the required precision:
 eg
 	?- set_prolog_flag(clpBNR_default_precision,4), X::real,{1+X*(-2+X) == 0},solve(X),absolve(X). 
-	X:: 0.999965... ;
+	X:: 0.99998... ;
 	X:: 0.99999... ;
-	X:: 1.0000... ;
+	X:: 0.99999... ;
+	X:: 1.00000... ;
 	X:: 1.00000... ;
 	X:: 1.00001... ;
-	X:: 1.000019... ;
+	X:: 1.000017... ;
 	false.
 Of course had the constraint been entered in a factored form (eliminating the dependency issue),  it takes just a few operations to converge (no solve necessary), but then you already knew the answer:
 eg

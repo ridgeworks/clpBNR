@@ -1,13 +1,15 @@
 # CLP(BNR)
 
-`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog. Versions of `clpBNR` 0.10.0 and later require SWI-Prolog 8.5.12 or later for correct rounding of elementary functions. (Versions earlier than 0.10.0 will run on SWIP versions 8.2.0 or later.) Also Version 0.10.0 removes support for the constraint operator '`=>`' (interval inclusion); it's redundant (use '`<=`' instead) and conflicts with SWI-Prolog's use of '`=>`' for [single sided unification](https://www.swi-prolog.org/pldoc/man?section=ssu).
-
+`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog. 
 CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. It differs from some other CLP(*R*)'s in that:
 * CLP(BNR) is complete in that any real number can be finitely represented even though the set of reals is infinite. It does this by sacrificing precision: a real number *R* is represented by an interval (*L,U*) where *L=<R=<U* and *L* and *U* are numbers as defined by SWI-Prolog (integers, rationals or floats, including the IEEE infinity values). A precise value (*L=U*) is represented directly by the number.
 * CLP(BNR) arithmetic is mathematically sound. Any computed interval will contain the precise value. Due to the well-known pitfalls of IEEE floating point arithmetic, any CLP(*R*) based on conventional IEEE floating point arithmetic is unsound. (Try: `?- 1.21 =:= 1.1*1.1.`) In particular the add and multiply operations are non-associative and non-distributive. Relational interval arithmetic in CLP(BNR) (and some others) ensures that computed intervals contain the mathematically correct real value.
 * All constraints, including non-linear constraints are active. In some CLP(*R*) implementations only linear constraints are active; non-linear constraints are deferred until their set of variables is sufficiently resolved that the constraint becomes linear.
 * CLP(BNR) supports an "integral" constraint which forces interval bounds to be integers, enabling constraints over finite domain problems within the relational interval arithmetic framework; booleans can be represented as integer intervals with bounds `((0,1))` and  primitives to support boolean logic are included. Including integers and booleans within a single arithmetic framework enables natural solutions to mixed domain problems.
 * Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog. The main dependancies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
+
+Versions of `clpBNR` 0.11.0 and later require SWI-Prolog 9.1.5 or later for mathematically correct comparison of mixed numeric values. In addition, versions greater than V0.11.0 define an API for users to implement custom interval narrowing operations - see the Reference section of the [Guide to CLP(BNR)][clpBNR_UG] for further details.
+
 
 ## A Brief Introduction
 
@@ -131,7 +133,7 @@ Further explanation and examples, including a complete reference section, can be
 
 ## Getting Started
 
-If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 8.5.12 or greater is required for `clpBNR` 0.10.0 or later. (Earlier versions require a minimum of SWIP 8.2.0.)
+If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 9.1.5 or greater is required for `clpBNR` 0.11.0 or later. Earlier versions of `clpBNR` can run on older versions SWI-Prolog - see README's for those releases for details. (Past releases can be found in the repo "Releases" e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>.)
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://github.com/ridgeworks/clpBNR.git`. Once installed, it can be loaded with `use_module/1`. For example:
 
@@ -143,7 +145,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.10.4
+	Installed version:      0.11.0
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -151,10 +153,10 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.10.4 ***.
+	% *** clpBNR v0.11.0 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
-Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`. Past releases can be found in the repo "Releases" (e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>).
+Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
 
 The `clpBNR` module declaration is:
 
@@ -205,7 +207,7 @@ The `clpBNR` module declaration is:
 		trace_clpBNR/1         % enable/disable tracing of clpBNR ops
 		]).
 
-Also included with this pack (new in V0.10.0) is module `clpBNR_toolkit`, a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Reference documentation and examples of use are included in the User Guide ([Guide to CLP(BNR)][clpBNR_UG]).
+Also included with this pack is module `clpBNR_toolkit`, a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Reference documentation and examples of use are included in the User Guide ([Guide to CLP(BNR)][clpBNR_UG]).
 
 ## SWI-Prolog Arithmetic Flags
 

@@ -26,8 +26,12 @@ eg
 	Z:: 61.6850... .
 	
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
+	X:: 7.849654...,
+	Z:: 61.68501... ;
 	X:: 7.8...,
 	Z:: 61.6850... ;
+	X:: 7.8583098...,
+	Z:: 61.685009... ;
 	false.
 As we saw earlier, there may be answers for the same solution due to precision limits on the splitting process. 
 
@@ -83,9 +87,9 @@ eg
 	
 	?- [X1,X2,X3]::real(0,2*pi), {-X1*X2**3+X1**2*X3**2==5}, global_maximum(sin(X1*X2+X3),Z),splitsolve([X1,X2,X3]).
 	X1:: 1.49453...,
-	X2:: 0.049262...,
-	X3:: 1.49619...,
-	Z:: 0.99999951... .
+	X2:: 0.049137...,
+	X3:: 1.49618...,
+	Z:: 0.99999931... .
 	
 	﻿?- [X1,X2,X3]::integer,{X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z),splitsolve([X1,X2,X3]).
 	X1 = 1,
@@ -156,7 +160,7 @@ eg
 	false.
 In this case the (only) optimal solution is to take 3 each of the Grey and Yellow boxes for a total value of 36 and an enumeration step (`splitsolve` or `enumerate`) is necessary to produce the minimizer values.
 
-A variation on this simple knapsack problems is the multi-constraint problem, e.g., if the knapsack was constrained by volume in addition to weight. These can be simpley addressed by adding the additional constraints to the `{}` constraint term as can be seen in the following examples from Schaum's.
+A variation on this simple knapsack problems is the multi-constraint problem, e.g., if the knapsack was constrained by volume in addition to weight. These can be simply addressed by adding the additional constraints to the `{}` constraint term as can be seen in the following examples from Schaum's.
  
 ##### The Furniture Maker
 "*A furniture maker has 6 units of wood and 28 h of free time, in which he will make decorative screens. Two models have sold well in the past, so he will restrict himself to those two. He estimates that model I requires 2 units of wood and 7 h of time, while model II requires 1 unit of wood and 8 h of time.  The prices of the models are $120 and $80 respectively. How many screens of each model should the furniture maker assemble if he wishes to maximize his sales revenue?*"
@@ -702,7 +706,7 @@ For non-linear problems, if the assumption can be made that global optima are al
  
 The local optimization technique described requires that the objective function and all constraints must be continuously differentiable over the range of all variables of interest. This precludes functions such as `max` and `abs`. In general, functions of `integer` intervals cannot be used because local optima are not necessarily found at integral values.
 
-The accompanying `clpBNR_toolkit` module exports a couple of predicates to apply local minima and maxima constraints to constrained and unconstrained optimization problems. For unconstrained problems use `local_minima(ObjExp)` and `local_minima(ObjExp)`; for constrained optimization use `local_minima(ObjExp,{Constraints})` and `local_minima(ObjExp,{Constraints})`. Note that these do not generate any minimum or maximum values; they jsut apply the additional contraints that will be applied when `global_minimum` or `global_maximum` is called. For this reason, `local_minima` should be paired with `global_minimum` and `local_maxima` with `global_maximum`.
+The accompanying `clpBNR_toolkit` module exports a couple of predicates to apply local minima and maxima constraints to constrained and unconstrained optimization problems. For unconstrained problems use `local_minima(ObjExp)` and `local_minima(ObjExp)`; for constrained optimization use `local_minima(ObjExp,{Constraints})` and `local_minima(ObjExp,{Constraints})`. Note that these do not generate any minimum or maximum values; they just apply the additional constraints that will be applied when `global_minimum` or `global_maximum` is called. For this reason, `local_minima` should be paired with `global_minimum` and `local_maxima` with `global_maximum`.
 
 `local_minima/2` and `local_maxima/2` also apply the `{Constraints}` so there is no need to do this separately.
 
@@ -788,7 +792,7 @@ eg
 	X::real(255.67478448957934, 472.3010561622925),
 	Y::real(189.84791399187418, 400),
 	Pipe:: 691.798... .
-Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependancy problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to furether constrain `X` and `Y`, it will fail:
+Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependency problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to further constrain `X` and `Y`, it will fail:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),

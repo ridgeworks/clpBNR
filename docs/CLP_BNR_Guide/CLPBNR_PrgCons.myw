@@ -6,9 +6,9 @@ The conventional standard arithmetic which has been added to Prolog uses the pri
 eg
 	Var is Expression
 	Expression Op Expression
-where `Expression` denotes a valid and fully instantiated arithmetic expression. Therefore any logic variables in expression must be instantiated before these goals are evaluated; otherwise failure or exceptions are raised. Since most applications need to do some arthmetic, this is one of the main reasons why they do not enjoy the same properties of the small teaching examples.
+where `Expression` denotes a valid and fully instantiated arithmetic expression. Therefore any logic variables in expression must be instantiated before these goals are evaluated; otherwise failure or exceptions are raised. Since most applications need to do some arithmetic, this is one of the main reasons why they do not enjoy the same properties of the small teaching examples.
 
-Constraints, supported in CLP sytems (like CLP(FD), CLP(Z), CLP(R), and CLP(BNR)), avoid early failure (or errors) by delaying arithmetic evaluation until the conditions are sufficient to do so. When this occurs, the logic variables in the "question" will be bound to specific numeric values in the "answer". But in some cases, this may never happen, so the answer just indicates the set of possible values the variable might have. In the continuous domain of reals supported by CLP(BNR) this is just the closed interval defined by an upper and lower bound. And where floating point values are mandated, a variable can never be bound to a precise value due to the inaccuracy in the underlying floating point representations and operations. While cumbersome this is necessary for reasons of correctness. (One would hope that a single floating point value would at least be in an acceptable range of possible answers, but for most computer arithmetic implementations even that isn't a certainty.)
+Constraints, supported in CLP systems (like CLP(FD), CLP(Z), CLP(R), and CLP(BNR)), avoid early failure (or errors) by delaying arithmetic evaluation until the conditions are sufficient to do so. When this occurs, the logic variables in the "question" will be bound to specific numeric values in the "answer". But in some cases, this may never happen, so the answer just indicates the set of possible values the variable might have. In the continuous domain of reals supported by CLP(BNR) this is just the closed interval defined by an upper and lower bound. And where floating point values are mandated, a variable can never be bound to a precise value due to the inaccuracy in the underlying floating point representations and operations. While cumbersome this is necessary for reasons of correctness. (One would hope that a single floating point value would at least be in an acceptable range of possible answers, but for most computer arithmetic implementations even that isn't a certainty.)
 
 It is tempting to recommend that all arithmetic in Prolog programs should be done with constraints and restore the logical properties to those applications that use it, but that incurs a cost that may be unacceptable in many cases. For those applications where logical behaviour, or code simplicity is more important, this section illustrates how constraints may be used in Prolog applications.
 
@@ -85,7 +85,7 @@ eg
 Here's a CLP(BNR) constraint based version (but an equivalent version could be just as easily constructed using CLP(FD) or a similar finite domain constraint system):
 .pl
 	list_length([],0).         % length of empty list is 0.
-	list_length([X|Xs],N):-    % length of non-empy list [X|Xs] is N if ...
+	list_length([X|Xs],N):-    % length of non-empty list [X|Xs] is N if ...
 		[N,N1]::integer(0,_),  %   list lengths are non-negative and finite integers, and
 		{N1 is N - 1},         %   N1 is one less than N, and 
 		list_length(Xs,N1).    %   length of Xs is N1

@@ -48,8 +48,8 @@ eg
 	R = 10,
 	Up = 1.6,
 	Down = 0.5,
-	Pr:: 0.545454545454545...,
-	V:: 23.8016528925620... .
+	Pr:: 0.54545454545454...,
+	V:: 23.801652892562... .
 Using constraints results in a true relational model; the order of the goals is unimportant and, for example, `Up` and `Down` could be calculated from the other values using the same predicate.
 eg
 	﻿?- eval_option(put,1,Up,Down,S,Put,K,R),
@@ -167,9 +167,9 @@ eg
 	K = 50,
 	R = 5.0,
 	PExp = 1*(5*(1+5.0/100)*1+0*1+0*(S-0)+ -1*(S-50)),
-	PayOff::real(5, 5.250000000000014),
-	S::real(50, 50.250000000000014).
-In this case there are two values of `S` that meet the criteria: `S::real(0, 49.99999999999999)` and `S::real(50, 50.250000000000014)`, produced on backtracking. Unlike CLP({`frR`}) which provides answers in symbolic form, e.g., `PayOff = 55.25 - S`, CLP(BNR) normally provides answers expressed as intervals. (A rough symbolic version could be derived from verbose answer format using flag `clpBNR_verbose`.)
+	PayOff::real(5, 5.250000000000007),
+	S::real(50, 50.25000000000001).
+In this case there are two values of `S` that meet the criteria: `S::real(0, 49.99999999999999)` and `S::real(50, 50.25000000000001)`, produced on backtracking. Unlike CLP({`frR`}) which provides answers in symbolic form, e.g., `PayOff = 55.25 - S`, CLP(BNR) normally provides answers expressed as intervals. (A rough symbolic version could be derived from verbose answer format using flag `clpBNR_verbose`.)
 
 Now consider a combination strategy. A *straddle* is composed of the purchase price of a call and a put option. The following query determines the stock price at expiration for the payoff to exceed $3 with a strike value of $50:
 eg
@@ -183,8 +183,8 @@ eg
 	K = 50,
 	V1 = -1*(4*(1+5.0/100)*1+0*0+0*(S-0)+ -1*0),
 	V2 = -1*((3*(1+5.0/100)-50)*1+0*0+1*(S-0)+ -1*0),
-	PayOff::real(3, 42.65000000000001),
-	S::real(0, 39.65000000000001) ;
+	PayOff::real(3, 42.650000000000006),
+	S::real(0, 39.650000000000006) ;
 	CALL = 4,
 	PUT = 3,
 	R = 5.0,
@@ -192,10 +192,10 @@ eg
 	V1 = -1*(4*(1+5.0/100)*1+0*1+0*(S-0)+ -1*(S-50)),
 	V2 = -1*((3*(1+5.0/100)-50)*1+0*1+1*(S-0)+ -1*(S-50)),
 	PayOff::real(3, 9.999999999999944e+15),
-	S::real(60.34999999999999, 1.0e+16).
-Again there are two ranges of the stock value for the payoff to exceed 3: `S::real(0, 39.65000000000001)` for a payoff of `PayOff::real(3, 42.65000000000001)` (`S=<3.65`) and `S::real(60.34999999999999, 1.0e+16)` for a payoff of `PayOff::real(3, 9.999999999999944e+15)` (`S>=60.35`). Put another way, the payoff is less than `3` if `39.65 =< S =< 60.35`. (It's a trivial modification to ask this question.)
+	S::real(60.349999999999994, 1.0e+16).
+Again there are two ranges of the stock value for the payoff to exceed 3: `S::real(0, 39.650000000000006)` for a payoff of `PayOff::real(3, 42.650000000000006)` (`S=<3.65`) and `S::real(60.349999999999994, 1.0e+16)` for a payoff of `PayOff::real(3, 9.999999999999944e+15)` (`S>=60.35`). Put another way, the payoff is less than `3` if `39.65 =< S =< 60.35`. (It's a trivial modification to ask this question.)
 
-There is a subtle issue here; the final constraint, e.g., `{PayOff==V1+V2}`, must follow the call to `payoff` which defines the symbolic expressions. Otherwise `V1` and `V2` are defined as intervals which can't be unified with the expressions. Now the reason `payoff` is implemented to generate expressions is to avoid separate constraints (for `V1` and `V2`) both containing `S`. This will give rise to the previously mentioned dependancy problem if they're "compiled" separately. Combining the expressions symbolically provides CLP(BNR) with the opportunity to simplify the expression and avoid this problem. In general, it's advantageous to delay constraint evaluation until the most complicated expression is constructed rather than building them up from sub-constraints.
+There is a subtle issue here; the final constraint, e.g., `{PayOff==V1+V2}`, must follow the call to `payoff` which defines the symbolic expressions. Otherwise `V1` and `V2` are defined as intervals which can't be unified with the expressions. Now the reason `payoff` is implemented to generate expressions is to avoid separate constraints (for `V1` and `V2`) both containing `S`. This will give rise to the previously mentioned dependency problem if they're "compiled" separately. Combining the expressions symbolically provides CLP(BNR) with the opportunity to simplify the expression and avoid this problem. In general, it's advantageous to delay constraint evaluation until the most complicated expression is constructed rather than building them up from sub-constraints.
 
 A final example of a more complex combination of two put and two call options with automatic backtracking using `format` to output solutions:
 eg

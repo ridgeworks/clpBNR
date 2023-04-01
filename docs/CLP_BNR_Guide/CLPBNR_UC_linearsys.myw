@@ -11,7 +11,7 @@ eg
 	Y::real(-1.0e+16,1.0e+16).
 In the first example, the fixed point iteration immediately converged to an approximate solution (`X=1, Y=0`), while in the second (almost identical) example, the fixed point iteration did not converge at all. To help explain this observation, here are the graphs of the two systems:
 [FPconvergance]
-The red and blue lines are the equations and the solid black lines represent fixed point iteration steps. In the case of no convergance, these steps form a square box (equations intersect at 90 degrees). This means that a fixed point is quickly reached but no narrowing occurs. In the convergent case, each iteration step results in a narrowing of the `X` or `Y` interval, and a solution is found quite quickly. So the first issue is that fixed point convergence is data dependent. (Note this isn't unique to linear systems but it's easy to demonstrate it with these simple examples.)
+The red and blue lines are the equations and the solid black lines represent fixed point iteration steps. In the case of no convergence, these steps form a square box (equations intersect at 90 degrees). This means that a fixed point is quickly reached but no narrowing occurs. In the convergent case, each iteration step results in a narrowing of the `X` or `Y` interval, and a solution is found quite quickly. So the first issue is that fixed point convergence is data dependent. (Note this isn't unique to linear systems but it's easy to demonstrate it with these simple examples.)
 
 Fortunately `solve/1` can be used overcome this deficiency:
 eg
@@ -59,7 +59,7 @@ eg
 	I = 30,
 	F = 10 ;
 	false.
-As above, the dependancy issue requires the use of `solve/1` to generate a solution.  
+As above, the dependency issue requires the use of `solve/1` to generate a solution.  
 
 ##### Simple D.C. Circuit Analysis
 This example has been included because [Towards Practical Interval Constraint Solving in Logic Programming] documents it as a linear system problem that is not handled well (at all?) by the CLP techniques described so far. Consider the D.C. circuit:
@@ -121,7 +121,7 @@ eg
 Using `solve` finds the solution in a few seconds, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
 eg
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
-	% 10,580,391 inferences, 2.335 CPU in 2.346 seconds (100% CPU, 4531927 Lips)
+	% 9,899,817 inferences, 2.422 CPU in 2.445 seconds (99% CPU, 4087677 Lips)
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.8282986...,
@@ -135,7 +135,7 @@ eg
 	I9:: 0.0389787... .
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),{Is>=0},time(solve(Vs)).
-	% 2,705,241 inferences, 0.873 CPU in 0.876 seconds (100% CPU, 3100012 Lips)
+	% 2,528,082 inferences, 0.939 CPU in 0.949 seconds (99% CPU, 2693578 Lips)
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.828298...,
@@ -161,7 +161,7 @@ eg
 	W::real(-1.0e+16, 1.0e+16),
 	Y::real(-1.0e+16, 1.0e+16),
 	Z::real(-1.0e+16, 1.0e+16).
-But there are cases where underdetermined still yield meaningful results. From the same source as previous examples:
+But there are cases where under-determined still yield meaningful results. From the same source as previous examples:
 >	"*Traffic Control (The figure) shows the flow of downtown traffic in a certain city during the rush hours on a typical weekday. The arrows indicate the direction of traffic flow on each one-way road, and appears beside each road. 5th Avenue and 6th Avenue can each handle up to 2000 vehicles per hour without causing congestion, whereas the maximum capacity of both 4th Street and 5th Street is 1000 vehicles per hour. The flow of traffic is controlled by traffic lights installed at each of the four intersections.*"
 [Figure 7 Traffic]
 "Without congestion" implies that all traffic entering an intersection must leave the intersection. Including the street volume limits, the system can be modelled as:
@@ -172,7 +172,7 @@ X3::integer(1000, 1800),
 X2::integer(0, 800),
 X4::integer(200, 1000).
 ```
-Note that `solve` is unnecessary  here. This isn't a unique solution (the system is underdetermined) but the results are useful in that they specify limits to traffic flows while avoiding congestion. Further constraints can be applied to model other possible scenarios, e.g.,
+Note that `solve` is unnecessary  here. This isn't a unique solution (the system is under-determined) but the results are useful in that they specify limits to traffic flows while avoiding congestion. Further constraints can be applied to model other possible scenarios, e.g.,
 >	"*Suppose the part of 4th Street between 5th Avenue and 6th Avenue is to be resurfaced and that traffic flow between the two junctions must therefore be reduced to at most 300 vehicles per hour.*"
 yielding:
 ```
@@ -227,7 +227,7 @@ eg
 	I = 30,
 	F = 10.
 
-The solution to the "Simple Circuit" analysis isn't quite so clear. Cramer's rule requires a square coefficient matrix, while the simple circuit has 11 equations in 10 unknowns. On obvious appraoch might be to discard the `I1 = 10` equation and usin the remaining 10 (while unifying `I1` with `10`). But there is no inverse for the resulting coefficient matrix (`Am`), as the determinant of the matrix is `0` (using the coefficient ordering corresponding to `[I1,I2,I3,I4,I5,I6,I7,I8,I9,Is]`):
+The solution to the "Simple Circuit" analysis isn't quite so clear. Cramer's rule requires a square coefficient matrix, while the simple circuit has 11 equations in 10 unknowns. On obvious approach might be to discard the `I1 = 10` equation and using the remaining 10 (while unifying `I1` with `10`). But there is no inverse for the resulting coefficient matrix (`Am`), as the determinant of the matrix is `0` (using the coefficient ordering corresponding to `[I1,I2,I3,I4,I5,I6,I7,I8,I9,Is]`):
 eg
 	﻿?- Am is ndarray([
 	[-1,-1, 0, 0, 0, 0, 0,-1, 0, 1],

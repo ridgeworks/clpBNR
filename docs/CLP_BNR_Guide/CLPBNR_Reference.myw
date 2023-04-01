@@ -8,7 +8,7 @@ The `Type` is the functor of the domain and can be either `real` or `integer`, r
 
 Operations on intervals always narrow the range between `Lower` and `Upper` or do not result in any change to the bounds. If the condition `Lower =:= Upper` becomes true, the interval variable is unified with the value of the bounds. (This usually can't happen with `real` intervals with floating point bounds due to conservative rounding.) Any operation resulting in an empty set (`Lower > Upper` or infinte point value) will fail.
 
-The `clpBNR` attribute output using `write` (and associated predicates) on terms containing intervals is the domain of the interval if the `attribute` option is `portray`, i.e., `attribute(portray)`. Never use `attribute(write)` with terms containing intervals; this causes an infinte loop and usually SWI-Prolog crashes.
+The `clpBNR` attribute output using `write` (and associated predicates) on terms containing intervals is the domain of the interval if the `attribute` option is `portray`, i.e., `attribute(portray)`. Never use `attribute(write)` with terms containing intervals; this causes an infinite loop and usually SWI-Prolog crashes.
 
 Initial bounds are specified using the `::` operator.
 
@@ -35,6 +35,7 @@ The set of operators and functions currently supported are:
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
 	integer                               %% is an integer value
+Users can extend the set of constraint functions with [User Defined Narrowing Functions].
 
 #### Environment Flags
 
@@ -88,7 +89,7 @@ Many predicates accept a list of intervals as an argument. In most cases if the 
 .pred	*+Intervals* **::** *?DomainSpec*
 The `::` infix operator is used to associate one or more intervals with a domain. If the domain is a variable it will be unfied with the domain of interval(s); in this case all intervals must have exactly the same domain, so this is really meant to query the domain of a single interval. This predicate can also be used to narrow the bounds of an existing interval provide the specified domain is intersects with domain; the new value is the intersection. `integer` can be applied to `real` intervals, but not vice versa since that would widen the domain.
 
-The bounds can be omitted (just specify type) in which case the default bounds will be used. Defaults will also be used if any of the bounds' values are variables. Valid bounds values include any numeric expression, including `inf`. Infinte bounds should be avoided since they inhibit convergence of the fixed point iteration, but they can result from the evaluation of constraints, e.g., divide by an interval containing `0`.
+The bounds can be omitted (just specify type) in which case the default bounds will be used. Defaults will also be used if any of the bounds' values are variables. Valid bounds values include any numeric expression, including `inf`. Infinite bounds should be avoided since they inhibit convergence of the fixed point iteration, but they can result from the evaluation of constraints, e.g., divide by an interval containing `0`.
 
 Examples:
 eg
@@ -136,10 +137,10 @@ eg
 Note that the top level prints rational bounds other than integers as floats for readability. For the same reason, if an interval with floating point bounds is sufficiently narrow, the top level presents it in "ellipsis" format.
 
 .pred	**{** *+Constraints* **}**
-Apply constraints specifed by *Constraints*. A single constraint is a boolean expression which must evaluate to *true*; otherwise failure occurs. This can occur when the constraint is initially applied or when one or more of the interval variable's domain changes. Any non-interval variable in the constraints will be converted to an interval (`clpBNR` attributed variable).
+Apply constraints specified by *Constraints*. A single constraint is a boolean expression which must evaluate to *true*; otherwise failure occurs. This can occur when the constraint is initially applied or when one or more of the interval variable's domain changes. Any non-interval variable in the constraints will be converted to an interval (`clpBNR` attributed variable).
 
 Operators and functions that can be used to compose constraints include:
-* equalities and inequalties - boolean operators `==, =:=, is, =<, >=, <, >, <>`
+* equalities and inequalities - boolean operators `==, =:=, is, =<, >=, <, >, <>`
 * arithmetic - numeric operators `+, -, *, /, **` (`-` is used as prefix minus and infix subtraction)
 * logic - boolean operators `and, or, ~, nand, nor, xor`
 * set inclusion - boolean operators `=>, <=`
@@ -281,16 +282,16 @@ If *Intervals* is a single interval of type `integer`, it is unified with each v
 **global_maximum** unifies *Interval* with the global maximum of expression *Exp* - see **global_minimum** for argument details.
 
 .pred	**global_minimize**(*+Exp, -Interval*), **global_minimize**(*+Exp, -Interval, ++Integer*)
-**global_minimize** unifies *Interval* with the global minimum of expression *Exp* and narrows any  intervals in *Exp* based on the calculated solution - see **global_minimum** for argument details. The following example has a global mimimum of `6` at `X=0` and `X=3` but only generates the solution at `X=3`:
+**global_minimize** unifies *Interval* with the global minimum of expression *Exp* and narrows any  intervals in *Exp* based on the calculated solution - see **global_minimum** for argument details. The following example has a global minimum of `6` at `X=0` and `X=3` but only generates the solution at `X=3`:
 eg
 	﻿?- X::real(0,_), global_minimize(X**3-6*X**2+9*X+6,Z,3).
 	X:: 3.0001...,
 	Z:: 6.00... .
 
 .pred	**global_minimum**(*+Exp, -Interval*), **global_minimum**(*+Exp, -Interval, ++Integer*)
-**global_minimum** unifies *Interval* with an interval containing the global minimum of expression *Exp*. *Exp* is an expression of variables using the supported functions of interval arithmetic (see [{ +Constraints }]). This predicate uses the "Moore-Skelboe" algorithm with **splitsolve** to perform a directed search to find the global minimum of *Exp* over the range of its variables. The search stops when the range of the minumum value (*Interval*) meets the precision criteria; the default is defined by the flag `clpBNR_default_precision`, but can be overridden with the third optional argument. 
+**global_minimum** unifies *Interval* with an interval containing the global minimum of expression *Exp*. *Exp* is an expression of variables using the supported functions of interval arithmetic (see [{ +Constraints }]). This predicate uses the "Moore-Skelboe" algorithm with **splitsolve** to perform a directed search to find the global minimum of *Exp* over the range of its variables. The search stops when the range of the minimum value (*Interval*) meets the precision criteria; the default is defined by the flag `clpBNR_default_precision`, but can be overridden with the third optional argument. 
 
-**global_minimum** will generate (and impose) the minimum value, but is not guaranteed to narrow the expression variables (the *minimizers*) accordingly since there generally may be more than one set. (See  **global_minimize** nad **global_maximize** to narrow variables to specific solution calculated.) To generate the minimizers, a further "solving" step is necessary. While **global_minimum** is deterministic, the solving step may not be. The following example has a global mimimum of `6` at `X=0` and `X=3`:
+**global_minimum** will generate (and impose) the minimum value, but is not guaranteed to narrow the expression variables (the *minimizers*) accordingly since there generally may be more than one set. (See  **global_minimize** nad **global_maximize** to narrow variables to specific solution calculated.) To generate the minimizers, a further "solving" step is necessary. While **global_minimum** is deterministic, the solving step may not be. The following example has a global minimum of `6` at `X=0` and `X=3`:
 eg
 	﻿?- X::real(0,_),global_minimum(X**3-6*X**2+9*X+6,Z).
 	X::real(0, 6.000000066174462),
@@ -460,7 +461,7 @@ eg
 	X::real(-1.0Inf, 1.0Inf).
 
 .pred	**small**(*+Intervals*), **small**(*+Intervals, ++Integer*)
-Succeeds if all *Intervals* are "small" based on the optional precision value in the second argument (defaults to precision value define by flag `clpBNR_default_precision`). The precison value roughly corresponds to the number of leading decimal digits of the lower and upperbounds that agree. Numeric values (point intervals), by definition, are small.
+Succeeds if all *Intervals* are "small" based on the optional precision value in the second argument (defaults to precision value define by flag `clpBNR_default_precision`). The precision value roughly corresponds to the number of leading decimal digits of the lower and upper bounds that agree. Numeric values (point intervals), by definition, are small.
 eg
 	﻿?- {X==0.0}, small(X).
 	X:: 0.0000000000000000... .
@@ -536,7 +537,7 @@ eg
 	true.
 
 	?-
-Note that tracing clpBNR operations is built on the underlying SWI-Prolog debugger. Enabling tracing enables `debug` mode, but disabling tracing (like `notrace/0`) does not automatically exit `debug` mode. If `nodebug` is used, `clpBNR` tracing will be disbaled, but will be re-enabled if `debug` is re-enabled.
+Note that tracing clpBNR operations is built on the underlying SWI-Prolog debugger. Enabling tracing enables `debug` mode, but disabling tracing (like `notrace/0`) does not automatically exit `debug` mode. If `nodebug` is used, `clpBNR` tracing will be disabled, but will be re-enabled if `debug` is re-enabled.
 
 .pred	**upper_bound**(*+Interval*)
 Unifies *Interval* with its upper bound; equivalent to `range(Interval,[_,H]), Interval=H`. (Supported for historical reasons.)
@@ -563,6 +564,96 @@ eg
 	% Unify _?{real(0,1.0e+16)} with 42
 	X = 42.
 Note that in the unification case the original interval variable has been lost (unify hook is called after unification occurs) so the variable "name" is replaced with `_?`.
+
+<#TableOfContents>
+
+#### User Defined Narrowing Functions
+
+The builtin set of narrowing operations (see [{ +Constraints }]) can be augmented by the user to add capabilities or to provide custom optimizations where warranted. To do so, an arity 4 predicate in the `clpBNR` module context must be defined using the template `MyOp('$op', ArgsIn, ArgsOut, P)` as follows:
+1..
+	* `MyOp` defines the constraint function name which maps directly to the predicate functor `MyOp` in the `clpBNR` module.
+	* The first argument of the predicate must be the atom `'$op'` (avoids any ambiguity with `clpBNR` internal predicates).
+	* The `ArgsIn` and `ArgsOut` terms contain the input and output arguments respectively (maximum of 3) to the narrowing operation. The functor for both argument terms is `$` and the arity is one greater than the arity of the constraint function as written in `{}/1`. The first argument in each term is the result of the function, e.g., a constraint function of the form `newOp(X)` will have argument terms of the form `$(R,X)`. 
+	* Individual values of arguments represent interval values, i.e., an upper and lower bound, in the form `((L,H))` where `L` and `H` are numbers and `L =< H`. (`L =:= H` represents a point value.) Values in `InArgs` are fully instantiated; values in `OutArgs` are variables which must be instantiated if the narrowing op succeeds.
+	* Output argument values can be no wider than the corresponding input argument values. If necessary, intersect any calculated interval value with the input value to produce the output value.
+	* If the narrowing operation is persistent, i.e., there is no reason to continue recalculating the result when the value of an input argument changes, unify '`P`' with '`p`'. Otherwise leave it as a variable as this ensures the predicate will be called again if any argument value narrows. 
+	* Failure of the predicate implies the corresponding constraint fails, triggering a search for alternate solutions.
+
+Regarding enforced narrowing, here's a simple predicate which calculates the intersection of two interval values:
+.pl
+	intersect((L1,H1), (L2,H2), (LI,HI)) :-
+		LI is maxr(L1, L2), HI is minr(H1, H2),  % maxr/minr eliminates NaN's, prefers rationals
+		1 =\= cmpr(LI,HI).                       % mathematically correct LI =< HI regardless of type
+
+##### Simple Example - Calculating Munchausen Numbers
+
+In number theory, a [Munchausen number] is a number that is equal to the sum of its digits each raised to a power of itself. Since the constraints between individual digits are weak, it's not a particularly good problem for constraint based solutions, but it's a useful and simple example to demonstrate the use of a user defined narrowing op.
+  
+At issue is the definition of `0**0` when the digit `0` appears in a number. Mathematically `0**0` normally evaluates to `1` but in this case we would like it to evaluate to `0`. Thus `0` is a Munchausen number. Now this can be done without defining a custom narrow op. If the interval `P` is `N**N` (`N` also an interval) then this constraint can be expressed using boolean implication as `{ (N == 0 -> P == 0) , (N > 0 -> P == N**N) }`. But this seems awkward and potentially inefficient so let's look at a custom alternative, `int_power(D)`:
+.pl
+	clpBNR:int_power('$op', $((Zl,Zh),(X,X)), $((Z,Z),(X,X)), p) :-  !, % X is a point
+		 (X = 0 -> Z = 0 ; Z is X**X),            % 0**0 = 0 else Z = X**X
+		 Zl =< Z,Z =< Zh.                         % new Z point value in range
+	clpBNR:int_power('$op', Args, Args, _P).      % X not a point, no change
+First the predicate has to be defined in the `clpBNR` module context and the first argument has to be `'$op'`. The predicate functor name, `int_power` corresponds the function name to be used when adding constraints. The first argument value corresponds to the power value. When `X` is a point value, the initial bounds are `((Zl,Zh))` and final value is `((Z,Z))`, i.e., the point value `Z`. The narrowing op does not change the value of `X` so the output `X` is the same as the input `X`.
+
+For this particular problem, there is no point in calculating `Z` if `X` is not a point; just set the output arguments to be the same as the input arguments, and leave the `P` value unbound (second clause). But if `X` is a point value, calculate the output `Z` (also a point value), make sure it's in the range of the input `Z` value, and set `P` to `p`.
+
+A `clpBNR` program for calculating Munchausen numbers:
+.pl
+	:- module(munchausen,[munch/2]).
+	:- use_module(library(clpBNR)).      % Version > 0.11.0
+	:- set_prolog_flag(optimise,true).   % for arithmetic
+	
+	clpBNR:int_power('$op', $((Zl,Zh),(X,X)), $((Z,Z),(X,X)), p) :-  !, % X is a point
+		 (X =:= 0 -> Z = 0 ; Z is X**X),          % 0**0 = 0 else Z = X**X
+		 Zl =< Z,Z =< Zh.                         % new Z point value in range
+	clpBNR:int_power('$op', Args, Args, _P).      % X not a point, no change
+	
+	munch(Ndigits,M) :-
+		NumDigits is min(10,Ndigits),             % max digits is 10
+		M::integer(0,min(10**NumDigits - 1, NumDigits * 9**9)),
+		length(Ns,NumDigits), Ns::integer(0,9),   % digits N
+		length(Ps,NumDigits), Ps::integer(0,_),   % powers P
+		munch_constraints(Ns,Ps,1,0,Dsum,0,Psum),
+		{M == Dsum, M == Psum},
+		lists:reverse(Ns,RNs),  % best to enumerate from most significant digit
+		enumerate(RNs).
+	
+	munch_constraints([],[],_,Dsum,Dsum,Psum,Psum).
+	munch_constraints([N|Ns],[P|Ps],Pos,DsumIn,Dsum,PsumIn,Psum) :-
+		{P == int_power(N)},  % using custom narrowing op
+		NxtPos is Pos*10,
+		munch_constraints(Ns,Ps,NxtPos,DsumIn+N*Pos,Dsum,PsumIn+P,Psum).
+Example query to find all Munchausen numbers expressible in 5 digits:
+eg
+	?- clpStatistics, findall(M,munch(5,M),Sol), clpStatistics(SS).
+	Sol = [0, 1, 3435],
+	SS = [userTime(0.2300599999998667), gcTime(0.0), globalStack(14728/131040), trailStack(672/133096), localStack(1992/118648),
+	 inferences(1289836), narrowingOps(35403), narrowingFails(16843), node_count(0), max_iterations(22/3000)].
+Using this program, calculating the final Munchausen number (`438,579,088`) for radix 10 takes a few hours. (As stated earlier, there are better ways to solve this problem since weak inter-digit constraints do not allow sufficient pruning of the search tree to overcome the overhead of applying the constraints.)
+
+##### Other Uses
+
+In addition to defining new interval relations, custom ops can help during development, e.g., to enter trace mode when some condition is met.  For example:
+.pl
+	clpBNR:trace('$op', Args, Args, _P) :- trace. 
+enters the debuggers trace mode whenever one of the argument values changes. Note that this can't be a top level constraint since those must "evaluate" to true to succeed. But it's easy to embed it in a simple boolean expression:
+eg
+	[debug]  ?- {trace(X)}.
+	false.
+	
+	[debug]  ?- {trace(X)==_}.
+	   Exit: (16) clpBNR:trace('$op', $((-1.0Inf, 1.0Inf), (-1.0Inf, 1.0Inf)), $((-1.0Inf, 1.0Inf), (-1.0Inf, 1.0Inf)), _144940) ? leap
+	X::real(-1.0Inf, 1.0Inf).
+Now whenever `X` changes, the `trace` narrowing op is invoked.
+eg
+	[debug]  ?- {trace(X)==_, X==Y+2, Y>=1}.
+	   Exit: (16) clpBNR:trace('$op', $((-1.0Inf, 1.0Inf), (-1.0Inf, 1.0Inf)), $((-1.0Inf, 1.0Inf), (-1.0Inf, 1.0Inf)), _151228) ? leap
+	   Exit: (20) clpBNR:trace('$op', $((-1.0Inf, 1.0Inf), (3, 1.0Inf)), $((-1.0Inf, 1.0Inf), (3, 1.0Inf)), _151228) ? leap
+	X::real(3, 1.0Inf),
+	Y::real(1, 1.0Inf).
+Arbitrary tests can be added to `clpBNR:trace/4` so trace mode is only entered under those conditions, e.g., when an interval is narrow enough, or when it becomes disjoint with another interval. In the latter case, you would have to pass two arguments to the `trace` op (but no more than 2 since that's an overall restriction on any narrowing op). Alternatively, rather than entering debug `trace` mode, changes could be logged to some accessible IO stream. Once the custom op has control, the full power of the Prolog implementation is available (for good or evil).
 
 <#TableOfContents>
 
@@ -642,7 +733,7 @@ A final note: `library(simplex)` uses rational arithmetic to ensure precise answ
 .pred	**local_maxima**(*+Exp*), **local_maxima**(*+Exp, +{Constraints}*)
  **local_maxima** with optional *Constraints* applies additional constraints corresponding to a local maximum of *Exp*.  For unconstrained optimization, this takes the form of constraining the gradient to be zero at the local optima. For constrained optimizations involving equalities and inequalities, techniques involving Lagrangian functions and Karush–Kuhn–Tucker conditions can be used. Both *Exp* and *Constraints* are in `clpBNR` syntax. **local_maxima** may fail if the generated constraints are inconsistent with existing constraints. 
  
-The purpose of this predicate is to apply additional constraints to improve the performance characteristices (time and accuracy) of the global optimization predicates. This predicate must be called prior to calling **global_maximum** or **global_maximize** which then generate actual values for the maximum or maximizing values as described above. For example:
+The purpose of this predicate is to apply additional constraints to improve the performance characteristics (time and accuracy) of the global optimization predicates. This predicate must be called prior to calling **global_maximum** or **global_maximize** which then generate actual values for the maximum or maximizing values as described above. For example:
 eg
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),splitsolve(X).
 	X:: 7.84965...,
@@ -712,9 +803,11 @@ Messages will be generated on failure when `debug(clpBNR)` is true.
 	[{ +Constraints }] <- link #toc4**_**_*+Constraints*_**_**
 	[**delta/2**] <- link #toc4**delta**(*+Interval,_-Number*)
 	[**small/1**] <- link #toc4**small**(*+Intervals*),_**small**(*+Intervals,_++Integer*)
+	[User Defined Narrowing Functions] <- link #toc4User_Defined_Narrowing_Functions
 	[Development Tools for CLP(BNR)] <- link #toc3Development_Tools_for_CLP(BNR)
 	[SWI-Prolog group discourse] <- link https://swi-prolog.discourse.group/t/different-results-when-using-library-simplex-or-r-package-lpsolve-lpsolveapi/5545
 	[Rational numbers or floats] <- link https://www.swi-prolog.org/pldoc/man?section=rational-or-float
+	[Munchausen number] <- link https://en.wikipedia.org/wiki/Perfect_digit-to-digit_invariant
 	.pred .. <- pred 4
 	// cloned from x-markup.mmk header definition with added "style" attribute
 	pred       :: (c, level) =>

@@ -216,14 +216,15 @@ enumerate_list_([X|Xs]) :-
 	enumerate_list_(Xs).
 
 %
-% Definition of "small" interval based on width and precision value (defaults to clpBNR_default_precision)
+% Definition of "small" interval based on width and precision value
+%   (defaults to clpBNR_default_precision)
 %
 small(V) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	small(V,P).
 
 small(V,P) :- 
-	Err is 10**(-P),
+	Err is 10.0**(-P),
 	small_(V,Err).
 
 small_(V,Err) :- 
@@ -238,11 +239,14 @@ small_list_([X|Xs],Err) :-
 	small_(X,Err),
 	small_list_(Xs,Err).
 
-chk_small(L,H,Err) :- H-L < Err, !. 
-chk_small(L,H,Err) :-                 % from CLIP?
-	ErrH is Err*sqrt((L**2+H**2)/2),  % guaranteed to be a float
-	ErrH \= 1.0Inf,                   % overflow check
-	(H-L) < ErrH.
+chk_small(L,H,Err) :-                     % from CLIP?
+	W is H-L,
+	( W < Err                             % absolute error test  
+	 -> true
+	 ;  ErrH is Err*sqrt((L**2+H**2)/2),  % guaranteed to be a float
+	    W < ErrH,                         % relative error test                 
+	    ErrH \= 1.0Inf                    % overflow check
+	).
 
 %
 %  global_minimum(Exp,Z) - Z is an interval containing one or more global minimums of Exp.
@@ -293,8 +297,8 @@ global_optimum_(Exp,Z,P,BindVars) :-
 	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).    % and start iteration
 
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
-	continue_MS(Zl,Zh,P,Xs,XVs,False), !,             % Step 12., check termination condition
-	widest_MS(Xs,XVs,Xf,XfMid),                       % Step 5., get midpoint of widest variable
+	continue_MS(Zl,Zh,P,Xs,XVs,False),                % Step 12., check termination condition
+	widest_MS(Xs,XVs,Xf,XfMid), !,                    % Step 5., get midpoint of widest variable
 	eval_MS(False,Z,Xs,XVs,Xf=< ::(XfMid,XfMid),V1),  % Step 6., 7. & 8. for V1
 	tree_insert(ZTree,V1,ZTree1),                     % Step 10. for V1
 	eval_MS(False,Z,Xs,XVs,Xf>= ::(XfMid,XfMid),V2),  % Step 6., 7. & 8. for V2
@@ -302,21 +306,21 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
 	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-      % termination criteria (Step 12.) met
-	{Zl=<Z,Z=<Zh},
+	Z::real(Zl,Zh),
 	(BindVars -> optimize_vars_(Xs,XVs) ; true).      % optional minimizer narrowing
 
 optimize_vars_([],[]).
 optimize_vars_([X|Xs],[(Xl,Xh)|XVs]) :-
-	{Xl=<X,X=<Xh},
+	X::real(Xl,Xh),
 	optimize_vars_(Xs,XVs).
 
 continue_MS(Zl,Zh,P,_,_,_) :-                    % w(Y) termination criteria
-	Err is 10**(-P),
+	Err is 10.0**(-P),
 	\+chk_small(Zl,Zh,Err),                      % fail continue_MS if narrow enough
 	!.
 continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
 	build_box_MS(Xs,XVs,T/T),
-	SErr is 10**(-min(6,P+2)), % ?? heuristic
+	SErr is 10.0**(-min(6,P+2)), % ?? heuristic
 	simplesolveall_(Xs,SErr),                    % validate solution
 	!, fail.                                     % no narrowing escapes
 continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
@@ -341,15 +345,21 @@ build_box_MS([X|Xs],[XNew|XVs],Agenda) :-
 	build_box_MS(Xs,XVs,NextAgenda).
 
 tree_insert(Tree,[],Tree) :-!.
-tree_insert(MT,Data,n(L,R,Data)) :- var(MT), !.
-tree_insert(n(L,R,K-Data), NK-NData, n(NewL,R,K-Data)) :- NK<K,!,
-	tree_insert(L, NK-NData, NewL).
-tree_insert(n(L,R,K-Data), NK-NData, n(L,NewR,K-Data)) :- NK>K,!,
-	tree_insert(R, NK-NData, NewR).
-tree_insert(n(L,R,K-(U,Data)), K-(NU,NData), n(NewL,R,K-(U,Data))) :- NU<U, !, % K=NK
-	tree_insert(L, K-(NU,NData), NewL).
-tree_insert(n(L,R,Data), NData, n(L,NewR,Data)) :-  % K=NK, NU>=U
-	tree_insert(R, NData, NewR).
+tree_insert(MT,Data,Ntree) :- var(MT), !,
+	Ntree = n(L,R,Data).
+tree_insert(n(L,R,K-Data), NK-NData, Ntree) :- -1 is cmpr(NK,K), !,  % NK<K
+	tree_insert(L, NK-NData, NewL),
+	Ntree = n(NewL,R,K-Data).
+tree_insert(n(L,R,K-Data), NK-NData, Ntree) :-  1 is cmpr(NK,K), !,  % NK>K
+	tree_insert(R, NK-NData, NewR),
+	Ntree = n(L,NewR,K-Data).
+tree_insert(n(L,R,K-(U,Data)), K-(NU,NData), Ntree) :- -1 is cmpr(NU,U), !,  % K=NK, NU < U
+	tree_insert(L, K-(NU,NData), NewL),
+	Ntree = n(NewL,R,K-(U,Data)).
+tree_insert(n(L,R,Data), NData, n(L,NewR,Data)) :-                   % K=NK, NU>=U
+	Data = NData
+	 -> NewR = R                      % if duplicate node, discard
+	 ;  tree_insert(R, NData, NewR).  % else add to right branch
 	
 select_min(n(L,R,Min),Min,R) :- var(L), !, 
 	nonvar(Min).  % fail if tree was empty
@@ -367,9 +377,10 @@ widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
 	
 widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
-	midpoint_(L,H,XfMid), !.
+	midpoint_(L,H,XfMid), !,              % must be "splittable" so
+	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
 widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),X0,Xf,XfMid) :-
-	(H-L) > (H0-L0), !,
+	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
 	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
 widest1_MS([X|Xs],[XV|XVs],W0,X0,Xf,XfMid) :-
 	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
@@ -391,11 +402,11 @@ splitsolve(X,P) :-
 	number(X), !.                 % already a point value
 splitsolve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
-	Err is 10**(-P),
+	Err is 10.0**(-P),
 	simplesolveall_([X],Err).
 splitsolve(X,P) :-                % assumed to be a list
 	flatten_list(X,[],XF),        % flatten before iteration
-	Err is 10**(-P),
+	Err is 10.0**(-P),
 	simplesolveall_(XF,Err).
 
 % flatten list(s) using difference lists
@@ -516,7 +527,7 @@ solve(X,P) :-
 solve(X,P) :-
 	number(X), !.                 % already a point value
 solve(X,P) :-                     % assume list
-	Err is 10.0**(-(P+1)),          % convert digits of precision to normalized error value 
+	Err is 10.0**(-(P+1)),        % convert digits of precision to normalized error value 
 	xpsolveall_(X,Err).
 
 xpsolveall_([],Err) :- !.
@@ -594,7 +605,6 @@ splitinterval_integer_((L,H),Pt) :-
 splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on (precisely) 0.
 	L < 0, H > 0, !,                  % cut in case error criteria fails
 	(H-L) > E.                        % fail if width is less than error criteria, overflow is OK
-
 splitinterval_real_((-1.0Inf,H),Pt,_) :-  % neg. infinity to H=<0
 	!,  % if following overflows, split failed
 	Pt is float(H*10-1),               % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
@@ -603,7 +613,6 @@ splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
 	!,  % if following overflows, split failed
 	Pt is float(L*10+1),               % add 1 in case L is 0. (1, 11, 101, 1001, ...)
 	Pt < 1.0Inf.                       % Pt as float must be finite
-
 splitinterval_real_((L,H),Pt,E) :-     % finite L,H, positive or negative but not split, Pt\=0.
 	\+ chk_small(L,H,E),               % only split if not small 
 	splitMean_(L,H,Pt), !,
@@ -637,31 +646,34 @@ partial_derivative(F,X,DFX) :-
 	%	simplify(DD,DX),
 	%	simplify(DX,DFX).  % post re-simplify for insurance??
 
-pd(Y,X,D) :-
-	var(Y), (X==Y -> D=1 ; D=0), !.
-
-pd(C,_,0) :-                     % DX = 0
-	atomic(C), !.                % atom, number, ..
-
-pd(-U,X,DX) :-                   % DX = -DU
+pd(F,X,DD) :-
+	( var(F)
+	 -> ( F==X -> DD=1 ; DD=0)
+	 ;  ( atomic(F)
+	     -> DD=0
+	     ; pd_f(F,X,DD)
+	    )
+	).
+	
+pd_f(-U,X,DX) :-                   % DX = -DU
 	pd(U,X,DU),
 	pd_minus(DU,DX).
 
-pd(U+V,X,DX) :-                  % DX = DU+DV
+pd_f(U+V,X,DX) :-                  % DX = DU+DV
 	pd(U,X,DU), pd(V,X,DV),
 	pd_add(DU,DV,DX).
 
-pd(U-V,X,DX) :-                  % DX = DU-DV
+pd_f(U-V,X,DX) :-                  % DX = DU-DV
 	pd(U,X,DU), pd(V,X,DV),
 	pd_sub(DU,DV,DX).
 
-pd(U*V,X,DX) :-                  % DX = V*DU+U*DV
+pd_f(U*V,X,DX) :-                  % DX = V*DU+U*DV
 	pd(U,X,DU), pd(V,X,DV), 
 	pd_mul(V,DU,VDU),
 	pd_mul(U,DV,UDV),
 	pd_add(VDU,UDV,DX).
 
-pd(U/V,X,DX) :-                  % DX = (V*DU-U*DV)/(V**2)
+pd_f(U/V,X,DX) :-                  % DX = (V*DU-U*DV)/(V**2)
 	pd(U,X,DU), pd(V,X,DV),
 	pd_mul(V,DU,VDU),
 	pd_mul(U,DV,UDV),
@@ -669,57 +681,57 @@ pd(U/V,X,DX) :-                  % DX = (V*DU-U*DV)/(V**2)
 	pd_pow(V,2,DXD),
 	pd_div(DXN,DXD,DX).
 
-pd(U**N,X,DX) :-                 % DX = (N*U**(N-1))*DU
+pd_f(U**N,X,DX) :-                 % DX = (N*U**(N-1))*DU
 	pd(U,X,DU),
 	pd_sub(N,1,N1),  %N1 is N-1,
 	pd_pow(U,N1,UN1),
 	pd_mul(N,UN1,DX1),
 	pd_mul(DX1,DU,DX).
 
-pd(log(U),X,DX) :-               % DX = DU/U
+pd_f(log(U),X,DX) :-               % DX = DU/U
 	pd(U,X,DU),
 	pd_div(DU,U,DX).
 
-pd(exp(U),X,DX) :-               % DX = exp(U)*DU
+pd_f(exp(U),X,DX) :-               % DX = exp(U)*DU
 	pd(U,X,DU),
 	pd_exp(U,ExpU),
 	pd_mul(ExpU,DU,DX).
 
-pd(sqrt(U),X,DX) :-              % DX = DU/(2*sqrt(U))
+pd_f(sqrt(U),X,DX) :-              % DX = DU/(2*sqrt(U))
 	pd(U,X,DU),
 	pd_sqrt(U,SqrtU),
 	pd_mul(2,SqrtU,DXD),
 	pd_div(DU,DXD,DX).
 
-pd(sin(U),X,DX) :-               % DX = cos(U)*DU
+pd_f(sin(U),X,DX) :-               % DX = cos(U)*DU
 	pd(U,X,DU),
 	pd_cos(U,CosU),
 	pd_mul(CosU,DU,DX).
 
-pd(cos(U),X,DX) :-               % DX = -sin(U)*DU
+pd_f(cos(U),X,DX) :-               % DX = -sin(U)*DU
 	pd(U,X,DU),
 	pd_sin(U,SinU),
 	pd_mul(SinU,DU,DSU),
 	pd_minus(DSU,DX).
 
-pd(tan(U),X,DX) :-               % DX = DU/cos(U)**2
+pd_f(tan(U),X,DX) :-               % DX = DU/cos(U)**2
 	pd(U,X,DU),
 	pd_cos(U,CosU),
 	pd_pow(CosU,2,DXD),
 	pd_div(DU,DXD,DX).
 
-pd(asin(U),X,DX) :-              % DX = DU/sqrt(1-U**2)
+pd_f(asin(U),X,DX) :-              % DX = DU/sqrt(1-U**2)
 	pd(U,X,DU),
 	pd_pow(U,2,USQ),
 	pd_sub(1,USQ,USQ1),
 	pd_sqrt(USQ1,DXD),
 	pd_div(DU,DXD,DX).
 
-pd(acos(U),X,DX) :-              % DX = -DU/sqrt(1-U**2) = -D(asin(U))
+pd_f(acos(U),X,DX) :-              % DX = -DU/sqrt(1-U**2) = -D(asin(U))
 	pd(asin(U),X,DasinX),
 	pd_minus(DasinX,DX).
 
-pd(atan(U),X,DX) :-              % DX = DU/(1+U**2)
+pd_f(atan(U),X,DX) :-              % DX = DU/(1+U**2)
 	pd(U,X,DU),
 	pd_pow(U,2,USQ),
 	pd_add(1,USQ,USQ1),
@@ -776,6 +788,10 @@ sandbox:safe_primitive(clpBNR:splitsolve(_)).
 sandbox:safe_primitive(clpBNR:splitsolve(_,_)).
 sandbox:safe_primitive(clpBNR:global_minimum(_,_)).
 sandbox:safe_primitive(clpBNR:global_minimum(_,_,_)).
+sandbox:safe_primitive(clpBNR:global_minimize(_,_)).
+sandbox:safe_primitive(clpBNR:global_minimize(_,_,_)).
 sandbox:safe_primitive(clpBNR:global_maximum(_,_)).
 sandbox:safe_primitive(clpBNR:global_maximum(_,_,_)).
+sandbox:safe_primitive(clpBNR:global_maximize(_,_)).
+sandbox:safe_primitive(clpBNR:global_maximize(_,_,_)).
 sandbox:safe_primitive(clpBNR:partial_derivative(_,_,_)).

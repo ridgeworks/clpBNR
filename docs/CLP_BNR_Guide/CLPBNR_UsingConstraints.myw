@@ -1,12 +1,12 @@
 ###  Constraint Based Logic Programming
 
-It's not always apparent when constraints can be used efectively to solve a problem. This section uses a number of examples which can be used as patterns to evaluate the use of constraints as an effective solution. The techniques decscribed in the section should be applicable to any CLP implementation depending on the domains supported.
+It's not always apparent when constraints can be used effectively to solve a problem. This section uses a number of examples which can be used as patterns to evaluate the use of constraints as an effective solution. The techniques described in the section should be applicable to any CLP implementation depending on the domains supported.
 
 #### Transitive Closure
 
 "The [transitive closure] of a binary relation {`R`} on a set {`X`} is the smallest relation on {`X`} that contains {`R`} and is transitive." For example if {`X`} is a set of cities and the relation {`R`} between two cities means there is a direct flight between them, the transitive closure is the relation defining two cities which are connected by one or more flights.
 
-Among other things, the general notion of tranistive closure can be used to determine reachability in a graph ({`R`} defines nearest neighbour) or the functional dependence between attributes in a database ({`R`} specifies which attributes are a direct consequence of other attributes).
+Among other things, the general notion of transitive closure can be used to determine reachability in a graph ({`R`} defines nearest neighbour) or the functional dependence between attributes in a database ({`R`} specifies which attributes are a direct consequence of other attributes).
 
 An implementation of transitive closure using Prolog lists is fairly straight forward:
 .pl
@@ -36,7 +36,7 @@ Here the binary relation is assumed to be of the form `I -> O`. As an example, h
 	]).
 This says the value of attribute `a` directly determines the values of attributes `b`, `e`, `f`, and `g`. The collective values of attributes `a`, `c`, `d`, and `i` determine the value of attribute `h`, etc.
 
-With this defintion of {`R`}, `closure/3` can be used to ask "*What is the set of attributes that can uniquely (directly or indirectly) be determined from the value of `a`?*". (the binding of `FDs` has been omitted for clarity.)
+With this definition of {`R`}, `closure/3` can be used to ask "*What is the set of attributes that can uniquely (directly or indirectly) be determined from the value of `a`?*". (the binding of `FDs` has been omitted for clarity.)
 eg
 	?- fdList(FDs), closure([a], FDs, O).
 	FDs = ....
@@ -58,7 +58,7 @@ eg
 	?- fdList(FDs), closure([a,c,d,i], FDs, O).
 	FDs = ....
 	O = [a,b,c,d,e,f,g,h,i,j,k].
-Implementing transitive closure using constraints requires a different pespective. The general pattern for dealing with this class of combinatoric problems is:
+Implementing transitive closure using constraints requires a different perspective. The general pattern for dealing with this class of combinatoric problems is:
 1..
 	* Set up the data structures and the declarations for the principle variables. 
 	* Set up all the constraints. This part should be strictly deterministic; any non-determinism should be postponed until step 3.
@@ -297,7 +297,7 @@ For more on siphons and traps in Petri nets see [Siphons and Traps Structural An
 
 #### "Money" Cryptographic Puzzle
 
-There are numerous constraint puzles in the integer domain and one of the classics is "SEND MORE MONEY" which finds values corresponding to the letters in the sum:
+There are numerous constraint puzzles in the integer domain and one of the classics is "SEND MORE MONEY" which finds values corresponding to the letters in the sum:
 		 SEND
 		+MORE
 		-----
@@ -370,21 +370,21 @@ The implementation of `<>` in CLP(BNR) is not particularly effective since a dom
 
 #### Magic Series
 
-A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, M1, ... Mn]` such that `T` contains `M0` occurrences of `0`, `M1` occurrences of `M1`, ... , and `Mn` occurrences of `Mn`. The first problem is to define what `M` occurences of a member of a list means in terms of constraints. One possibilty is to use the cardinality concept to count boolean variables which indicate whether the corresponding item is an occuence or not:
+A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, M1, ... Mn]` such that `T` contains `M0` occurrences of `0`, `M1` occurrences of `M1`, ... , and `Mn` occurrences of `Mn`. The first problem is to define what `M` occurrences of a member of a list means in terms of constraints. One possibility is to use the cardinality concept to count boolean variables which indicate whether the corresponding item is an occurrence or not:
 .pl
 	occurrences(X,List,N):- 
-		N::integer(0,_),           % number of occurences is positive
-		occurrenceBs_(List,X,Bs),  % create booleans which are true if corresponding list element is an occurence
-		sym_sum(Bs,S), {N == S}.   % sum booleans to find number of occurences
+		N::integer(0,_),           % number of occurrences is positive
+		occurrenceBs_(List,X,Bs),  % create booleans which are true if corresponding list element is an occurrence
+		sym_sum(Bs,S), {N == S}.   % sum booleans to find number of occurrences
 
 	occurrenceBs_([], _, []).
 	occurrenceBs_([X|Xs], Y, [B|Bs]) :- 
-		{B == (X==Y)},             % B is true if X is an occurence of Y
+		{B == (X==Y)},             % B is true if X is an occurrence of Y
 		occurrenceBs_(Xs,Y,Bs).
 
 	sym_sum([], 0).
 	sym_sum([X|Xs], X+S) :- sym_sum(Xs, S).
-Note the boolean constraint `{B == (X==Y)}` which means `B` is `1` (true) if `X` (a member of `List`) is numerically equal to `Y` even though `X` and `Y` are unknown. Given this defintion of `occurences/3`, it's straight forward to specify the constraints of a magic series of length `N`:
+Note the boolean constraint `{B == (X==Y)}` which means `B` is `1` (true) if `X` (a member of `List`) is numerically equal to `Y` even though `X` and `Y` are unknown. Given this definition of `occurrences/3`, it's straight forward to specify the constraints of a magic series of length `N`:
 .pl
 	magic_series1(N, Ks) :- 
 		length(Ks,N), Ks::integer(0,N),
@@ -409,7 +409,7 @@ eg
 	﻿?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.146636), gcTime(0.0), globalStack(52816/524256), trailStack(456/133096), localStack(2000/20344), inferences(1053296), narrowingOps(30406), narrowingFails(73), node_count(190), max_iterations(477/3000)],
+	SS = [userTime(0.2259300000000053), gcTime(0.001), globalStack(381568/1048544), trailStack(50960/264168), localStack(1992/118648), inferences(1069324), narrowingOps(33577), narrowingFails(73), node_count(190), max_iterations(484/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -420,7 +420,7 @@ eg
 	_H::integer(0, 10),
 	_I::integer(0, 10),
 	_J::integer(0, 10).
-Looking at the statistics for `N=10`, we see that finding the single solution tooke 30406 narrowing operations with 73 failures.
+Looking at the statistics for `N=10`, we see that finding the single solution took 33577 narrowing operations with 73 failures.
 
 In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
 .pl
@@ -433,7 +433,7 @@ eg
 	﻿?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.05138200000000004), gcTime(0.001), globalStack(56344/524256), trailStack(872/133096), localStack(2000/20344), inferences(364444), narrowingOps(8854), narrowingFails(41), node_count(199), max_iterations(485/3000)],
+	SS = [userTime(0.07968600000000947), gcTime(0.0), globalStack(171784/524256), trailStack(18480/133096), localStack(1992/118648), inferences(382052), narrowingOps(10272), narrowingFails(41), node_count(199), max_iterations(630/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -463,7 +463,7 @@ eg
 	﻿?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.026521999999999935), gcTime(0.0), globalStack(78000/262112), trailStack(7080/67560), localStack(2000/20344), inferences(179034), narrowingOps(3596), narrowingFails(41), node_count(159), max_iterations(244/3000)],
+	SS = [userTime(0.03300500000000284), gcTime(0.0), globalStack(41072/524256), trailStack(848/264168), localStack(1992/118648), inferences(149291), narrowingOps(3082), narrowingFails(41), node_count(159), max_iterations(247/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 5),

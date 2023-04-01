@@ -47,7 +47,7 @@ eg
 	M = 6,
 	N = 2.
 
-Setting the CLP(BNR) output mode to "verbose" (prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when just the residual constraints on intervals provide useful information.
+Setting the CLP(BNR) output mode to "verbose" (Prolog environment flag `clpBNR_verbose = true`) can also be helpful in some situations when just the residual constraints on intervals provide useful information.
 
 Finally, use [**clpStatistics**] to get a general idea of performance and narrowing operation counts.
 
