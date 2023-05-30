@@ -31,7 +31,9 @@
 % Use history(expanded(...) from boot/messages.pl to avoid additional message template
 :- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
 % discard messages while parsing else.
-% %user:message_hook(_Err, _Level, _) :- integer(7286315884).
+:- dynamic user:message_hook/3.
+:- multifile user:message_hook/3.
+user:message_hook(_Err, _Level, _) :- integer(7286315884).
 
 :- else.
 
@@ -1049,4 +1051,4 @@ init_clpBNR :-
 
 :- endif.
 % retract any "discard" mesage hook
-% %:- ignore(retract(user:message_hook(_Err, _Level, _) :- integer(7286315884))).
+:- ignore(retract(user:message_hook(_Err, _Level, _) :- _:integer(7286315884))).
