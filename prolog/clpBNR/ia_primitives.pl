@@ -200,9 +200,9 @@ narrowing_op(le, P, $(Z, X, Y), Out) :-
 	 ;  (-1 is cmpr(Yh,Xl)                             % Yh < Xl
 	     -> ^(Z,(0,0),NewZ), P = p, Out = $(NewZ,X,Y)  % persistent Y < X
 	     ;  (Z = (1,1)                                 % if {X =< Y}, can narrow X and Y
-	         -> ^(X, (-1.0Inf,Yh), (NXl,NXh)),         % NewX := X ^(NI,Yh) 
-	            ^(Y, (NXl,1.0Inf), NewY),              % NewY := Y ^(Xl,PI)
-	            Out = $(Z,(NXl,NXh),NewY)
+	         -> NXh is minr(Xh,Yh),                    % NewX := (Xl,NXh) 
+	            NYl is maxr(Xl,Yl),                    % NewY := (NYl,Yh)
+	            Out = $(Z,(Xl,NXh),(NYl,Yh))
 	         ;  ^(Z,(0,1),NewZ),                       % Z false or indeterminate
 	            Out = $(NewZ,X,Y)
 	        )
@@ -221,11 +221,11 @@ narrowing_op(lt, P, $(Z, X, Y), Out) :-
 	     -> ^(Z,(0,0),NewZ), P = p, Out = $(NewZ,X,Y)  % persistent Y =< X	
 	     ;  (Z = (1,1)                                 % if {X < Y}, can narrow X and Y
 	         -> next_lt_(Yh,-1,YhD),                   % YhD is next downward value from Yh
-	            ^(X, (-1.0Inf,YhD), (NXl,NXh)),        % NewX := (Xl,Xh) ^(NInf,YhD)
-	            next_lt_(NXl,1,NXlU),                  % NXlU is next upward value from NXl
-	            ^((Yl,Yh), (NXlU,1.0Inf), (NYl,NYh)),  % NewY := (Yl,Yh) ^(NXlU,PInf)
+	            NXh is minr(Xh,YhD),                   % NewX := (Xl,NXh)
+	            next_lt_(Xl,1,XlU),                    % NXlU is next upward value from NXl
+	            NYl is maxr(XlU,Yl),                   % NewY := (NYl,Yh)
 	            (NXh < NYl -> P=p ; true),             % persistent due to increment?
-	            Out = $(Z,(NXl,NXh),(NYl,NYh))
+	            Out = $(Z,(Xl,NXh),(NYl,Yh))
 	         ;  ^(Z,(0,1),NewZ),                       % Z false or indeterminate
 	            Out = $(NewZ,X,Y)
 	        )

@@ -17,8 +17,13 @@ aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/colouredBins.pl
 <#TableOfContents>
 
+#### Appendix 4 - Scheduling Code
+##### `scheduling.pl` ( [/*scheduling.pl*/raw text] )
+@include supplemental/scheduling.pl
+
 &
 	[/*integrateV.pl*/raw text] <- link supplemental/integrateV.pl
 	[/*travellingSalesman.pl*/raw text] <- link supplemental/travellingSalesman.pl
 	[/*camels.pl*/raw text] <- link supplemental/camels.pl
 	[/*colouredBins.pl*/raw text] <- link supplemental/colouredBins.pl
+	[/*scheduling.pl*/raw text] <- link supplemental/scheduling.pl

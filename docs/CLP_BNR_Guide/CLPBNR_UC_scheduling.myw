@@ -1,0 +1,367 @@
+#### Scheduling Problems
+
+Scheduling and related resource allocation problems are common problems which are also technically hard (NP hard or NP complete). It's also an area for which the application of CLP techniques has proved beneficial. The focus here will be on complete or optimal solutions of relatively small problems rather than heuristics which aim to provide "good enough" results. (Consolidated code for examples in this section can be found in [Appendix 4]).
+
+##### Critical Path Scheduling
+
+The "Critical Path Method" (CPM) is an important traditional scheduling methodology. The problem is described by a set of activities, each with a duration (time), and a set of precedence rules which define a required order between two tasks. That is, given that task P must be completed before starting task Q, then the finish time of P must be less than or equal to the start time of Q (`FinishP =< StartQ`, where `FinishX == StartX + Duration`). 
+
+As with most scheduling problems there is a feasibility variant and an optimization variant. Feasibility determines whether it is possible to finish the required tasks within some specified deadline. Optimization determines the minimum time to complete all the required tasks. With an interval solution, the start and finish times will be intervals for non-critical activities and point (or very narrow) values for activities on the critical path.
+
+It's fairly straight forward to express CPM problems directly in CLP(BNR). Consider the following example project:
+.myw
+	.tsv
+		Activity	Duration	Follows
+		`a`			`10`		`start`
+		`b`			`20`		`start`
+		`c`			`30`		`start`
+		`d`			`18`		`a,b`
+		`e`			` 8`		`b,c`
+		`f`			` 3`		`d`
+		`g`			` 4`		`e,f`
+		`finish`	`  `		`g`
+Representing a task by the term `task(ID, Start, Finish)` the constraints can be defined as:
+```
+activity(ID, Duration, task(ID, Start, Finish)) :-
+	{Finish == Start + Duration}.
+	
+order(task(_,_,Finish), task(_,Start,_)) :-
+	{Finish =< Start}.
+```
+and the example project as:
+```
+project(StartT, FinishT, Schedule) :-
+	Start = task(start,StartT,StartT), Finish = task(finish,FinishT,FinishT),
+	Schedule = [A,B,C,D,E,F,G],
+	activity(a, 10, A), order(Start,A),
+	activity(b, 20, B), order(Start,B),
+	activity(c, 30, C), order(Start,C),
+	activity(d, 18, D), order(A,D), order(B,D),
+	activity(e,  8, E), order(B,E), order(C,E),
+	activity(f,  3, F), order(D,F),
+	activity(g,  4, G), order(E,G), order(F,G), order(G,Finish).
+
+print_with_intervals(List) :-
+	foreach(member(Item,List), (print_interval(Item),nl)).
+```
+Feasibility problem: can the project be completed in 60 time units? Omitting (redundant) top level output:
+```
+﻿?- project(0, 60, Schedule), print_with_intervals(Schedule), nl.
+task(a,V0::real(0,25),V1::real(10,35))
+task(b,V0::real(0,15),V1::real(20,35))
+task(c,V0::real(0,18),V1::real(30,48))
+task(d,V0::real(20,35),V1::real(38,53))
+task(e,V0::real(30,48),V1::real(38,56))
+task(f,V0::real(38,53),V1::real(41,56))
+task(g,V0::real(41,56),V1::real(45,60))
+```
+The output indicates this is possible with significant "floats" for the task start and finish times. Replacing the query finish time with a variable:
+```
+﻿?- project(0, Finish, Schedule), print_with_intervals(Schedule), nl.
+task(a,V0::real(0,1.0Inf),V1::real(10,1.0Inf))
+task(b,V0::real(0,1.0Inf),V1::real(20,1.0Inf))
+task(c,V0::real(0,1.0Inf),V1::real(30,1.0Inf))
+task(d,V0::real(20,1.0Inf),V1::real(38,1.0Inf))
+task(e,V0::real(30,1.0Inf),V1::real(38,1.0Inf))
+task(f,V0::real(38,1.0Inf),V1::real(41,1.0Inf))
+task(g,V0::real(41,1.0Inf),V1::real(45,1.0Inf))
+
+Schedule = [task(a, _A, _B), task(b, _C, _D), task(c, _E, _F), task(d, _G, _H), task(e, _I, _J), task(f, _K, _L), task(g, _M, _N)],
+_B::real(10, 1.0Inf),
+_A::real(0, 1.0Inf),
+_D::real(20, 1.0Inf),
+_C::real(0, 1.0Inf),
+_F::real(30, 1.0Inf),
+_E::real(0, 1.0Inf),
+_H::real(38, 1.0Inf),
+_G::real(20, 1.0Inf),
+_J::real(38, 1.0Inf),
+_I::real(30, 1.0Inf),
+_L::real(41, 1.0Inf),
+_K::real(38, 1.0Inf),
+_N::real(45, 1.0Inf),
+_M::real(41, 1.0Inf),
+Finish::real(45, 1.0Inf).
+```
+Because there was no "deadline" specified, all the task finish times have an infinite upper bound. However "`Finish`" has a lower bound of 45, suggesting this may be the optimal finish value, so we'll try setting the finish time to its lower bound to see:
+```
+﻿?- project(0, Finish, Schedule), lower_bound(Finish), print_with_intervals(Schedule), nl.
+task(a,V0::real(0,10),V1::real(10,20))
+task(b,0,20)
+task(c,V0::real(0,3),V1::real(30,33))
+task(d,20,38)
+task(e,V0::real(30,33),V1::real(38,41))
+task(f,38,41)
+task(g,41,45)
+
+Finish = 45,
+Schedule = [task(a, _A, _B), task(b, 0, 20), task(c, _C, _D), task(d, 20, 38), task(e, _E, _F), task(f, 38, 41), task(g, 41, 45)],
+_B::real(10, 20),
+_A::real(0, 10),
+_D::real(30, 33),
+_C::real(0, 3),
+_F::real(38, 41),
+_E::real(30, 33).
+```
+Indeed, `45` is the minimal project finish time. Some of the tasks (`a`, `c`, and `e`) still have "floats" in their start/finish time while the others (`b`, `d`, `f` and `g`) are on the "critical path".
+
+In general, optimization is more difficult than feasibility and may require branch-and-bound or directed search techniques described in earlier sections ([Travelling Salesman] or [Global Optimzation]) so some justification of just setting the `Finish` time to its lower bound is required. We know that there is no guarantee that the lower bound of a constrained interval is, in fact, a point solution. Indeed it usually isn't due to outward rounding of calculated floating point values and the effect of the dependency problem which prevent optimal narrowing during constraint propagation. However, it is valid in this case due to two reasons. First the interval bounds are precise (integer values) so rounding is not an issue. Second all the interval relations (addition and inequality) used by the constraints are "interval convex". Without going into the theory, this ensures that the bounds are in fact solutions. 
+aside> Aside: More on interval convexity can be found in [Applying Interval Arithmetic to Real, Integer and Boolean Constraints]. Convex relations and solvable relations are interval convex. A relation is convex if for every two points in it, the line segment between them is also in it; it is solvable if it can be uniquely solved for each of its variables as a continuous function of the remaining variables. Many of the the narrowing primitives are interval convex everywhere (`==, =<, +, -, exp, log, max, min,` odd powers) and the rest (`*, /, abs,' odd powers and trigonometric functions) over smaller states.
+
+##### The Job Shop Scheduling Problem (Disjunctive Scheduling)
+
+The job shop scheduling problem adds resource competition to task serialization (as just described). Each job in a project consists of a sequence of tasks that must be executed in a given order. In addition, each task requires a resource, e.g., a machine in an assembly line, such that two tasks requiring the same machine cannot be executed at the same time.
+
+Similar to critical path scheduling, the individual tasks will be specified as `task(ID,Machine,Duration)` and ordering as `task_order(ID1,ID2)` (i.e., task `ID1` precedes task `ID2`). Further we'll put all task specifications for a "project" in a module. For example, the problem described in the [Google Job Shop Problem]  will be specified as:
+.pl
+	:- module(ggl_1,[]).
+	
+	task( start,s_,0).
+	task(finish,f_,0).
+	
+	task(j00,m0,3).
+	task(j01,m1,2).
+	task(j02,m2,2).
+	
+	task(j10,m0,2).
+	task(j11,m2,1).
+	task(j12,m1,4).
+	
+	task(j20,m1,4).
+	task(j21,m2,3).
+	
+	
+	task_order(start,j00).
+	task_order(j00,j01).
+	task_order(j01,j02).
+	task_order(j02,finish).
+	
+	task_order(start,j10).
+	task_order(j10,j11).
+	task_order(j11,j12).
+	task_order(j12,finish).
+	
+	task_order(start,j20).
+	task_order(j20,j21).
+	task_order(j21,finish).
+
+Note that the job shop schedule is bookended by two "special" tasks of duration `0`:
+.pl
+	task( start,s_,0).
+	task(finish,f_,0).
+
+Task serialization imposed by the sequence of tasks in a job can be done much like the critical path scheduling. Ensuring that two tasks, e.g., `P` and `Q`, requiring the same resource can be implemented with a `boolean` which, if true, forces `P` to be done before `Q`, and, if false, `Q` is done before `P` as in:
+.pl
+	disjunct(task(P, SP, FP), task(Q, SQ, FQ), B) :-
+		B::boolean,
+		{B == (FP =< SQ), ~B == (FQ =< SP)}.
+Enumerating `B` forces a choice between the two alternatives. 
+
+Finally it is advantageous to order the "disjunct" booleans so that those for the busiest machines (total load for all jobs) are enumerated first to favour early failure. This is worthwhile because even the smaller job shop scheduling problems can result in a significant number of booleans. Looking at some [JSS test data], the smallest example of 6 jobs and 6 machines generates 90 booleans or more than {`10^27`} possibilities. (One estimate of the number of stars in the universe at {`10^21`}, so {`10^27`} is a very large number indeed. Only the smaller JSS examples in the referenced respository are feasible using this Prolog constraint based implementation.) And knowing what the maximum load on any machine, a minimum value for the finish time can be specified, if not already defined by task ordering constraints for each job. As is generally the case, the more constraints that can be applied, the higher the chances are of an early failure leading to better pruning of the search space.
+
+Constructing the list of tasks and necessary constraints from a project (i.e., module):
+.pl
+	tasks(Mod, Tasks, Bs, MaxWeight) :-
+		findall(Mod:ID,Mod:task(ID,_,_),TIDs),  % list of task ID's
+		maplist(def_task,TIDs,Tasks),           % define tasks	
+		serialize(Tasks,[],MBs),                % apply constraints, collect (Machine,Boolean) pairs
+		findall((M,T),Mod:task(_,M,T),Ms),      % calculate total load on each machine
+		collect_times(Ms,[],MTs),
+		sort(1,@>=,MTs,Weights),                % sorted by decreasing load
+		ordered_booleans(Weights,MBs,L/L,Bs),   % order booleans by machine load
+		Weights = [(MaxWeight,_)|_].            % return max load on any machine           
+	
+	def_task(Mod:ID,task(Mod:ID,Start,Finish)) :-   % define a task with a Start and Finish
+		Mod:task(ID,_Res,Dur),
+		[Start,Finish]::integer(0,_),
+		{Finish == Start+Dur}.
+		
+	serialize([], Bs, Bs).
+	serialize([T|Ts], Bs, AllBs) :-
+		serialize_(Ts, T, Bs, E),                   % apply constraints between T and rest of tasks Ts
+		serialize(Ts, E, AllBs).
+		
+	serialize_([], _, Bs, Bs).
+	serialize_([T|Ts], T0, Bs, AllBs) :-
+		sequence(T0,T), !,
+		serialize_(Ts, T0, Bs, AllBs).
+	serialize_([T|Ts], T0, Bs, AllBs) :-
+		disjunct(T0,T,B), !,
+		serialize_(Ts, T0, [B|Bs], AllBs).
+	serialize_([_|Ts], T0, Bs, AllBs) :-
+		serialize_(Ts, T0, Bs, AllBs).
+		
+	sequence(task(Mod:P,_SP,FP),task(Mod:Q,SQ,_FQ)) :-  % task ordering constraint
+		task_ordered(Mod,P,Q),  % P precedes Q
+		(Mod:task_order(P,Q) -> {FP =< SQ} ;  true).    % apply constraint if immediate predecessor
+	sequence(task(Mod:P,SP,_FP),task(Mod:Q,_SQ,FQ)) :-
+		task_ordered(Mod,Q,P),  % P succeeds Q
+		(Mod:task_order(Q,P) -> {FQ =< SP} ;  true).    % apply constraint if immediate successor   
+	
+	task_ordered(Mod,P,Q) :- Mod:task_order(P,Q), !.
+	task_ordered(Mod,P,Q) :- 
+		Mod:task_order(P,T),
+		task_ordered(Mod,T,Q).
+	
+	disjunct(task(Mod:T1, S1, F1), task(Mod:T2, S2, F2), (M,B)) :-  % resource competition constraint 
+		Mod:task(T1,M,_), Mod:task(T2,M,_),             % T1 and T2 require the same resource
+		B::boolean,
+		{B == (F1=<S2), ~B == (F2=<S1)}.
+	disjunct(task(Mod:_, _, _), task(Mod:_, _, _), _) :-  !, fail.
+	
+	ordered_booleans([],[],Bs/[],Bs).                   % using difference lists
+	ordered_booleans([(_,M)|Weights],MBs,Bs,OBs) :-
+		collect_booleans(MBs,M,Bs,NxtMBs,NxtBs),        % collect bools for machine M
+		ordered_booleans(Weights,NxtMBs,NxtBs,OBs).     % append remaining for rest of bools
+		
+	collect_booleans([],_,OBs,[],OBs).
+	collect_booleans([(M,B)|MBs],M,Bs/[B|Tail],NxtMBs,OBs) :- !,
+		collect_booleans(MBs,M,Bs/Tail,NxtMBs,OBs).
+	collect_booleans([MB|MBs],M,Bs,[MB|NxtMBs],OBs) :- 
+		collect_booleans(MBs,M,Bs,NxtMBs,OBs).
+	
+	collect_times([],TMs,TMs).
+	collect_times([(M,T)|MTs],TMsIn,TMsOut) :-
+		(selectchk((AccIn,M),TMsIn,TMs) 
+		 -> Acc is T+AccIn
+		 ;  Acc = T, TMs = TMsIn
+		),
+		collect_times(MTs,[(Acc,M)|TMs],TMsOut).
+Note that any tasks already serialized because they're part of the same job, need not be further constrained by resource requirements.
+
+With this infrastructure, a predicate can be implemented to test the feasibility of a specified deadline:
+.pl
+	schedule(Mod,Finish,Deadline,Tasks) :-
+		tasks(Mod,Tasks,Bs,_),
+		memberchk(task(Mod:start,0,_),Tasks),        % set start time to 0 
+		memberchk(task(Mod:finish,_,Finish),Tasks),  % set finish time =< Deadline 
+		{Finish=<Deadline},
+		enumerate(Bs),        % enumerate booleans to get a solution
+		lower_bound(Finish).  % set to lower_bound 
+`schedule/4` succeeds if the `Deadline` is feasible; on backtracking alternative solutions are generated (some top level output omitted for brevity):
+eg
+	?- schedule(ggl_1,F,13,Tasks),print_with_intervals(Tasks), nl.
+	task(ggl_1:start,0,0)
+	task(ggl_1:finish,12,12)
+	task(ggl_1:j00,V0::integer(2,3),V1::integer(5,6))
+	task(ggl_1:j01,V0::integer(5,6),V1::integer(7,8))
+	task(ggl_1:j02,V0::integer(8,10),V1::integer(10,12))
+	task(ggl_1:j10,V0::boolean,V1::integer(2,3))
+	task(ggl_1:j11,7,8)
+	task(ggl_1:j12,8,12)
+	task(ggl_1:j20,0,4)
+	task(ggl_1:j21,4,7)
+	
+	F = 12 ;
+	
+	task(ggl_1:start,0,0)
+	task(ggl_1:finish,12,12)
+	task(ggl_1:j00,V0::integer(0,2),V1::integer(3,5))
+	task(ggl_1:j01,V0::integer(4,6),V1::integer(6,8))
+	task(ggl_1:j02,V0::integer(8,10),V1::integer(10,12))
+	task(ggl_1:j10,V0::integer(3,5),V1::integer(5,7))
+	task(ggl_1:j11,7,8)
+	task(ggl_1:j12,8,12)
+	task(ggl_1:j20,0,4)
+	task(ggl_1:j21,4,7)
+	
+	F = 12, ;
+	
+	task(ggl_1:start,0,0)
+	task(ggl_1:finish,12,12)
+	task(ggl_1:j00,V0::integer(2,5),V1::integer(5,8))
+	task(ggl_1:j01,8,10)
+	task(ggl_1:j02,10,12)
+	task(ggl_1:j10,V0::boolean,V1::integer(2,3))
+	task(ggl_1:j11,V0::integer(2,3),V1::integer(3,4))
+	task(ggl_1:j12,4,8)
+	task(ggl_1:j20,0,4)
+	task(ggl_1:j21,V0::integer(4,7),V1::integer(7,10))
+	
+	F = 12, ;
+	
+	task(ggl_1:start,0,0)
+	task(ggl_1:finish,11,11)
+	task(ggl_1:j00,2,5)
+	task(ggl_1:j01,5,7)
+	task(ggl_1:j02,V0::integer(7,9),V1::integer(9,11))
+	task(ggl_1:j10,0,2)
+	task(ggl_1:j11,V0::integer(2,5),V1::integer(3,6))
+	task(ggl_1:j12,7,11)
+	task(ggl_1:j20,V0::boolean,V1::integer(4,5))
+	task(ggl_1:j21,V0::integer(4,6),V1::integer(7,9))
+	
+	F = 11, .  % query manually terminated
+The smallest finish time calulated was `11`, but is that the minimum possible? To find the optimal time (i.e., the smallest possible), you need something analogous to the [Global Optimzation] predicates (e.g., `global_minimize/2`). However in this case, there is no "objective function"; only a single variable (`Finish`) and a mechanism for generating values. A "branch and bound" search is required to find the optimal value, as implemented by the following `min_ratchet_B/2`:
+.pl
+	min_ratchet_B(Goal,Objective) :-
+		min_ratchet_B(Goal,Objective,true).         % no initial constraint
+	
+	min_ratchet_B(Goal,Objective,Constraint) :-
+		once((Constraint,Goal)),                    % apply constraint and generate a solution
+		range(Objective,[_,B]),                
+		nb_setval('$min_ratchet', (B,Goal)),        % save upper(Objective) with solution (Goal)
+		fail.                                       % and undo
+	min_ratchet_B(Goal,Objective,Constraint) :-
+		catch(nb_getval('$min_ratchet', (Val,BGoal)),_,fail),
+		domain(Objective, Dom), Dom =.. [Type,L,B], % range(Objective,[L,B]),
+		(var(Val)                                   % if no new solution
+		 -> (Constraint = {Objective =< Last}  -> true ; Last = L),  % relax last constraint
+			nxt_target(Type,Last,B,NxtVal)
+		  ; {Objective =< Val},                     % else constrain Objective to better
+		   nb_setval('$min_ratchet', (_,BGoal)),    % mark as old
+			nxt_target(Type,L,Val,NxtVal)
+		),
+		!,
+		min_ratchet_B(Goal,Objective,{Objective =< NxtVal}).  % continue with new constraint
+	min_ratchet_B(Goal,_Objective,_Constraint) :-   % final solution?
+		catch(nb_getval('$min_ratchet', (_,BGoal)),_,fail),  % fail if no solution
+		nb_delete('$min_ratchet'),                  % trash global var
+		Goal = BGoal.                               % unify Goal with final result
+	
+	nxt_target(integer,Lo,Hi,Target) :-
+		Target is div(Lo+Hi+1,2),  % round towards +inf
+		Target < Hi.
+	nxt_target(real,Lo,Hi,Target) :-
+		Target is (Lo+Hi)/2.0,
+		current_prolog_flag(clpBNR_default_precision,P), 
+		(Hi - Target)/Hi > 10.0**(-P).
+Describing how this works is a bit complicated. `Goal` to used to generate a value for `Objective`. If successful, the process is repeated with a lower upper bound for `Objective`. On failure, the upper bound of `Objective` is relaxed, and Goal is retried. When further relaxation is not possible, the last successful solution becomes the (optimal) answer. 
+
+Use `opt_schedule/4`  to generate the optimal solution:
+.pl
+	opt_schedule(Mod,Finish,Deadline,Tasks) :-
+		tasks(Mod,Tasks,Bs,Min),
+		memberchk(task(Mod:start,0,_),Tasks),   % set start time to 0 
+		memberchk(task(Mod:finish,_,Finish),Tasks),  % set finish time =< Deadline 
+		{Min =< Finish,Finish =< Deadline},
+		min_ratchet_B((enumerate(Bs),
+		lower_bound(Finish)),Finish).
+as in (again with some toplevel output removed for brevity):
+eg
+	?- opt_schedule(ggl_1,F,13,Tasks),print_with_intervals(Tasks), nl.
+	task(ggl_1:start,0,0)
+	task(ggl_1:finish,11,11)
+	task(ggl_1:j00,2,5)
+	task(ggl_1:j01,5,7)
+	task(ggl_1:j02,V0::integer(7,9),V1::integer(9,11))
+	task(ggl_1:j10,0,2)
+	task(ggl_1:j11,V0::integer(2,5),V1::integer(3,6))
+	task(ggl_1:j12,7,11)
+	task(ggl_1:j20,V0::boolean,V1::integer(4,5))
+	task(ggl_1:j21,V0::integer(4,6),V1::integer(7,9))
+	
+	F = 11,
+So the smallest possible finish time is indeed `11`.
+
+The job shop scheduling problem has been the subject of much research and the intent of this section is to describe how CLP can be used to solve such problems. The smallest of examples in [JSS test data] can be solved in less than a second to a minute or two (data dependent) but the combinatorial explosion of solutions for the larger data sets makes a pure CLP approach infeasible. As with many applications, the challenge in applying CLP is to correctly model the problem statement formally in CLP, applying as many constraints as possible to prune the search space (which is potentially enormous for JSS).
+
+<#TableOfContents>
+
+&
+	[Applying Interval Arithmetic to Real, Integer and Boolean Constraints] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/ApplyingInterval.pdf
+	[Travelling Salesman] <- link #toc4Pruning_the_Seach_Tree_-_The__Travelling_Salesman__Problem
+	[Global Optimzation] <- link #toc4Global_Optimization
+	[Google Job Shop Problem] <- link https://developers.google.com/optimization/scheduling/job_shop
+	[JSS test data] <- link https://github.com/tamy0612/JSPLIB
+	[Appendix 4] <- link #toc4Appendix_4_-_Scheduling_Code

@@ -26,7 +26,11 @@
 
 :- if((current_prolog_flag(version,V), V < 90105)).
 
+:- module(clpBNR,[]).  % empty module to avoid domain exception
+
+% Use history(expanded(...) from boot/messages.pl to avoid additional message template
 :- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
+% discard messages while parsing else.
 user:message_hook(_Err, _Level, _) :- integer(7286315884).
 
 :- else.
@@ -98,7 +102,7 @@ integer                               %% must be an integer value
 
 */
 
-version("0.11.0").
+version("0.11.1").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -1044,5 +1048,5 @@ init_clpBNR :-
 :- initialization(init_clpBNR, now).
 
 :- endif.
-
+% retract any "discard" mesage hook
 :- ignore(retract(user:message_hook(_Err, _Level, _) :- integer(7286315884))).

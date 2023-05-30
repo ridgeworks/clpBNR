@@ -59,39 +59,44 @@ attr_portray_hook(interval(Type,Val,N,F),_Int) :-
 	write(Dom).
 
 %
-% SWIP hook for top level output (ignores flags)
+% SWIP hook for top level and graphical debugger clpBNR attribute display
 % two modes : 
-%	Verbose=true, output all interval domains and associated constraints
-%	Verbose=false, only output query vars with no constraints
+%	Verbose=true,  display all interval domains and associated constraints
+%	Verbose=false, display vars with no constraints - internal vars omitted in answers
 %
-project_attributes(QueryVars, _) :- % mark QueryVars for output when Verbose=false
-	flag_query_vars_(QueryVars).
+sandbox:safe_global_variable('clpBNR:bindings').  % answer Bindings
 
-flag_query_vars_([]).
-flag_query_vars_([QV|QueryVars]) :-
-	get_interval_flags_(QV,Flags),
-	set_interval_flags_(QV,[queryVar|Flags]), !,   % add 'queryVar' to Flags
-	flag_query_vars_(QueryVars).
-flag_query_vars_([QV|QueryVars]) :-
-	flag_query_vars_(QueryVars).
+clpStatistics :-
+	g_assign('clpBNR:bindings',any),       % initialize using clpStatistics hook
+	fail.  % backtrack to reset other statistics.
 
-attribute_goals(X) -->
-	{current_prolog_flag(clpBNR_verbose,Verbose),
-	 domain_goals_(Verbose,X,Goals)
+user:expand_query(Q,Q,Bindings,Bindings) :-
+	g_assign('clpBNR:bindings',any).       % no bindings while generating answer
+
+user:expand_answer(Bindings,Bindings) :-
+	g_assign('clpBNR:bindings',Bindings).  % bindings for answer (uses nb_linkval to avoid copy) 
+
+attribute_goals(X) -->                     % constructs goals to build X
+	{current_prolog_flag(clpBNR_verbose,Verbose),  % details depend on flag clpBNR_verbose
+	 g_read('clpBNR:bindings',Bindings),
+	 domain_goals_(Verbose,Bindings,X,Goals)
 	},
 	Goals.
 	
-domain_goals_(true,X,Cs) :-         % Verbose=true, QueryVars and constraints output
+domain_goals_(false,Bindings,X,[X::Dom]) :-  % Verbose=false
+	in_bindings_(Bindings,X),             % no bindings or X in bindings 
+	interval_object(X, Type, Val, _), !,
+	intValue_(Val,Type,Dom).
+domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints always output
 	interval_object(X, Type, Val, Nodes), !,
 	interval_domain_(Type, Val, Dom), 
-	constraints_(Nodes,X,NCs),  % reverse map to list of original constraint
+	constraints_(Nodes,X,NCs),            % reverse map to list of original constraints
 	to_comma_exp_(NCs,X::Dom,Cs).
-domain_goals_(false,X,[X::Dom]) :-  % Verbose=false, only QueryVars output
-	get_interval_flags_(X,Flags),
-	memberchk(queryVar,Flags), !,   % set by project_attributes
-	interval_object(X, Type, Val, _),
-	intValue_(Val,Type,Dom).
-domain_goals_(_,X,[]).         % catchall but normally non-query attvar, Verbose=false
+domain_goals_(_,_,X,[]).                  % catchall but normally non-query attvar, Verbose=false
+
+in_bindings_(any,X).
+in_bindings_([_Name=Val|Bindings],X) :-
+	Val == X -> true ; in_bindings_(Bindings,X).
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
@@ -124,7 +129,7 @@ to_comma_cexp_([C|Cs],In,Out) :-
 :- op(150, xf, ...).     % postfix op just for ellipsis output format
 
 % remove quotes on stringified number in ellipsis format
-user:portray(Out...) :-
+user:portray(Out...) :- atomic(Out),
 	string_concat(Out,"...",OutStr),
 	write_term(OutStr,[quoted(false)]).
 

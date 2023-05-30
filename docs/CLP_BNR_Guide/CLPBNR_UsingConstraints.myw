@@ -488,6 +488,7 @@ The lesson here is that even though redundant constraints may not be necessary t
 	CLPBNR_UC_linearsys.myw
 	CLPBNR_UC_metaContractors.myw
 	CLPBNR_UC_globalopt.myw
+	CLPBNR_UC_scheduling.myw
 	CLPBNR_UC_integrate.myw
 &
 	[transitive closure] <- link https://en.wikipedia.org/wiki/Transitive_closure
