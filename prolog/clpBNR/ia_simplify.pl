@@ -259,7 +259,8 @@ reduce_exp_item_(Exp,         +, Exp).
 
 finite_(V) :- 
 	(ground(V)
-	 -> abs(V) < 1.0Inf  % ground expression, evaluates to finite value
+%	 -> abs(V) < 1.0Inf  % ground expression, evaluates to finite value
+	 -> catch(abs(V) =\= 1.0Inf,_Err,true)  % ground expression, does not evaluate to infinite value
 	 ;  interval_object(V, _Type, (LB,UB), _),  % interval with finite bounds
 	    -1.0Inf < LB, UB < 1.0Inf
 	).

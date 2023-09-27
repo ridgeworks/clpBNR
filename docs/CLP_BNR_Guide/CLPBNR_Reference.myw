@@ -35,6 +35,8 @@ The set of operators and functions currently supported are:
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
 	integer                               %% is an integer value
+Note that the use of some constraints may also constrain the "type" of the operands. Specifically `<>` constrains the operands to be integers, and the boolean operations similarly constrain the operands to be booleans. Synonyms for `<>` and `==` are `=\=` and `=:=` for those who prefer the standard Prolog operators.
+
 Users can extend the set of constraint functions with [User Defined Narrowing Functions].
 
 #### Environment Flags
@@ -371,6 +373,24 @@ eg
 	
 	?- X::real,X=42.0,interval(X).
 	false.
+
+.pred	**interval_degree**(*@Term, -Integer*)
+Unifies *Integer* with the number of `clpBNR` constraints on *Term* which must be a `number` or `interval`; otherwise **interval_degree** fails. Numbers have a degree of 0. 
+****interval_degree** may be used to prioritize multiple intervals in writing custom labelling predicates.
+eg
+	?- {X>=0}, interval_degree(X,N).
+	N = 1,
+	X::real(0, 1.0Inf).
+	
+	?- {Y==sin(X), X>=0.5}, interval_degree(X,N).
+	N = 2,
+	Y::real(-1, 1),
+	X::real(0.49999999999999994, 1.0Inf).
+	
+	?- {Y==sin(X), X>=0.5}, X=0.8, interval_degree(X,N).
+	X = 0.8,
+	N = 0,
+	Y:: 0.717356090899522... .
 
 .pred	**list**(@Term)
 {`O(1)`} filter for lists implemented as `list(X) :- compound(X) ->  X=[_|_] ; X==[]. `. This is not equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>).
@@ -838,7 +858,7 @@ Messages will be generated on failure when `debug(clpBNR)` is true.
 <#TableOfContents>
 
 &
-	[Module `clpBNR`] <- link #toc3Module_clpBNR
+	[Module `clpBNR`] <- link #toc3Module_clpBNR 
 	[{ +Constraints }] <- link #toc4**_**_*+Constraints*_**_**
 	[**delta/2**] <- link #toc4**delta**(*+Interval,_-Number*)
 	[**small/1**] <- link #toc4**small**(*+Intervals*),_**small**(*+Intervals,_++Integer*)

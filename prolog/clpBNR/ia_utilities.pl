@@ -22,7 +22,7 @@
  */
 
 %
-% compatibility predicates
+% compatibility predicates 
 %
 
 %
@@ -71,7 +71,7 @@ clpStatistics :-
 	fail.  % backtrack to reset other statistics.
 
 user:expand_query(Q,Q,Bindings,Bindings) :-
-	g_assign('clpBNR:bindings',any).       % no bindings while generating answer
+	g_assign('clpBNR:bindings',any).       % any bindings while generating answer (for GUI debug)
 
 user:expand_answer(Bindings,Bindings) :-
 	g_assign('clpBNR:bindings',Bindings).  % bindings for answer (uses nb_linkval to avoid copy) 
@@ -84,7 +84,8 @@ attribute_goals(X) -->                     % constructs goals to build X
 	Goals.
 	
 domain_goals_(false,Bindings,X,[X::Dom]) :-  % Verbose=false
-	in_bindings_(Bindings,X),             % no bindings or X in bindings 
+	% any bindings or X in bindings ?
+	(Bindings == any -> true ; term_variables(Bindings,AVars), identity_member_(AVars,X)),
 	interval_object(X, Type, Val, _), !,
 	intValue_(Val,Type,Dom).
 domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints always output
@@ -94,9 +95,7 @@ domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints a
 	to_comma_exp_(NCs,X::Dom,Cs).
 domain_goals_(_,_,X,[]).                  % catchall but normally non-query attvar, Verbose=false
 
-in_bindings_(any,X).
-in_bindings_([_Name=Val|Bindings],X) :-
-	Val == X -> true ; in_bindings_(Bindings,X).
+identity_member_([Var|Vars],X) :-  Var==X ; identity_member_(Vars,X).
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
@@ -563,12 +562,17 @@ xpsolve_each_([X|Xs],Us,Err) :-
 %
 
 splitinterval_(real,X,V,Err,(constrain_(X =< SPt);constrain_(SPt =< X))) :-
-	splitinterval_real_(V,Pt,Err), !,           % initial guess
+	splitinterval_real_(V,Pt,Err),          % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 
-splitinterval_(integer,X,V,_,(constrain_(X =< Pt);constrain_(Pt < X))) :-   % try to split and on failure use enumerate/1 .
-	splitinterval_integer_(V,Pt), !.
-splitinterval_(integer,X,_,_,enumerate(X)).             % failed to split, so enumerate
+splitinterval_(integer,X,_,_,_) :-           % bounds must be finite since bigints supported
+	getValue(X,(L,H)),
+	((L == -1.0Inf ; H == 1.0Inf) -> !,fail).
+splitinterval_(integer,X,V,_,Cons) :- 
+	( splitinterval_integer_(V,Pt)                       % try to split 
+	 -> Cons = (constrain_(X =< Pt);constrain_(Pt < X))  % success
+	 ;  Cons = enumerate(X)                              % fail, use enumerate on X
+	).
 
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
@@ -595,6 +599,7 @@ split_real_hi(X,(Pt,H),NPt,Err) :-         % search upper range for a split poin
 %
 splitinterval_integer_((L,H),0) :-
 	L < 0, H > 0, !.                  % contains 0 but not bounded by 0 
+/*
 splitinterval_integer_((-1.0Inf,H),Pt) :-
 	!,
 	Pt is H*10-5,                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
@@ -603,6 +608,7 @@ splitinterval_integer_((L,1.0Inf), Pt) :-
 	!,
 	Pt is L*10+5,                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
 	float(Pt) < 1.0Inf.
+*/
 splitinterval_integer_((L,H),Pt) :- 
 	H-L >= 16,                        % don't split ranges smaller than 16
 	Pt is (L div 2) + (H div 2).      % avoid overflow
