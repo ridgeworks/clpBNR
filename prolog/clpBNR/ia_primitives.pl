@@ -245,8 +245,12 @@ next_lt_(V,  1, NV) :- NV is minr(V+1,nexttoward(V, 1.0Inf)).
 
 narrowing_op(in, P, $(Z, X, Y), $(NewZ, NewX, Y)):-
 	% Only two cases: either X and Y intersect or they don't.
-	(^(X,Y,NewX)   % NewX is intersection of X and Y
-	 -> ^(Z,(1,1),NewZ)      % X and Y intersect, Z must always be true going forward
+	(^(X,Y,X1)               % X1 is intersection of X and Y
+	 -> (Z == (1,1) 
+	     -> NewX = X1        % Z true, X must be subinterval of Y
+	     ;  NewX = X,        % Z is false or indeterminate, X unchanged
+	        ^(Z,(0,1),NewZ)  % Z boolean
+	    )
 	 ;  ^(Z,(0,0),NewZ),     % X and Y don't intersect, Z must be false
 	 	NewX = X,            % no change in X
 	    P=p                  % persistent, since X and Y can never intersect
@@ -402,26 +406,32 @@ odivCase(s,s,       _,       _,       Z,         Z).  % both contain 0, no narro
 % Z==min(X,Y)    Z==max(X,Y)
 
 narrowing_op(min, _, $((Zl,Zh),(Xl,Xh),(Yl,Yh)), New) :-
-	Z1l is maxr(Zl,minr(Xl,Yl)),  % Z1 := Z ^ min(X,Y),
+	Z1l is maxr(Zl,minr(Xl,Yl)),   % Z1 := Z ^ min(X,Y),
 	Z1h is minr(Zh,minr(Xh,Yh)),
-	minimax((Zl,1.0Inf), $((Z1l,Z1h),(Xl,Xh),(Yl,Yh)), New).
+	(   Yh < Xl -> Case = 1        % narrow Y
+	; ( Xh < Yl -> Case = 2        % narrow X
+	;   Case = 3                   % narrow both                  
+	  )
+	),
+	minimax(Case, (Zl,1.0Inf), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
 
 narrowing_op(max, _, $((Zl,Zh),(Xl,Xh),(Yl,Yh)), New) :-
-	Z1l is maxr(Zl,maxr(Xl,Yl)),  % Z1 := Z ^ max(X,Y),
+	Z1l is maxr(Zl,maxr(Xl,Yl)),   % Z1 := Z ^ max(X,Y),
 	Z1h is minr(Zh,maxr(Xh,Yh)),
-	minimax((-1.0Inf,Zh), $((Z1l,Z1h),(Xl,Xh),(Yl,Yh)), New).
-
-minimax(_, $(Z,X,Y), $(New, X, New)) :-          % Case 1, X not in Z1
-	\+(^(Z,X,_)), !,                           % _ := Z1 \^ X,
-	^(Y,Z,New).                                % New := Y ^ Z1.
-
-minimax(_, $(Z,X,Y), $(New, New, Y)) :-          % Case 2, Y not in Z1
-	\+(^(Z,Y,_)), !,                           % _ := Z1 \^ Y,
-	^(X,Z,New).                                % New := X ^ Z1.
-
-minimax(Zpartial, $(Z,X,Y), $(Z, NewX, NewY)) :- % Case 3, overlap
-	^(X,Zpartial,NewX),                        % NewX := X ^ Zpartial,
-	^(Y,Zpartial,NewY).                        % NewY := Y ^ Zpartial.
+	(   Xh < Yl -> Case = 1        % narrow Y
+	; ( Yh < Xl -> Case = 2        % narrow X
+	;   Case = 3                   % narrow both                  
+	  )
+	),
+	minimax(Case, (-1.0Inf,Zh), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
+	
+minimax(1, Zpartial, Z, X, Y, $(Z, X, NewY)) :-     % Case 1, narrow Y
+	^(Y,Zpartial,NewY).                    % NewY := Y ^ Zpartial.
+minimax(2, Zpartial, Z, X, Y, $(Z, NewX, Y)) :-     % Case 2, narrow X
+	^(X,Zpartial,NewX).                    % NewX := X ^ Zpartial,
+minimax(3, Zpartial, Z, X, Y, $(Z, NewX, NewY)) :-  % Case 3, overlap
+	^(X,Zpartial,NewX),                    % NewX := X ^ Zpartial,
+	^(Y,Zpartial,NewY).                    % NewY := Y ^ Zpartial.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -615,7 +625,7 @@ narrowing_op(sin, _, $(Z,X), $(NewZ, NewX)) :-
 
 sin_((X,X),S,NZ) :-  % point infinity special case
 	abs(X) =:= 1.0Inf, !,
-	S = (-10,10), NZ = (-1,1). 
+	S = (-10,10), NZ = (-1.0,1.0). 
 sin_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	Sl is round(Xl/pi),                    % determine monotonic sector of width pi
 	Sh is round(Xh/pi),                    % sector 0 is (-pi/2,pi/2)
@@ -633,12 +643,12 @@ sinCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sectors
 	( 0 is Sl mod 2                        % monotonically increasing ?
 	 -> NZl is minr(roundtoward(sin(Xl), to_negative),  % Z contains +1
 	                roundtoward(sin(Xh), to_negative)),
-	    NZh =  1          
-	 ; 	NZl = -1,                                      % Z contains -1
+	    NZh =  1.0          
+	 ; 	NZl = -1.0,                                      % Z contains -1
 	    NZh is maxr(roundtoward(sin(Xl), to_positive),
 	                roundtoward(sin(Xh), to_positive))
 	).
-sinCase(_,_,_,_,-1,1).                      % span multiple sectors
+sinCase(_,_,_,_,-1.0,1.0).                  % span multiple sectors
 
 asin_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	asinCase(Xl,Xh,Sl,Sh,NZl,NZh).
@@ -678,7 +688,7 @@ narrowing_op(cos, _, $(Z,X), $(NewZ, NewX)) :-
 
 cos_((X,X),S,NZ) :-  % point infinity special case
 	abs(X) =:= 1.0Inf, !,
-	S = (-10,10), NZ = (-1,1). 
+	S = (-10,10), NZ = (-1.0,1.0). 
 cos_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	Sl is floor(Xl/pi),
 	Sh is floor(Xh/pi),  % sector 0 is (0,pi)
@@ -696,12 +706,12 @@ cosCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sector
 	( 1 is Sl mod 2                          % monotonically increasing ?
 	 -> NZl is minr(roundtoward(cos(Xl), to_negative),  % Z contains +1
 	                roundtoward(cos(Xh), to_negative)),
-	    NZh =  1          
-	 ; 	NZl = -1,                                      % Z contains -1
+	    NZh =  1.0          
+	 ; 	NZl = -1.0,                                      % Z contains -1
 	    NZh is maxr(roundtoward(cos(Xl), to_positive),
 	                roundtoward(cos(Xh), to_positive))
 	).
-cosCase(_,_,_,_,-1,1).                      % span multiple sectors
+cosCase(_,_,_,_,-1.0,1.0).                  % span multiple sectors
 
 acos_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
 	acosCase(Xl,Xh,Sl,Sh,NZl,NZh).

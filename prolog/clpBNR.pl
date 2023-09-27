@@ -26,14 +26,11 @@
 
 :- if((current_prolog_flag(version,V), V < 90105)).
 
-:- module(clpBNR,[]).  % empty module to avoid domain exception
-
 % Use history(expanded(...) from boot/messages.pl to avoid additional message template
 :- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
-% discard messages while parsing else.
-:- dynamic user:message_hook/3.
-:- multifile user:message_hook/3.
-user:message_hook(_Err, _Level, _) :- integer(7286315884).
+
+:- op(1199, xfx, ::).         % suppresses errors while parsing
+:- style_check(-singleton).   % suppresses warnings while parsing
 
 :- else.
 
@@ -43,6 +40,7 @@ user:message_hook(_Err, _Level, _) :- integer(7286315884).
 	(::)/2,                % declare interval
 	{}/1,                  % define constraint
 	interval/1,            % filter for clpBNR constrained var
+	interval_degree/2,     % number of constraints on clpBNR constrained var
 	list/1,                % O(1) list filter (also for compatibility)
 	domain/2, range/2,     % get type and bounds (domain)
 	delta/2,               % width (span) of an interval or numeric (also arithmetic function)
@@ -104,7 +102,7 @@ integer                               %% must be an integer value
 
 */
 
-version("0.11.1").
+version("0.11.2").
 
 :- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
 
@@ -222,20 +220,28 @@ list(X) :- compound(X) ->  X=[_|_] ; X==[].
 %
 % Current interval bounds updates via setarg(Val) which is backtrackable
 %
-%  interval(X)  - filter
+%  interval(Int)  - filter
 %
-interval(X) :- get_attr(X, clpBNR, _).
+interval(Int) :- get_attr(Int, clpBNR, _).
+
+%
+%  interval_degree/2   % N = number of constraints on interval(Int), 0 for number(Int)
+%
+interval_degree(X, N) :- 
+	interval_object(X, _, _, Nodelist)
+	-> system:'$skip_list'(N, Nodelist, _) % optimized for SWIP, handles indefinite lists
+	;  number(X), N = 0.                   % number -> no constraints ; fail
 
 % internal abstraction
 interval_object(Int, Type, Val, Nodelist) :-
-	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
+	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, _)).
 
 % flags (list)  abstraction
-get_interval_flags_(Int,Flags) :-
-	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
+get_interval_flags_(Int, Flags) :-
+	get_attr(Int, clpBNR, interval(_, _, _, Flags)).
 	
-set_interval_flags_(Int,Flags) :-  % flags assumed to be ground so no copy required
-	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, _)),
+set_interval_flags_(Int, Flags) :-  % flags assumed to be ground so no copy required
+	interval_object(Int, Type, Val, Nodelist),
 	put_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
 
 %
@@ -268,7 +274,7 @@ preciseBnd(B) :- rational(B).
 %
 nb_setbounds(Int, [L,U]) :- 
 	get_attr(Int, clpBNR, Def),
-	Def = interval(_, Val, _, _),
+	arg(2, Def, Val),             % WAM code
 	^(Val,(L,U),NewVal),          % new range is intersection (from ia_primitives)
 	nb_setarg(2, Def, NewVal).
 
@@ -417,13 +423,17 @@ R::Dom :-                       % interval(R) or number(R) and nonvar(Dom)
 int_decl_(boolean,_,R) :- !,      % boolean is integer; 0=false, 1=true, ignore any bounds.
 	int_decl_(integer,(0,1),R).
 	
-int_decl_(Type,(L,H),R) :- interval_object(R,_IType,CVal,_NL), !,  % already interval
-	lower_bound_val_(Type,L,IL),  % changing type,bounds?
-	upper_bound_val_(Type,H,IH),
-	applyType_(Type, R, T/T, Agenda),           % coerce reals to integers (or no-op).
-	^(CVal,(IL,IH),New),          % low level functional primitive
-	updateValue_(CVal, New, R, 1, Agenda, NewAgenda),  % update value (Agenda empty if no value change)
-	stable_(NewAgenda).           % then execute Agenda
+int_decl_(Type,Val,R) :- interval_object(R,CType,CVal,_NL), !,  % already interval
+	(Type = CType, Val = CVal         % query, no change
+	 -> true
+	 ;	Val = (L,H),                  % changing type,bounds?
+	    lower_bound_val_(Type,L,IL),
+	    upper_bound_val_(Type,H,IH),
+	    applyType_(Type, R, T/T, Agenda),           % coerce reals to integers (or no-op).
+	    ^(CVal,(IL,IH),New),          % low level functional primitive
+	    updateValue_(CVal, New, R, 1, Agenda, NewAgenda),  % update value (Agenda empty if no value change)
+	    stable_(NewAgenda)            % then execute Agenda
+	).
 
 int_decl_(Type,(L,H),R) :- var(R), !,        % new interval (R can't be existing interval)
 	lower_bound_val_(Type,L,IL),
@@ -523,7 +533,7 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of range
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR, true),       % fail immediately unless debug=true
-	debug_clpBNR_('Failed to unify ~w::~w with ~w',[Type,Val,V]),
+	debug_clpBNR_('Failed to unify ~w::(~w) with ~w',[Type,Val,V]),
 	fail.
 
 % awkward monitor case because original interval gone
@@ -608,7 +618,7 @@ buildConstraint_(C,Agenda,NewAgenda) :-
 	% need to catch errors from ground expression evaluation
 	catch(build_(C, 1, boolean, Agenda, NewAgenda),_Err,fail), !.
 buildConstraint_(C,Agenda,NewAgenda) :-
-	debug_clpBNR_('{} failure due to bad constraint: ~p',{C}),
+	debug_clpBNR_('{} failure due to bad or inconsistent constraint: ~p',{C}),
 	fail.
 
 :- include(clpBNR/ia_simplify).  % simplifies constraints to a hopefully more efficient equivalent
@@ -911,7 +921,7 @@ propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in cal
 
 linkNodeList_(X, List, List) :- var(X), !.       % end of indefinite list? ...
 linkNodeList_([X|Xs], List, NewList) :-
-	(arg(3,X,1)                                  % test linked flag
+	(arg(3,X,Linked), Linked == 1                % test linked flag (only SWIP VM codes)
 	 -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
 	 ;  linkNode_(List, X, NextList),            % not linked add it to list
 	    linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
@@ -1050,5 +1060,6 @@ init_clpBNR :-
 :- initialization(init_clpBNR, now).
 
 :- endif.
-% retract any "discard" mesage hook
-:- ignore(retract(user:message_hook(_Err, _Level, _) :- _:integer(7286315884))).
+
+% remove possible temporary op definition
+:- (current_op(1199,A,::) -> op(0,A,::) ; true).
