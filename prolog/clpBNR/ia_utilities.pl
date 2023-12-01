@@ -22,22 +22,25 @@
  */
 
 %
-% compatibility predicates 
+% compatibility predicate
 %
-
-%
-%  print_interval(Term), print_interval(Stream,Term)
+% print_interval(Term), print_interval(Stream,Term)
 %	prints Term to optional Stream with intervals expanded to domains
 %	uses format/3 so extended Stream options, e.g., atom(A), are supported
 %
-print_interval(Term) :- print_interval(current_output,Term).
+print_interval(Term) :- 
+	printed_term_(Term,Out),
+	format('~w',[Out]).          % safe
 
 print_interval(Stream,Term) :-
+	printed_term_(Term,Out),
+	format(Stream,'~w',[Out]).   % unsafe
+
+printed_term_(Term,Out) :-
 	copy_term_nat(Term,Out),     % copy of Term without attributes for output
 	term_variables(Term,TVars),
 	term_variables(Out,OVars),
-	name_vars_(TVars,OVars,0),  % name variables, intervals replaced by declarations
-	format(Stream,'~w',[Out]).  % direct output
+	name_vars_(TVars,OVars,0).   % name variables, intervals replaced by declarations
 
 name_vars_([],[],_).
 name_vars_([TVar|TVars],[OVar|OVars],N) :-
@@ -52,11 +55,15 @@ name_vars_([TVar|TVars],[OVar|OVars],N) :-
 %
 % SWIP attribute portray hook - used if write_attributes=portray
 %
-:-	set_prolog_flag(write_attributes, portray).  % generally useful
-
 attr_portray_hook(interval(Type,Val,N,F),_Int) :-
 	interval_domain_(Type,Val,Dom),
-	write(Dom).
+	format('~w',Dom).                       % safe
+
+:- op(150, xf, ...).                        % postfix op just for ellipsis output format
+
+user:portray(Out...) :- atomic(Out),        % remove quotes on stringified number in ellipsis format
+	string_concat(Out,"...",OutStr),
+	format('~W',[OutStr,[quoted(false)]]).  % safe
 
 %
 % SWIP hook for top level and graphical debugger clpBNR attribute display
@@ -78,11 +85,15 @@ user:expand_answer(Bindings,Bindings) :-
 
 attribute_goals(X) -->                     % constructs goals to build X
 	{current_prolog_flag(clpBNR_verbose,Verbose),  % details depend on flag clpBNR_verbose
-	 g_read('clpBNR:bindings',Bindings),
+	 % may be called from pce thread where global doesn't exist
+	 catch(g_read('clpBNR:bindings',Bindings),error(existence_error(variable, _),_Ctxt),Bindings=any),
 	 domain_goals_(Verbose,Bindings,X,Goals)
 	},
-	Goals.
-	
+	list_dcg_(Goals).  % avoids "unsafe" call to phrase/3
+
+list_dcg_([]) --> [].
+list_dcg_([H|T]) --> [H], list_dcg_(T).
+
 domain_goals_(false,Bindings,X,[X::Dom]) :-  % Verbose=false
 	% any bindings or X in bindings ?
 	(Bindings == any -> true ; term_variables(Bindings,AVars), identity_member_(AVars,X)),
@@ -125,13 +136,6 @@ to_comma_cexp_([C|Cs],In,Out) :-
 % 5. Query interval variables output as V = V::Domain
 % 6. Subterm intervals as sub-terms printed as domain (Type(L,H)).
 %
-:- op(150, xf, ...).     % postfix op just for ellipsis output format
-
-% remove quotes on stringified number in ellipsis format
-user:portray(Out...) :- atomic(Out),
-	string_concat(Out,"...",OutStr),
-	write_term(OutStr,[quoted(false)]).
-
 intValue_((0,1),integer,boolean).                  % boolean
 intValue_((L,H),real,Out...) :-                    % virtual zero (zero or subnormal) 
 	zero_float_(L),
@@ -341,6 +345,8 @@ eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-            % Step 7., calculate F(V) and s
 eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-
 	nb_getval('clpBNR:eval_MS',FV).                      % retrieve solution ([] on failure)
 
+sandbox:safe_global_variable('clpBNR:eval_MS').
+
 build_box_MS([],[],Agenda) :-
 	stable_(Agenda).
 build_box_MS([X|Xs],[XNew|XVs],Agenda) :-
@@ -430,6 +436,8 @@ simplesolveall_(Xs,Err) :-
 	Choices,              % generate alternatives
 	simplesolveall_(Xs,Err).
 simplesolveall_(Xs,Err).  % terminated
+
+sandbox:safe_meta(clpBNR:simplesolveall_(Xs,Err), []).
 
 select_wide_([X],_,X) :- !.       % select last remaining element
 select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
@@ -556,6 +564,7 @@ xpsolve_each_([X|Xs],[U|Us],Err) :-
 xpsolve_each_([X|Xs],Us,Err) :-
 	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
 
+sandbox:safe_meta(clpBNR:xpsolve_each_(Xs,Us,Err), []).
 
 %
 % try to split interval - fails if unsplittable (too narrow)
@@ -788,21 +797,3 @@ pd_sqrt(DU,DX)   :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
 pd_sin(DU,DX)    :- ground(DU) -> DX is sin(DU)  ; DX = sin(DU).
 
 pd_cos(DU,DX)    :- ground(DU) -> DX is cos(DU)  ; DX = cos(DU).
-
-%
-% safe declarations must be after the predicate definitions
-%
-% the following use meta-predicates
-sandbox:safe_primitive(clpBNR:solve(_)).
-sandbox:safe_primitive(clpBNR:solve(_,_)).
-sandbox:safe_primitive(clpBNR:splitsolve(_)).
-sandbox:safe_primitive(clpBNR:splitsolve(_,_)).
-sandbox:safe_primitive(clpBNR:global_minimum(_,_)).
-sandbox:safe_primitive(clpBNR:global_minimum(_,_,_)).
-sandbox:safe_primitive(clpBNR:global_minimize(_,_)).
-sandbox:safe_primitive(clpBNR:global_minimize(_,_,_)).
-sandbox:safe_primitive(clpBNR:global_maximum(_,_)).
-sandbox:safe_primitive(clpBNR:global_maximum(_,_,_)).
-sandbox:safe_primitive(clpBNR:global_maximize(_,_)).
-sandbox:safe_primitive(clpBNR:global_maximize(_,_,_)).
-sandbox:safe_primitive(clpBNR:partial_derivative(_,_,_)).

@@ -102,9 +102,12 @@ integer                               %% must be an integer value
 
 */
 
-version("0.11.2").
+:- use_module(library(sandbox)).      % for safe declarations
+:- use_module(library(debug)).        % debug feature control and messaging
 
-:- style_check([-singleton, -discontiguous]).  % :- discontiguous ... not reliable.
+version("0.11.3").
+
+:- style_check([-singleton, -discontiguous]).
 
 %
 % Define debug_clpBNR_/2 before turning on optimizer removing debug calls.
@@ -119,10 +122,22 @@ trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
 :- set_prolog_flag(optimise,true).
 
 current_node_(Node) :-  % look back to find current Op being executed for debug messages
-	prolog_current_frame(F),  % this is a little grungy, but necessary to get intervals
-	prolog_frame_attribute(F,parent_goal,doNode_(Args,Op,_,_,_,_,_)),
+	prolog_current_frame(Frame),  % this is a little grungy, but necessary to get intervals
+	clpBNR_doNode_op_(parent_goal,Frame,Op,Args),  % constrained for safety
 	map_constraint_op_(Op,Args,Node),
 	!.
+
+% only called if debugging(clpBNR,true) which can't (currently) be done safely
+sandbox:safe_primitive(clpBNR:current_node_(Node)). 
+
+% safe use of prolog_frame_attribute/3
+clpBNR_doNode_op_(parent_goal,Frame,Op,Args) :-
+	prolog_frame_attribute(Frame,parent_goal,doNode_(Args,Op,_,_,_,_,_)).
+clpBNR_doNode_op_(goal,Frame,Op,Args) :-
+	prolog_frame_attribute(Frame,goal,Goal),
+	Goal = clpBNR:doNode_(Args,Op,_,_,_,_,_).
+
+sandbox:safe_primitive(clpBNR:clpBNR_doNode_op_(_,_,_,_)).
 
 %
 % statistics
@@ -134,10 +149,6 @@ g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
 g_incb(G)      :- nb_getval(G,N), N1 is N+1, b_setval(G,N1).    % undone on backtrack
 g_read(G,V)    :- nb_getval(G,V).
 
-:- discontiguous 
-	clpBNR:clpStatistics/0, clpBNR:clpStatistic/1, 
-	sandbox:safe_global_variable/1.
-
 sandbox:safe_global_variable('clpBNR:thread_init_done').
 sandbox:safe_global_variable('clpBNR:userTime').
 sandbox:safe_global_variable('clpBNR:inferences').
@@ -147,15 +158,32 @@ sandbox:safe_global_variable('clpBNR:gc_time').
 % Global var statistics are per thread and therefore must be "lazily" initialized
 % Also ensures that thread copies of flags are properly set.
 % This exception handler will be invoked the first time 'clpBNR:thread_init_done' is read
-% Public predicates ::. {}. and range read this global before proceeding. 
+% Public predicates ::, {}, clpStatistics/1 and range read this global before proceeding. 
 %
 user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
-	set_prolog_flags,  % initialize/check environment flags  
-	clpStatistics,     % define remaining globals 
+	set_min_free(8196),   % cells
+	set_prolog_flags,     % initialize/check environment flags  
+	clpStatistics,        % defines remaining globals 
 	g_assign('clpBNR:thread_init_done',1).
 
+% ensure sufficient room on global stack
+set_min_free(Amount) :-
+	once(prolog_stack_property(global,min_free(Free))), % minimum free cells (8 bytes/cell)
+	(Free < Amount -> set_prolog_stack(global,min_free(Amount)) ; true).
+
+sandbox:safe_primitive(clpBNR:set_min_free(Amount)).    % thread initialization only
+
 %
-% Set required arithmetic flags (see module/thread initialization)
+% Define custom clpBNR flags when module loaded
+%
+:- create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)]).
+:- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
+:- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
+
+sandbox:safe_prolog_flag(Flag,_) :- 
+	memberchk(Flag,[clpBNR_iteration_limit,clpBNR_default_precision,clpBNR_verbose]).
+%
+% Set public flags (see module/thread initialization)
 %
 set_prolog_flags :-
 	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
@@ -168,20 +196,9 @@ set_prolog_flags :-
 	set_prolog_flag(float_overflow,infinity),          % enable IEEE continuation values
 	set_prolog_flag(float_zero_div,infinity),
 	set_prolog_flag(float_undefined,nan),
-	
-	% clpBNR specific Prolog environment flags - overwrite if necessary
-	(current_prolog_flag(clpBNR_iteration_limit,_)
-	 -> true
-	 ;  create_prolog_flag(clpBNR_iteration_limit,3000,[type(integer),keep(true)])
-	),
-	(current_prolog_flag(clpBNR_default_precision,_)
-	 -> true
-	 ;  create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)])
-	),
-	(current_prolog_flag(clpBNR_verbose,_)
-	 -> true
-	 ;  create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)])
-	).
+	set_prolog_flag(write_attributes,portray).         % thread-local, init to 'portray'
+
+:- discontiguous clpBNR:clpStatistics/0, clpBNR:clpStatistic/1.
 
 clpStatistics :-
 	% garbage_collect,  % ? do gc before time snapshots
@@ -189,6 +206,8 @@ clpStatistics :-
 	statistics(inferences,I), g_assign('clpBNR:inferences',I),
 	statistics(garbage_collection,[_,_,G,_]), g_assign('clpBNR:gc_time',G),
 	fail.  % backtrack to reset other statistics.
+
+clpStatistic(_) :- g_read('clpBNR:thread_init_done',0).  % ensures per-thread initialization then fails
 
 clpStatistic(userTime(T)) :- statistics(cputime,T1), g_read('clpBNR:userTime',T0), T is T1-T0.
 
@@ -665,17 +684,29 @@ build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primiti
 	build_args_(ArgsR,Objs,Types,Agenda,ObjAgenda),
 	newNode_(Op,Objs,ObjAgenda,NewAgenda).
 build_(Exp, Z, _, Agenda, NewAgenda) :-                 % user defined
-	Exp =.. [F|Args],
-	UsrHead =..[F,'$op',_,_,_],
-	current_predicate(_,clpBNR:UsrHead),
+	Exp =.. [Prim|Args],
+	chk_primitive_(Prim),
 	build_args_([Z|Args],Objs,Types,Agenda,ObjAgenda),
-	newNode_(user(F),Objs,ObjAgenda,NewAgenda).
+	newNode_(user(Prim),Objs,ObjAgenda,NewAgenda).
 
 build_args_([],[],_,Agenda,Agenda).
 build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
 	(var(Type) -> Type=real ; true),                    % var if user defined
 	build_(Arg,Obj,Type,Agenda,NxtAgenda),
 	build_args_(ArgsR,Objs,Types,NxtAgenda,NewAgenda).
+
+chk_primitive_(Prim) :-  % wraps safe usage of unsafe predicate_property/2
+	UsrHead =..[Prim,'$op',_,_,_],
+	predicate_property(UsrHead,implementation_module(clpBNR)).  % cheap
+
+sandbox:safe_primitive(clpBNR:chk_primitive_(Prim)).
+
+% to invoke user defined primitive
+call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
+	call(clpBNR:Prim, '$op', InArgs, OutArgs, P).
+
+% really unsafe, but in a pengine a user can't define any predicates in another module, so this is safe
+sandbox:safe_meta(clpBNR:call_user_primitive(Prim, P, InArgs, OutArgs), []).
 
 % only called when argument is ground
 safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types
@@ -979,8 +1010,13 @@ monitor_action_(log, Val, Int) :-  !,  % narrow range
 	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
 monitor_action_(_, _, _).  % default to noop (as in 'none')
 
+% only called if debugging(clpBNR,true) which can't (currently) be done safely
+% revisit if debug(Topic) ever becomes safe
+sandbox:safe_primitive(clpBNR:monitor_action_(trace, Update, Int)).
+
 %
 % tracing doNode_ support - depends on SWI-Prolog hook prolog_trace_interception/4
+% trace_clpBNR/3 is unsafe
 %
 trace_clpBNR(V) :-
 	var(V), !,
@@ -993,14 +1029,16 @@ trace_clpBNR(false) :-
 	(debugging(clpBNR(trace),true) -> nospy(clpBNR:doNode_) ; true),
 	nodebug(clpBNR(trace)).
 
+:- trace_clpBNR(false).  % on module load so no requirement to be safe
+
 % prolog_trace_interception/4 is undefined by default, so need to do this now
 :- dynamic user:prolog_trace_interception/4.
 :- multifile user:prolog_trace_interception/4.
 
 user:prolog_trace_interception(Port,Frame,_Choice,Action) :-
+	nonvar(Port),                   % real Port rather than safety check
 	debugging(clpBNR(trace),true),  % peg(trace) enabled?
-	prolog_frame_attribute(Frame,goal,Goal),  % separate goal unification required?
-	Goal = clpBNR:doNode_(Args, Op, _P, _, _, _, _),
+	clpBNR_doNode_op_(goal,Frame,Op,Args),
 	map_constraint_op_(Op,Args,C),
 	clpBNR_trace_port(Port,C,Action),
 	!.  % defensive, remove any CP's
@@ -1024,20 +1062,20 @@ clpStatistics :- !.
 % module initialization
 %
 check_features :-
-	(current_prolog_flag(bounded,true)
-	 -> print_message(error, clpBNR(bounded))
-	 ;  true
-	).
+	current_prolog_flag(bounded,true) -> print_message(error, clpBNR(bounded)) ; true.
 
 version_info :-
 	print_message(informational, clpBNR(versionInfo)),
-	print_message(informational, clpBNR(arithmeticFlags)).
+	print_message(informational, clpBNR(arithmeticFlags)).  % cautionary, set on first use
 
-set_min_free(Amount) :-
-	once(prolog_stack_property(global,min_free(Free))), % minimum free cells (8 bytes/cell)
-	(Free < Amount -> set_prolog_stack(global,min_free(Amount)) ; true).
+check_hooks_safety :-  % safety check on any hooks (test only code)
+	% Note: calls must have no side effects
+	ignore(attr_portray_hook([],_)),                                            % fails
+	ignore(user:prolog_trace_interception(Port,Frame,_Choice,Action)),          % fails
+	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
+	ignore(user:portray(Out...)).                                               % fails
 
-:- multifile prolog:message//1.	
+:- multifile prolog:message//1.
 
 prolog:message(clpBNR(bounded)) -->
 	[ 'clpBNR requires unbounded integers and rationals.'-[] ].
@@ -1047,15 +1085,11 @@ prolog:message(clpBNR(versionInfo)) -->
 	[ '*** clpBNR v~w ***.'-[Version] ].
 
 prolog:message(clpBNR(arithmeticFlags)) -->
-	[ '  Arithmetic global flags set to prefer rationals and IEEE continuation values.'-[] ].
+	[ '  Arithmetic global flags will be set to prefer rationals and IEEE continuation values.'-[] ].
 
-init_clpBNR :-
+init_clpBNR :-  % Note, most initialization deferred to "first use" - see user:exception/3
 	version_info,
-	check_features,
-	set_min_free(8196),
-	set_prolog_flags,     % initialize/check environment flags (can't rely on lazy init via `thread_init_done`)  
-	clpStatistics,        % reset statistics
-	trace_clpBNR(false).  % reset tracing on reload
+	check_features.
 
 :- initialization(init_clpBNR, now).
 

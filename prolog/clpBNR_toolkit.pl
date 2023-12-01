@@ -61,6 +61,9 @@ iterate_until(N,Test,Goal) :- N>0, !,
 	  ; iterate_until(N1,Test,Goal)
 	).
 iterate_until(_N,_,_).  % non-positive N --> exit
+
+sandbox:safe_meta(clpBNR_toolkit:iterate_until(_N,Test,Goal), [Test, Goal]).
+
 %
 % contractor to split largest interval of a list on midpoint
 %

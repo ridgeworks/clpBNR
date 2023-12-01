@@ -44,7 +44,7 @@ eg
 	﻿?- X::real(0,20), global_maximize(X*(5*pi-X),Z).
 	X:: 7.85398...,
 	Z:: 61.6850... .
-All the global aptimizing predicates take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
+All the global optimizing predicates take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
 eg
 	?- X::real(0,20),global_maximum(X*(5*pi-X),Z,3).
 	X::real(7.715508871420848, 7.992454396528164),

@@ -888,4 +888,4 @@ imB_rel_(Z,X,Y,     NewZ,NewX,NewY,  P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y
 % User defined IA primitives
 
 narrowing_op(user(Prim), P, InArgs, OutArgs) :-
-	call(clpBNR:Prim, '$op', InArgs, OutArgs, P).
+	call_user_primitive(Prim, P, InArgs, OutArgs).  % from main module body

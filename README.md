@@ -6,10 +6,15 @@ CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. 
 * CLP(BNR) arithmetic is mathematically sound. Any computed interval will contain the precise value. Due to the well-known pitfalls of IEEE floating point arithmetic, any CLP(*R*) based on conventional IEEE floating point arithmetic is unsound. (Try: `?- 1.21 =:= 1.1*1.1.`) In particular the add and multiply operations are non-associative and non-distributive. Relational interval arithmetic in CLP(BNR) (and some others) ensures that computed intervals contain the mathematically correct real value.
 * All constraints, including non-linear constraints are active. In some CLP(*R*) implementations only linear constraints are active; non-linear constraints are deferred until their set of variables is sufficiently resolved that the constraint becomes linear.
 * CLP(BNR) supports an "integral" constraint which forces interval bounds to be integers, enabling constraints over finite domain problems within the relational interval arithmetic framework; booleans can be represented as integer intervals with bounds `((0,1))` and  primitives to support boolean logic are included. Including integers and booleans within a single arithmetic framework enables natural solutions to mixed domain problems.
-* Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog. The main dependancies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
+* Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog. The main dependencies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
 
 Versions of `clpBNR` 0.11.0 and later require SWI-Prolog 9.1.5 or later for mathematically correct comparison of mixed numeric values. In addition, versions greater than V0.11.0 define an API for users to implement custom interval narrowing operations - see the Reference section of the [Guide to CLP(BNR)][clpBNR_UG] for further details.
 
+As of version 0.11.3, `library(clpBNR)` and `library(clpBNR_toolkit)` are pengine sandbox compliant so they can installed on [SWISH][swish]. Some of the developer centric features, available when running directly on SWI-Prolog, are not available in a sandbox including:
+* using the debug topic `clpBNR` to output additional debug information
+* using `trace_clpBNR/1` to trace the execution of the fixed point iterator
+* using `watch/2` to monitor changes in interval values ("watchpoints" can be defined but have no effect.)
+* using the environment flag `clpBNR_verbose` to control the top level output of intervals (this flag can still be modified in user code to affect the semantics of `copy_term/2`)
 
 ## A Brief Introduction
 
@@ -52,7 +57,7 @@ Interval declarations define the initial bounds of the interval which are narrow
 
 In the first example, both `M` and `N` are narrowed by applying the constraint `{M == 3*N}`. Applying the additional constraint `{M>3}` further narrows the intervals to single values so the original variables are unified with the point (integer) values.
  
-In the last example, the constraint causes the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound towards -inifinity, upper bound towards infinity) to ensure that any answer is included in the resulting interval, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.) This example also demonstrates the more compact "elipsis postfix" form used to output `real` intervals whose bounds have narrowed so that at least the first 3 digits match. This is not actually a goal but does present the domain in a more readable form. (A strict "goal" format including constraints is supported by enabling a CLP(BNR) environment flag.)
+In the last example, the constraint causes the bounds to contract almost to a single point value, but not quite. The underlying reason for this is that standard floating point arithmetic is mathematically unsound due to floating point rounding errors and cannot represent all the real numbers in any case, due to the finite bit length of the floating point representation. Therefore all the interval arithmetic primitives in CLP(BNR) round any computed result outwards (lower bound towards -infinity, upper bound towards infinity) to ensure that any answer is included in the resulting interval, and so is mathematically sound. (This is just a brief, informal description; see the literature on interval arithmetic for a more complete justification and analysis.) This example also demonstrates the more compact "ellipsis postfix" form used to output `real` intervals whose bounds have narrowed so that at least the first 3 digits match. This is not actually a goal but does present the domain in a more readable form. (A strict "goal" format including constraints is supported by enabling a CLP(BNR) environment flag.)
 
 Sound constraints over real intervals (since interval ranges are closed) include `==`, `=<`, and `>=`, while `<>`, `<` and `>` are provided for `integer`'s. A fairly complete set of standard arithmetic operators (`+`, `-`, `*`, `/`, `**`), boolean operators (`and`, `or`, `xor`, `nand`, `nor`, `~`) and common functions (`exp`, `log`, `sqrt`, `abs`, `min`, `max` and standard trig and inverse trig functions) provided as interval relations. Note that these are relations so `{X==exp(Y)}` is the same as `{log(X)==Y}`. A few more examples:
 
@@ -127,6 +132,7 @@ Further explanation and examples, including a complete reference section, can be
 [clip]:        https://scholar.lib.vt.edu/ejournals/JFLP/jflp-mirror/articles/2001/S01-02/JFLP-A01-07.pdf
 [cldl]:        http://interval.sourceforge.net/interval/index.html
 [swip]:        http://www.swi-prolog.org
+[swish]:       https://swish.swi-prolog.org/
 [bnrpp]:       https://ridgeworks.github.io/BNRProlog-Papers
 [clpBNR_UG]:   https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html
 [BNRParchive]: https://github.com/ridgeworks/BNRProlog-Source-Archive
@@ -145,7 +151,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.11.2
+	Installed version:      0.11.3
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -153,7 +159,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.11.2 ***.
+	% *** clpBNR v0.11.3 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
@@ -210,9 +216,9 @@ The `clpBNR` module declaration is:
 
 Also included with this pack is module `clpBNR_toolkit`, a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Reference documentation and examples of use are included in the User Guide ([Guide to CLP(BNR)][clpBNR_UG]).
 
-## SWI-Prolog Arithmetic Flags
+## SWI-Prolog Environment Flags
 
-This package sets the SWI-Prolog arithmetic gloabl environment flags as follows:
+This package sets the SWI-Prolog arithmetic global environment flags as follows:
 
 	set_prolog_flag(prefer_rationals, true),           % enable rational arithmetic
 	set_prolog_flag(max_rational_size, 16),            % rational size in bytes before ..
@@ -222,8 +228,6 @@ This package sets the SWI-Prolog arithmetic gloabl environment flags as follows:
 	set_prolog_flag(float_zero_div,infinity),
 	set_prolog_flag(float_undefined,nan),
 
-This package will not work as intended if these flag values are not respected.
+The setting of these flags occurs when the first `clpBNR` attributed variable in a thread is created. This package will not work as intended if these flag values are not respected.
 
-## Other SWI-Prolog Environment Flags
-
-Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This will be set accordingly when `clpBNR` initializes but nothing prevents it from being subsequently overwritten (as is the case with any global flag).
+Example output in the documentation is premised on flag `write_attributes` is set to `portray`. This (thread-local) flag will be set accordingly when the arithmetic flags are set but nothing prevents it from being subsequently overwritten (as is the case with any global flag).
