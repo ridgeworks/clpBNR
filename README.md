@@ -1,6 +1,6 @@
 # CLP(BNR)
 
-`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog. 
+`clpBNR` is an implementation of CLP(BNR) structured as a package for SWI-Prolog.  
 CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. It differs from some other CLP(*R*)'s in that:
 * CLP(BNR) is complete in that any real number can be finitely represented even though the set of reals is infinite. It does this by sacrificing precision: a real number *R* is represented by an interval (*L,U*) where *L=<R=<U* and *L* and *U* are numbers as defined by SWI-Prolog (integers, rationals or floats, including the IEEE infinity values). A precise value (*L=U*) is represented directly by the number.
 * CLP(BNR) arithmetic is mathematically sound. Any computed interval will contain the precise value. Due to the well-known pitfalls of IEEE floating point arithmetic, any CLP(*R*) based on conventional IEEE floating point arithmetic is unsound. (Try: `?- 1.21 =:= 1.1*1.1.`) In particular the add and multiply operations are non-associative and non-distributive. Relational interval arithmetic in CLP(BNR) (and some others) ensures that computed intervals contain the mathematically correct real value.

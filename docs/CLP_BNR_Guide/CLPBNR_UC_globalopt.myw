@@ -812,4 +812,4 @@ Global optimization is a hard problem and the tools described in this section ar
 	[[SWIP Manual - Arithmetic]] <- link https://www.swi-prolog.org/pldoc/man?section=arith
 	[The Stigler Diet Problem] <- link https://developers.google.com/optimization/lp/stigler_diet
 	[Appendix - Bin_Packing_Examples] <- link #toc4Appendix_3_-_Bin_Packing_Examples
-	
+	 
