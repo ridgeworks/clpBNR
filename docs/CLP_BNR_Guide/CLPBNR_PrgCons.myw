@@ -169,21 +169,15 @@ Note the "fuzzing" due to the presence of floating point constants.
 
 Since the logical properties of `sum/2` have been restored, it can be used in many different ways. In the most general case it generates all lists of all sums (manually terminated after three cases):
 eg
-	﻿?- sum(L,S).
-	L =  ([]),
+	?- sum(L,S).
+	L = [],
 	S = 0 ;
-	L = [_A],
-	S::real(-1.0Inf, 1.0Inf),
-	_A::real(-1.0Inf, 1.0Inf) ;
-	L = [_A, _B],
-	S::real(-1.0Inf, 1.0Inf),
-	_A::real(-1.0Inf, 1.0Inf),
-	_B::real(-1.0Inf, 1.0Inf) ;
-	L = [_A, _B, _C],
-	S::real(-1.0Inf, 1.0Inf),
-	_A::real(-1.0Inf, 1.0Inf),
-	_B::real(-1.0Inf, 1.0Inf),
-	_C::real(-1.0Inf, 1.0Inf) .
+	L = [_],
+	S::real(-1.0Inf, 1.0Inf) ;
+	L = [_, _],
+	S::real(-1.0Inf, 1.0Inf) ;
+	L = [_, _, _],
+	S::real(-1.0Inf, 1.0Inf) .
 As with other predicates of this nature, e.g., `list_length/2`, the potential for non-termination exists and must be managed.
 eg
 	﻿?- length(L,3), L::integer(0,10), sum(L,S).

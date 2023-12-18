@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman 
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -102,10 +102,14 @@ integer                               %% must be an integer value
 
 */
 
-:- use_module(library(sandbox)).      % for safe declarations
-:- use_module(library(debug)).        % debug feature control and messaging
+% debug feature control and messaging
+:- if(exists_source(swish(lib/swish_debug))).
+:- use_module(swish(lib/swish_debug)).
+:- else.
+:- use_module(library(debug)).
+:- endif.
 
-version("0.11.3").
+version("0.11.4").
 
 :- style_check([-singleton, -discontiguous]).
 
@@ -121,23 +125,17 @@ trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
 
 :- set_prolog_flag(optimise,true).
 
+:- multifile(sandbox:safe_global_variable/1).
+:- multifile(sandbox:safe_primitive/1).
+:- multifile(sandbox:safe_meta/2).
+
 current_node_(Node) :-  % look back to find current Op being executed for debug messages
 	prolog_current_frame(Frame),  % this is a little grungy, but necessary to get intervals
-	clpBNR_doNode_op_(parent_goal,Frame,Op,Args),  % constrained for safety
+	prolog_frame_attribute(Frame,parent_goal,doNode_(Args,Op,_,_,_,_,_)),
 	map_constraint_op_(Op,Args,Node),
 	!.
 
-% only called if debugging(clpBNR,true) which can't (currently) be done safely
 sandbox:safe_primitive(clpBNR:current_node_(Node)). 
-
-% safe use of prolog_frame_attribute/3
-clpBNR_doNode_op_(parent_goal,Frame,Op,Args) :-
-	prolog_frame_attribute(Frame,parent_goal,doNode_(Args,Op,_,_,_,_,_)).
-clpBNR_doNode_op_(goal,Frame,Op,Args) :-
-	prolog_frame_attribute(Frame,goal,Goal),
-	Goal = clpBNR:doNode_(Args,Op,_,_,_,_,_).
-
-sandbox:safe_primitive(clpBNR:clpBNR_doNode_op_(_,_,_,_)).
 
 %
 % statistics
@@ -161,17 +159,9 @@ sandbox:safe_global_variable('clpBNR:gc_time').
 % Public predicates ::, {}, clpStatistics/1 and range read this global before proceeding. 
 %
 user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
-	set_min_free(8196),   % cells
 	set_prolog_flags,     % initialize/check environment flags  
 	clpStatistics,        % defines remaining globals 
 	g_assign('clpBNR:thread_init_done',1).
-
-% ensure sufficient room on global stack
-set_min_free(Amount) :-
-	once(prolog_stack_property(global,min_free(Free))), % minimum free cells (8 bytes/cell)
-	(Free < Amount -> set_prolog_stack(global,min_free(Amount)) ; true).
-
-sandbox:safe_primitive(clpBNR:set_min_free(Amount)).    % thread initialization only
 
 %
 % Define custom clpBNR flags when module loaded
@@ -312,7 +302,7 @@ getValue(Int, Val) :-
 %
 putValue_(New, Int, NodeList) :- 
 	get_attr(Int, clpBNR, Def)             % still an interval ?
-	 -> (debugging(clpBNR,true) -> check_monitor_(Int, New, Def) ; true),
+	 -> (debugging(clpBNR) -> check_monitor_(Int, New, Def) ; true),
 	    Def = interval(Type,_,Nodes,_),    % get Type and Nodes for queueing
 	    New = (L,H),
 	    ( 0 is cmpr(L,H)                   % point interval ->
@@ -505,7 +495,7 @@ upper_bound_val_(boolean,H,IH) :-          % boolean: narrow to H=1
 applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	get_attr(Int,clpBNR,interval(Type,Val,NodeList,Flags)),
 	(NewType @< Type    % standard order of atoms:  boolean @< integer @< real
-	 -> (debugging(clpBNR,true) -> check_monitor_(Int, NewType, interval(Type,Val,NodeList,Flags)) ; true),
+	 -> (debugging(clpBNR) -> check_monitor_(Int, NewType, interval(Type,Val,NodeList,Flags)) ; true),
 	    Val = (L,H),
 	    lower_bound_val_(NewType,L,IL),
 	    upper_bound_val_(NewType,H,IH),
@@ -527,7 +517,7 @@ attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 	(Type=integer -> integer(Num) ; true),   % check that Num is consistent with Type
 	% L=<Num, Num=<H, assumes L < H
 	cmpr(L,Num) + cmpr(Num,H) < 0, !,        % and in range (not NaN)
-	(debugging(clpBNR,true) -> monitor_unify_(IntDef, Num) ; true),
+	(debugging(clpBNR) -> monitor_unify_(IntDef, Num) ; true),
 	(var(Nodelist)
 	 -> true                                 % nothing to do
 	 ;  linkNodeList_(Nodelist, T/T, Agenda),
@@ -540,7 +530,7 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 	mergeValues_(Type1, Type2, NewType, R, NewR), !,
 	mergeNodes_(Nodelist2,Nodelist1,Newlist),  % unified node list is a merge of two lists
 	mergeFlags_(Flags1,Flags2,Flags),
-	(debugging(clpBNR,true) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
+	(debugging(clpBNR) -> monitor_unify_(interval(Type1,V1,_,Flags), Int) ; true),
 	% update new type, value and constraint list, undone on backtracking
 	put_attr(Int,clpBNR,interval(NewType,NewR,Newlist,Flags)),
 	(var(Newlist)
@@ -596,7 +586,6 @@ matching_node_([N|Ns],Op,Ops) :-
 %
 % New Constraints use { ... } syntax.
 %
-{}.
 {Cons} :-
 	g_read('clpBNR:thread_init_done',_),      % ensures per-thread initialization
 	term_variables(Cons, CVars),
@@ -695,9 +684,9 @@ build_args_([Arg|ArgsR],[Obj|Objs],[Type|Types],Agenda,NewAgenda) :-
 	build_(Arg,Obj,Type,Agenda,NxtAgenda),
 	build_args_(ArgsR,Objs,Types,NxtAgenda,NewAgenda).
 
-chk_primitive_(Prim) :-  % wraps safe usage of unsafe predicate_property/2
+chk_primitive_(Prim) :-  % wraps safe usage of unsafe current_predicate/2
 	UsrHead =..[Prim,'$op',_,_,_],
-	predicate_property(UsrHead,implementation_module(clpBNR)).  % cheap
+	current_predicate(_,clpBNR:UsrHead).
 
 sandbox:safe_primitive(clpBNR:chk_primitive_(Prim)).
 
@@ -968,6 +957,7 @@ linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list
 %
 watch(Int,Action) :-
 	atom(Action), 
+	current_module(clpBNR),  % this just marks watch/2 as unsafe regarding body
 	get_interval_flags_(Int,Flags), !,
 	remove_(Flags,watch(_),Flags1),
 	(Action = none -> Flags2=Flags1 ; Flags2=[watch(Action)|Flags1]),
@@ -1010,53 +1000,46 @@ monitor_action_(log, Val, Int) :-  !,  % narrow range
 	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
 monitor_action_(_, _, _).  % default to noop (as in 'none')
 
-% only called if debugging(clpBNR,true) which can't (currently) be done safely
-% revisit if debug(Topic) ever becomes safe
-sandbox:safe_primitive(clpBNR:monitor_action_(trace, Update, Int)).
+sandbox:safe_primitive(clpBNR:watch(Int,Action)) :- % watch(X,trace) is unsafe.
+	Action \= trace.
+% only safe because watch(X,trace) is unsafe.
+sandbox:safe_primitive(clpBNR:monitor_action_(Action, Update, Int)).
 
 %
-% tracing doNode_ support - depends on SWI-Prolog hook prolog_trace_interception/4
-% trace_clpBNR/3 is unsafe
+% tracing doNode_ support - using wrap_predicate(:Head, +Name, -Wrapped, +Body)/4
+% trace_clpBNR/3 is unsafe (wrapping is global, depends on debug topics)
 %
-trace_clpBNR(V) :-
-	var(V), !,
-	debugging(clpBNR(trace),V).
-trace_clpBNR(true) :-
-	debug(clpBNR(trace)),
-	spy(clpBNR:doNode_).
-trace_clpBNR(false) :-
-	% only remove spy point if it was (possibly) set by trace_clpBNR
-	(debugging(clpBNR(trace),true) -> nospy(clpBNR:doNode_) ; true),
-	nodebug(clpBNR(trace)).
+:- use_module(library(prolog_wrap)).
 
-:- trace_clpBNR(false).  % on module load so no requirement to be safe
+trace_clpBNR(Bool)  :-                  % query or already in defined state
+	( current_predicate_wrapper(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda), 
+	                            'clpBNR:doNode_', Wrapped, Body)
+	 -> Bool = true ; Bool = false
+	),
+	!.
+trace_clpBNR(true)  :-                  % turn on wrapper
+	wrap_predicate(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda),
+	                   'clpBNR:doNode_', 
+	                   Wrapped, 
+	                   doNode_wrap_(Wrapped, Args,Op)).
+trace_clpBNR(false) :-                  % turn off wrapper
+	unwrap_predicate(clpBNR:doNode_/7,  %(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda),
+	                   'clpBNR:doNode_').
 
-% prolog_trace_interception/4 is undefined by default, so need to do this now
-:- dynamic user:prolog_trace_interception/4.
-:- multifile user:prolog_trace_interception/4.
-
-user:prolog_trace_interception(Port,Frame,_Choice,Action) :-
-	nonvar(Port),                   % real Port rather than safety check
-	debugging(clpBNR(trace),true),  % peg(trace) enabled?
-	clpBNR_doNode_op_(goal,Frame,Op,Args),
+doNode_wrap_(Wrapped, Args,Op) :-
 	map_constraint_op_(Op,Args,C),
-	clpBNR_trace_port(Port,C,Action),
-	!.  % defensive, remove any CP's
-
-clpBNR_trace_port(call,C,continue).  % ignore
-clpBNR_trace_port(redo,C,continue).  % ignore (just used for trimming?)
-clpBNR_trace_port(fail,C,fail) :-
-	trace_clpBNR_("** fail ** ~p.",C).
-clpBNR_trace_port(exit,C,continue) :-
-	trace_clpBNR_("~p.",C).
+	(Wrapped
+	 -> trace_clpBNR_("~p.",C)
+	 ;  trace_clpBNR_("** fail ** ~p.",C)
+	).
 
 %
 % Get all defined statistics
 %
 clpStatistics(Ss) :- findall(S, clpStatistic(S), Ss).
 
-% end of reset chain succeeds. Need cut since predicate is "discontiguous".
-clpStatistics :- !.
+% end of reset chain succeeds.
+clpStatistics.
 
 %
 % module initialization
@@ -1071,9 +1054,9 @@ version_info :-
 check_hooks_safety :-  % safety check on any hooks (test only code)
 	% Note: calls must have no side effects
 	ignore(attr_portray_hook([],_)),                                            % fails
-	ignore(user:prolog_trace_interception(Port,Frame,_Choice,Action)),          % fails
 	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
-	ignore(user:portray(Out...)).                                               % fails
+	ignore(user:portray('$clpBNR...'(_))),                                      % fails
+	ignore(term_html:portray('$clpBNR...'(_),_,_,_)).                           % fails
 
 :- multifile prolog:message//1.
 

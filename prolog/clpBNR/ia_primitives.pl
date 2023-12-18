@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman 
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -32,7 +32,7 @@ evalNode(Op, P, Is, R) :-
 	!.
 evalNode(Op, _, _, _):-
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
-	debugging(clpBNR, true),  % fail immediately unless debug=true
+	debugging(clpBNR),             % fail immediately unless debug=true
 	current_node_(C),
 	debug_clpBNR_("** fail ** ~w.",C),
 	fail.
@@ -49,16 +49,11 @@ clpStatistic(narrowingOps(C)) :- g_read('clpBNR:evalNode',C).
 
 clpStatistic(narrowingFails(C)) :- g_read('clpBNR:evalNodeFail',C).
 
-% SWIP inline optimization for non_empty/2
-:- if(current_predicate(system:expand_goal/2)).
-
-goal_expansion(non_empty(L,H), 1 =\= cmpr(L,H)).
-
-:- endif.
-
 %
 % non-empty interval test
 %
+goal_expansion(non_empty(L,H), 1 =\= cmpr(L,H)).  % SWIP inline optimization for non_empty/2
+
 non_empty((L,H)) :- non_empty(L,H).
 non_empty(L,H) :- 1 =\= cmpr(L,H).
 

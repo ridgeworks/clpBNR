@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman 
+ *	Copyright (c) 2019-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -59,44 +59,82 @@ attr_portray_hook(interval(Type,Val,N,F),_Int) :-
 	interval_domain_(Type,Val,Dom),
 	format('~w',Dom).                       % safe
 
-:- op(150, xf, ...).                        % postfix op just for ellipsis output format
+%
+% Support ellipsis format in answers (toplevel and SWISH)
+%
+user:portray('$clpBNR...'(Out)) :-           % remove quotes on stringified number in ellipsis format
+	string(Out),
+	format('~W...',[Out,[quoted(false)]]).  % safe
 
-user:portray(Out...) :- atomic(Out),        % remove quotes on stringified number in ellipsis format
-	string_concat(Out,"...",OutStr),
-	format('~W',[OutStr,[quoted(false)]]).  % safe
+:- multifile(term_html:portray//2).         % HTML version
+
+term_html:portray('$clpBNR...'(Out),_) -->   % remove quotes on stringified number in ellipsis format
+	{ string(Out) },
+	[<, span, ' ', class,  '="', 'pl-float', '"', >, Out, ..., </, span, >].
 
 %
-% SWIP hook for top level and graphical debugger clpBNR attribute display
+% SWIP hook for top level, SWISH, and graphical debugger clpBNR attribute display
 % two modes : 
 %	Verbose=true,  display all interval domains and associated constraints
 %	Verbose=false, display vars with no constraints - internal vars omitted in answers
 %
-sandbox:safe_global_variable('clpBNR:bindings').  % answer Bindings
+sandbox:safe_global_variable('clpBNR:answermode').  % answer control parameters
 
-clpStatistics :-
-	g_assign('clpBNR:bindings',any),       % initialize using clpStatistics hook
-	fail.  % backtrack to reset other statistics.
+user:exception(undefined_global_variable,'clpBNR:answermode',retry) :- !,
+	set_default_answer_mode_(_).  % safe, tested elsewhere
 
+set_default_answer_mode_((copy,Verbose)) :- 
+	current_prolog_flag(clpBNR_verbose,Verbose),
+	g_assign('clpBNR:answermode',(copy,Verbose)).
+
+% toplevel answer control
 user:expand_query(Q,Q,Bindings,Bindings) :-
-	g_assign('clpBNR:bindings',any).       % any bindings while generating answer (for GUI debug)
+	set_default_answer_mode_(Mode).  % reset for new query
 
 user:expand_answer(Bindings,Bindings) :-
-	g_assign('clpBNR:bindings',Bindings).  % bindings for answer (uses nb_linkval to avoid copy) 
+	current_prolog_flag(clpBNR_verbose,Verbose),
+	add_names_(Bindings,Verbose).
 
-attribute_goals(X) -->                     % constructs goals to build X
-	{current_prolog_flag(clpBNR_verbose,Verbose),  % details depend on flag clpBNR_verbose
-	 % may be called from pce thread where global doesn't exist
-	 catch(g_read('clpBNR:bindings',Bindings),error(existence_error(variable, _),_Ctxt),Bindings=any),
-	 domain_goals_(Verbose,Bindings,X,Goals)
+% SWISH answer control
+:- multifile(swish_trace:pre_context/3).
+:- multifile(swish_trace:post_context/1).
+
+swish_trace:pre_context(_,_,_) :-
+	set_default_answer_mode_(Mode).  % reset for new query
+	
+swish_trace:post_context(Dict) :-
+	current_prolog_flag(clpBNR_verbose,Verbose),
+	add_names_(Dict.bindings,Verbose).
+
+% annotate variables in Bindings
+add_names_([],_).
+add_names_([Name = Var|Bindings],Verbose) :-
+	(get_interval_flags_(Var,Flags)
+	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags])
+	 ;  true  % Var not a clpBNR interval
+	), 	
+	add_names_(Bindings,Verbose).
+
+%
+% Constructs goals to build interval(X), format depends on Verbose setting
+%
+attribute_goals(X) -->
+	{(get_interval_flags_(X, Flags), memberchk(name(_,Verbose),Flags)
+       -> Phase = answer,
+          g_assign('clpBNR:answermode',(Phase,Verbose))  % force to answer phase
+       ;  g_read('clpBNR:answermode',(Phase,Verbose))    % use existing values
+     ),
+	 domain_goals_(Verbose,Phase,X,Goals)
 	},
 	list_dcg_(Goals).  % avoids "unsafe" call to phrase/3
 
 list_dcg_([]) --> [].
 list_dcg_([H|T]) --> [H], list_dcg_(T).
 
-domain_goals_(false,Bindings,X,[X::Dom]) :-  % Verbose=false
-	% any bindings or X in bindings ?
-	(Bindings == any -> true ; term_variables(Bindings,AVars), identity_member_(AVars,X)),
+domain_goals_(false,answer,X,C) :-
+	get_interval_flags_(X, Flags), memberchk(name(_,_),Flags), !,  % annotated var?
+	domain_goals_(false,copy,X,C).
+domain_goals_(false,copy,X,[X::Dom]) :-
 	interval_object(X, Type, Val, _), !,
 	intValue_(Val,Type,Dom).
 domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints always output
@@ -105,8 +143,6 @@ domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints a
 	constraints_(Nodes,X,NCs),            % reverse map to list of original constraints
 	to_comma_exp_(NCs,X::Dom,Cs).
 domain_goals_(_,_,X,[]).                  % catchall but normally non-query attvar, Verbose=false
-
-identity_member_([Var|Vars],X) :-  Var==X ; identity_member_(Vars,X).
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
@@ -137,12 +173,12 @@ to_comma_cexp_([C|Cs],In,Out) :-
 % 6. Subterm intervals as sub-terms printed as domain (Type(L,H)).
 %
 intValue_((0,1),integer,boolean).                  % boolean
-intValue_((L,H),real,Out...) :-                    % virtual zero (zero or subnormal) 
+intValue_((L,H),real,'$clpBNR...'(Out)) :-          % virtual zero (zero or subnormal) 
 	zero_float_(L),
 	zero_float_(H), !,
 	format(chars(Zero),"~16f",0.0),
 	string_chars(Out,[' '|Zero]).                  % space prefix 
-intValue_((L,H),real,Out...) :-                    % two floats with minimal leading match
+intValue_((L,H),real,'$clpBNR...'(Out)) :-          % two floats with minimal leading match
 	float_chars_(L,LC),
 	float_chars_(H,HC),
 	sign_chars_(LC,HC,ULC,UHC,Codes/Match),
@@ -433,11 +469,9 @@ simplesolveall_(Xs,Err) :-
 	midpoint_(Xl,Xh,Xmid),
 	choice_generator_(Type,X,(Xl,Xh),Xmid,Err,Choices),
 	!,
-	Choices,              % generate alternatives
+	simplesolve_choices_(Choices),  % generate alternatives
 	simplesolveall_(Xs,Err).
 simplesolveall_(Xs,Err).  % terminated
-
-sandbox:safe_meta(clpBNR:simplesolveall_(Xs,Err), []).
 
 select_wide_([X],_,X) :- !.       % select last remaining element
 select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
@@ -447,7 +481,7 @@ select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
 	 -> select_wide_([X1|Xs],D1,X)
 	 ;  select_wide_([X2|Xs],D2,X)
 	).
-	
+
 %	bisect_interval(real,X,[Xl,Xh],Xmid,Err,({X=< ::(Xmid,Xmid)};{::(Xmid,Xmid)=<X})) :-
 choice_generator_(real,X,(Xl,Xh),Xmid,Err,bisect_interval_(real,X,Xmid)) :-
 	\+ chk_small(Xl,Xh,Err), !.  % choice_generator_ fails if X is small real
@@ -455,9 +489,10 @@ choice_generator_(integer,X,(Xl,Xh),_,_,enumerate(X)):-            % enumerate n
 	Xh-Xl =< 16, !.
 choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
 
-bisect_interval_(_,X,Pt) :-	constrain_(X=< ::(Pt,Pt)). 
-bisect_interval_(real,X,Pt) :- constrain_(::(Pt,Pt)=<X).   % must use =<
-bisect_interval_(integer,X,Pt) :-constrain_(::(Pt,Pt)<X).  % can use <
+simplesolve_choices_(bisect_interval_(_,X,Pt)) :- constrain_(X=< ::(Pt,Pt)).
+simplesolve_choices_(bisect_interval_(real,X,Pt)) :- constrain_(::(Pt,Pt)=<X).   % must use =<
+simplesolve_choices_(bisect_interval_(integer,X,Pt)) :- constrain_(::(Pt,Pt)<X).  % can use <
+simplesolve_choices_(enumerate(X)) :- enumerate(X).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -552,7 +587,7 @@ xpsolve_each_([X|Xs],[X|Us],Err) :-
 	interval_object(X,Type,V,_),          % get interval type and value
 	splitinterval_(Type,X,V,Err,Choices), % split interval
 	!,
-	Choices,                              % create choice(point)
+	xpsolve_choice(Choices),              % create choice(point)
 	xpsolve_each_(Xs,Us,Err).             % split others in list
 xpsolve_each_([X|Xs],Us,Err) :-           % avoid unfreeze overhead if [] unified in head
 	X==[], !,                             % end of nested listed, discard
@@ -564,13 +599,14 @@ xpsolve_each_([X|Xs],[U|Us],Err) :-
 xpsolve_each_([X|Xs],Us,Err) :-
 	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
 
-sandbox:safe_meta(clpBNR:xpsolve_each_(Xs,Us,Err), []).
+xpsolve_choice(split(X,SPt)) :- constrain_(X =< SPt).  % avoid meta call
+xpsolve_choice(split(X,SPt)) :- constrain_(SPt =< X).
+xpsolve_choice(enumerate(X)) :- enumerate(X).
 
 %
 % try to split interval - fails if unsplittable (too narrow)
 %
-
-splitinterval_(real,X,V,Err,(constrain_(X =< SPt);constrain_(SPt =< X))) :-
+splitinterval_(real,X,V,Err,split(X,SPt)) :-
 	splitinterval_real_(V,Pt,Err),          % initial guess
 	split_real_(X,V,Pt,Err,SPt).
 
@@ -579,10 +615,9 @@ splitinterval_(integer,X,_,_,_) :-           % bounds must be finite since bigin
 	((L == -1.0Inf ; H == 1.0Inf) -> !,fail).
 splitinterval_(integer,X,V,_,Cons) :- 
 	( splitinterval_integer_(V,Pt)                       % try to split 
-	 -> Cons = (constrain_(X =< Pt);constrain_(Pt < X))  % success
+	 -> Cons = split(X,Pt)                               % success
 	 ;  Cons = enumerate(X)                              % fail, use enumerate on X
 	).
-
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
 

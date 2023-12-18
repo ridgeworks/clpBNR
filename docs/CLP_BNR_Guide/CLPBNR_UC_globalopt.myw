@@ -723,8 +723,7 @@ eg
 	﻿?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
 	OF = X*(5*pi-X),
 	X:: 7.85398163397448...,
-	Z:: 61.685027506808... ;
-	false.
+	Z:: 61.685027506808... .
 Note that the additional constraints produce a much sharper answer in much less time (orders of magnitude for this simple example). And the search finds the single solution without requiring the use of solve to find the minimizer.
 
 Other examples:
@@ -739,8 +738,7 @@ eg
 	OF =  (X1-2)**2+(X2-2)**2,
 	X1:: 1.400000000000000...,
 	X2:: 0.800000000000000...,
-	Z:: 1.80000000000000... ;
-	false.
+	Z:: 1.80000000000000... .
 Again much sharper answers in much less time. In general, it's advantageous to use `local_minima` and `local_maxima` but this requires that a local critical point exists within the domain defined by the problem. If such is not the case the search may fail, i.e. the global optima is at a boundary. In this case, it make take an excessive amount of time and/or stack space to find it by exhaustive search. A couple of other non-linear optimization examples follow.
 
 ##### "Cheese Shop"

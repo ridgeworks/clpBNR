@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2022 Rick Workman 
+ *	Copyright (c) 2022-2023 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -43,8 +43,8 @@
 	]).
 	
 :- use_module(library(apply),[maplist/3]).
-:- current_module(clpBNR) -> true ; use_module(library(clpBNR)).
-:- current_module(simplex) -> true ; use_module(library(simplex)).
+:- use_module(library(clpBNR)).
+:- use_module(library(simplex)).
 
 % messages for noisy failure
 fail_msg_(FString,Args) :-
