@@ -541,7 +541,7 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 
 attr_unify_hook(interval(Type,Val,_Nodelist,_Flags), V) :-   % new value out of range
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
-	debugging(clpBNR, true),       % fail immediately unless debug=true
+	debugging(clpBNR),	       % fail immediately unless debug=true
 	debug_clpBNR_('Failed to unify ~w::(~w) with ~w',[Type,Val,V]),
 	fail.
 
