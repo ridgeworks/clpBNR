@@ -55,7 +55,7 @@ name_vars_([TVar|TVars],[OVar|OVars],N) :-
 %
 % SWIP attribute portray hook - used if write_attributes=portray
 %
-attr_portray_hook(interval(Type,Val,N,F),_Int) :-
+attr_portray_hook(interval(Type,Val,_N,_F),_Int) :-
 	interval_domain_(Type,Val,Dom),
 	format('~w',Dom).                       % safe
 
@@ -89,7 +89,7 @@ set_default_answer_mode_((copy,Verbose)) :-
 
 % toplevel answer control
 user:expand_query(Q,Q,Bindings,Bindings) :-
-	set_default_answer_mode_(Mode).  % reset for new query
+	set_default_answer_mode_(_Mode).  % reset for new query
 
 user:expand_answer(Bindings,Bindings) :-
 	current_prolog_flag(clpBNR_verbose,Verbose),
@@ -100,7 +100,7 @@ user:expand_answer(Bindings,Bindings) :-
 :- multifile(swish_trace:post_context/1).
 
 swish_trace:pre_context(_,_,_) :-
-	set_default_answer_mode_(Mode).  % reset for new query
+	set_default_answer_mode_(_Mode).  % reset for new query
 	
 swish_trace:post_context(Dict) :-
 	current_prolog_flag(clpBNR_verbose,Verbose),
@@ -142,7 +142,7 @@ domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints a
 	interval_domain_(Type, Val, Dom), 
 	constraints_(Nodes,X,NCs),            % reverse map to list of original constraints
 	to_comma_exp_(NCs,X::Dom,Cs).
-domain_goals_(_,_,X,[]).                  % catchall but normally non-query attvar, Verbose=false
+domain_goals_(_,_,_X,[]).                  % catchall but normally non-query attvar, Verbose=false
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
@@ -233,7 +233,7 @@ matching_([LC,LC1|LCs],[HC,HC1|HCs],[HC|Cs],N,Dec,Nout) :- % match after roundin
 	digit_match_(LC,LC1,HC,HC1), !,
 	N1 is N+1,
 	matching_([LC1|LCs],[HC1|HCs],Cs,N1,Dec,Nout).
-matching_(LCs,HCs,[],N,Dec,N) :-                    % non-matching after '.'
+matching_(_LCs,_HCs,[],N,Dec,N) :-                    % non-matching after '.'
 	nonvar(Dec). 
 
 digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
@@ -252,7 +252,7 @@ enumerate(X) :-
 	between(L,H,X).             % gen values, constraints run on unification
 enumerate(X) :- list(X), !,     % list of ..
 	enumerate_list_(X).
-enumerate(X).                   % X not enumerable, skip it
+enumerate(_X).                   % X not enumerable, skip it
 
 enumerate_list_([]).
 enumerate_list_([X|Xs]) :-
@@ -313,7 +313,7 @@ global_maximum(Exp,Z,P) :-
 global_minimum(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	global_minimum(Exp,Z,P).
-global_minimum(Exp,Z,P) :- ground(Exp), !,
+global_minimum(Exp,Z,_P) :- ground(Exp), !,
 	Z is Exp.
 global_minimum(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,false).
@@ -329,7 +329,7 @@ global_maximize(Exp,Z,P) :-
 global_minimize(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	global_minimize(Exp,Z,P).
-global_minimize(Exp,Z,P) :- ground(Exp), !,
+global_minimize(Exp,Z,_P) :- ground(Exp), !,
 	Z is Exp.
 global_minimize(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,true).
@@ -338,7 +338,7 @@ global_optimum_(Exp,Z,P,BindVars) :-
 	term_variables(Exp,Xs),                           % vars to search on
 	{Z==Exp},                                         % Steps 1. - 4.
 	box_([Z|Xs],[(Zl,Zh)|XVs]),                       % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).    % and start iteration
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),_ZTree,BindVars).    % and start iteration
 
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	continue_MS(Zl,Zh,P,Xs,XVs,False),                % Step 12., check termination condition
@@ -349,7 +349,7 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	tree_insert(ZTree1,V2,ZTree2),                    % Step 10. for V2
 	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
 	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
-iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-      % termination criteria (Step 12.) met
+iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-      % termination criteria (Step 12.) met
 	Z::real(Zl,Zh),
 	(BindVars -> optimize_vars_(Xs,XVs) ; true).      % optional minimizer narrowing
 
@@ -367,18 +367,18 @@ continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
 	SErr is 10.0**(-min(6,P+2)), % ?? heuristic
 	simplesolveall_(Xs,SErr),                    % validate solution
 	!, fail.                                     % no narrowing escapes
-continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
+continue_MS(_Zl,_Zh,_,_,_XVs,false).                % continue with false positive
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(False,_,_,_,_,[]) :- False == false, !.  % if false positive return "fail" result
-eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-            % Step 7., calculate F(V) and save
+eval_MS(_,Z,Xs,XVs,XConstraint,_FV) :-            % Step 7., calculate F(V) and save
 	nb_setval('clpBNR:eval_MS',[]),                      % [] means failure to evaluate
 	buildConstraint_(XConstraint,T/T,Agenda),
 	build_box_MS(Xs,XVs,Agenda),
 	box_([Z|Xs],[(Zl,Zh)|NXVs]),                 % copy Z and Xs solution bounds
 	nb_setval('clpBNR:eval_MS',Zl-(Zh,NXVs)),            % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
-eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-
+eval_MS(_,_Z,_Xs,_XVs,_XConstraint,FV) :-
 	nb_getval('clpBNR:eval_MS',FV).                      % retrieve solution ([] on failure)
 
 sandbox:safe_global_variable('clpBNR:eval_MS').
@@ -392,7 +392,7 @@ build_box_MS([X|Xs],[XNew|XVs],Agenda) :-
 
 tree_insert(Tree,[],Tree) :-!.
 tree_insert(MT,Data,Ntree) :- var(MT), !,
-	Ntree = n(L,R,Data).
+	Ntree = n(_L,_R,Data).
 tree_insert(n(L,R,K-Data), NK-NData, Ntree) :- -1 is cmpr(NK,K), !,  % NK<K
 	tree_insert(L, NK-NData, NewL),
 	Ntree = n(NewL,R,K-Data).
@@ -425,10 +425,10 @@ widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
 	midpoint_(L,H,XfMid), !,              % must be "splittable" so
 	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
-widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),X0,Xf,XfMid) :-
+widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
 	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
 	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
-widest1_MS([X|Xs],[XV|XVs],W0,X0,Xf,XfMid) :-
+widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
 	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
 
 % Midpoint test, Step 11+:
@@ -444,7 +444,7 @@ splitsolve(X) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	splitsolve(X,P).
 
-splitsolve(X,P) :-
+splitsolve(X,_P) :-
 	number(X), !.                 % already a point value
 splitsolve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
@@ -464,14 +464,14 @@ flatten_list([H|T], Tail, List) :- !,
 flatten_list(N,Tail,[N|Tail]).
 
 simplesolveall_(Xs,Err) :-
-	select_wide_(Xs,D1,X),
+	select_wide_(Xs,_D1,X),
 	interval_object(X, Type, (Xl,Xh), _),
 	midpoint_(Xl,Xh,Xmid),
 	choice_generator_(Type,X,(Xl,Xh),Xmid,Err,Choices),
 	!,
 	simplesolve_choices_(Choices),  % generate alternatives
 	simplesolveall_(Xs,Err).
-simplesolveall_(Xs,Err).  % terminated
+simplesolveall_(_Xs,_Err).  % terminated
 
 select_wide_([X],_,X) :- !.       % select last remaining element
 select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
@@ -571,18 +571,18 @@ solve(X) :-
 solve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
 	solve([X],P).
-solve(X,P) :-
+solve(X,_P) :-
 	number(X), !.                 % already a point value
 solve(X,P) :-                     % assume list
 	Err is 10.0**(-(P+1)),        % convert digits of precision to normalized error value 
 	xpsolveall_(X,Err).
 
-xpsolveall_([],Err) :- !.
+xpsolveall_([],_Err) :- !.
 xpsolveall_(Xs,Err) :-
 	xpsolve_each_(Xs,Us,Err),     % split once and collect successes
 	xpsolveall_(Us,Err).          % continue to split remaining
 
-xpsolve_each_([],[],Err).
+xpsolve_each_([],[],_Err).
 xpsolve_each_([X|Xs],[X|Us],Err) :-
 	interval_object(X,Type,V,_),          % get interval type and value
 	splitinterval_(Type,X,V,Err,Choices), % split interval
@@ -596,7 +596,7 @@ xpsolve_each_([X|Xs],[U|Us],Err) :-
 	list(X), !,                           % nested list
 	xpsolve_each_(X,U,Err),               % split nested list
 	xpsolve_each_(Xs,Us,Err).             % then others in main list
-xpsolve_each_([X|Xs],Us,Err) :-
+xpsolve_each_([_X|Xs],Us,Err) :-
 	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
 
 xpsolve_choice(split(X,SPt)) :- constrain_(X =< SPt).  % avoid meta call
@@ -625,9 +625,9 @@ splitinterval_(integer,X,V,_,Cons) :-
 %  split a real interval
 split_real_(X,_,Pt,_,::(Pt,Pt)) :-          % Pt not in solution space, split here
 	X\=Pt, !.  % not({X==Pt}).
-split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try lower range
+split_real_(X,(L,_H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try lower range
 	split_real_lo(X,(L,Pt),NPt,Err), !.
-split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try upper range
+split_real_(X,(_L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try upper range
 	split_real_hi(X,(Pt,H),NPt,Err).
 
 split_real_lo(X,(L,Pt),NPt,Err) :-         % search lower range for a split point 
@@ -805,23 +805,23 @@ pd_sub(DU,DV,DX) :- DU==0, !, pd_minus(DV,DX).
 pd_sub(DU,DV,DU) :- DV==0, !.
 pd_sub(DU,DV,DX) :- ground((DU,DV)) -> DX is DU-DV ; DX = DU-DV.
 
-pd_mul(DU,DV,0)  :- DU==0, !.
-pd_mul(DU,DV,0)  :- DV==0, !.
+pd_mul(DU,_DV,0) :- DU==0, !.
+pd_mul(_DU,DV,0) :- DV==0, !.
 pd_mul(DU,DV,DV) :- DU==1, !.
 pd_mul(DU,DV,DU) :- DV==1, !.
 pd_mul(DU,DV,DX) :- DU== -1, !, pd_minus(DV,DX).
 pd_mul(DU,DV,DX) :- DV== -1, !, pd_minus(DU,DX).
 pd_mul(DU,DV,DX) :- ground((DU,DV)) -> DX is DU*DV ; DX = DU*DV.
 
-pd_div(DU,DV,0)  :- DU==0, !.
-pd_div(DU,DV,0)  :- DV==0, !, fail.
+pd_div(DU,_DV,0) :- DU==0, !.
+pd_div(_DU,DV,0) :- DV==0, !, fail.
 pd_div(DU,DV,DU) :- DV==1, !.
-pd_div(DU,DV,DU) :- DV== -1, !, pd_minus(DU,DX).
+pd_div(DU,DV,DU) :- DV== -1, !, pd_minus(DU,_DX).
 pd_div(DU,DV,DX) :- ground((DU,DV)) -> DX is DU/DV ; DX = DU/DV.
 
-pd_pow(DU,DV,0)  :- DU==0, !.
-pd_pow(DU,DV,1)  :- DV==0, !.
-pd_pow(DU,DV,1)  :- DU==1, !.
+pd_pow(DU,_DV,0) :- DU==0, !.
+pd_pow(_DU,DV,1) :- DV==0, !.
+pd_pow(DU,_DV,1)  :- DU==1, !.
 pd_pow(DU,DV,DU) :- DV==1, !.
 pd_pow(DU,DV,DX) :- ground((DU,DV)) -> DX is DU**DV ; DX = DU**DV.
 

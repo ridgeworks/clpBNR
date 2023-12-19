@@ -30,7 +30,6 @@
 :- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
 
 :- op(1199, xfx, ::).         % suppresses errors while parsing
-:- style_check(-singleton).   % suppresses warnings while parsing
 
 :- else.
 
@@ -108,11 +107,11 @@ integer                               %% must be an integer value
 :- else.
 :- use_module(library(debug)).
 :- endif.
-:- use_module(library(arithmetic), []).
+:- use_module(library(arithmetic)).
 
 version("0.11.4").
 
-:- style_check([-singleton, -discontiguous]).
+:- style_check(-discontiguous).
 
 %
 % Define debug_clpBNR_/2 before turning on optimizer removing debug calls.
@@ -136,7 +135,7 @@ current_node_(Node) :-  % look back to find current Op being executed for debug 
 	map_constraint_op_(Op,Args,Node),
 	!.
 
-sandbox:safe_primitive(clpBNR:current_node_(Node)). 
+sandbox:safe_primitive(clpBNR:current_node_(_Node)). 
 
 %
 % statistics
@@ -402,11 +401,11 @@ median_(L,H,M)   :- M is copysign(sqrt(abs(L))*sqrt(abs(H)),L).      % L and H h
 %  lower_bound and upper_bound
 %
 lower_bound(Int) :-
-	getValue(Int,(L,H)),
+	getValue(Int,(L,_H)),
 	Int=L.
 
 upper_bound(Int) :-
-	getValue(Int,(L,H)),
+	getValue(Int,(_L,H)),
 	Int=H.
 
 %
@@ -514,7 +513,7 @@ applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 %
 attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 	number(Num),
-	IntDef = interval(Type,(L,H),Nodelist,Flags),
+	IntDef = interval(Type,(L,H),Nodelist,_Flags),
 	(Type=integer -> integer(Num) ; true),   % check that Num is consistent with Type
 	% L=<Num, Num=<H, assumes L < H
 	cmpr(L,Num) + cmpr(Num,H) < 0, !,        % and in range (not NaN)
@@ -540,7 +539,7 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 	    stable_(Agenda)                      % broadcast change
 	).
 
-attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of range
+attr_unify_hook(interval(Type,Val,_Nodelist,_Flags), V) :-   % new value out of range
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR, true),       % fail immediately unless debug=true
 	debug_clpBNR_('Failed to unify ~w::(~w) with ~w',[Type,Val,V]),
@@ -578,7 +577,7 @@ mergeNodes_([node(Op,_,_,Ops)|Ns],NodeList,NewList) :-  % if same Op and Ops, di
 mergeNodes_([N|Ns],NodeList,[N|NewList]) :-             % not a duplicate, retain
 	mergeNodes_(Ns,NodeList,NewList).
 
-matching_node_([node(Op,_,_,NOps)|Ns],Op,Ops) :-
+matching_node_([node(Op,_,_,NOps)|_Ns],Op,Ops) :-
 	NOps==Ops, !.  % identical args
 matching_node_([N|Ns],Op,Ops) :-
 	nonvar(N),     % not end of list
@@ -626,7 +625,7 @@ buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('Add ~p',{C}),
 	% need to catch errors from ground expression evaluation
 	catch(build_(C, 1, boolean, Agenda, NewAgenda),_Err,fail), !.
-buildConstraint_(C,Agenda,NewAgenda) :-
+buildConstraint_(C,_Agenda,_NewAgenda) :-
 	debug_clpBNR_('{} failure due to bad or inconsistent constraint: ~p',{C}),
 	fail.
 
@@ -661,7 +660,7 @@ build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: int
 build_(Num, Int, VarType, Agenda, Agenda) :-            % pre-compile constants pi and e
 	(Num == pi ; Num == e), !,
 	int_decl_(VarType,(Num,Num),Int).  
-build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile any ground precise Exp
+build_(Exp, Num, _VarType, Agenda, Agenda) :-            % pre-compile any ground precise Exp
 	ground(Exp),
 	safe_(Exp),                                         % safe to evaluate using is/2
 	Num is Exp,
@@ -676,7 +675,7 @@ build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primiti
 build_(Exp, Z, _, Agenda, NewAgenda) :-                 % user defined
 	Exp =.. [Prim|Args],
 	chk_primitive_(Prim),
-	build_args_([Z|Args],Objs,Types,Agenda,ObjAgenda),
+	build_args_([Z|Args],Objs,_Types,Agenda,ObjAgenda),
 	newNode_(user(Prim),Objs,ObjAgenda,NewAgenda).
 
 build_args_([],[],_,Agenda,Agenda).
@@ -689,14 +688,14 @@ chk_primitive_(Prim) :-  % wraps safe usage of unsafe current_predicate/2
 	UsrHead =..[Prim,'$op',_,_,_],
 	current_predicate(_,clpBNR:UsrHead).
 
-sandbox:safe_primitive(clpBNR:chk_primitive_(Prim)).
+sandbox:safe_primitive(clpBNR:chk_primitive_(_Prim)).
 
 % to invoke user defined primitive
 call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
 	call(clpBNR:Prim, '$op', InArgs, OutArgs, P).
 
 % really unsafe, but in a pengine a user can't define any predicates in another module, so this is safe
-sandbox:safe_meta(clpBNR:call_user_primitive(Prim, P, InArgs, OutArgs), []).
+sandbox:safe_meta(clpBNR:call_user_primitive(_Prim, _P, _InArgs, _OutArgs), []).
 
 % only called when argument is ground
 safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types
@@ -711,7 +710,7 @@ safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0
 	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),                     % evaluable by is/2
-	F =.. [Op|Args],
+	F =.. [_Op|Args],
 	safe_(Args).
 
 %  a constraint must evaluate to a boolean 
@@ -784,7 +783,7 @@ remap_(Op,$(Z,X),Z==C) :-
 newNode_(eq, [Z,X,Y], Agenda, Agenda) :- Z==1, !, X=Y.
 newNode_(Op, Objs, Agenda, NewAgenda) :-
 	Args =.. [$|Objs],  % store arguments as $/N where N=1..3
-	NewNode = node(Op, P, 0, Args),  % L=0
+	NewNode = node(Op, _P, 0, Args),  % L=0
 	addNode_(Objs,NewNode),
 	% increment count of added nodes, will be decremented on backtracking/failure
 	g_incb('clpBNR:node_count'),
@@ -894,7 +893,7 @@ doNode_($(ZArg,XArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-       % Arit
 	    NewAgenda = Agenda
 	).
  
-doNode_($(Arg), Op, P, OpsLeft, _, Agenda, NewAgenda) :-                  % Arity 1 Op
+doNode_($(Arg), Op, P, _OpsLeft, _, Agenda, NewAgenda) :-                  % Arity 1 Op
 	(var(P)                                          % check persistent bit
 	 -> getValue(Arg,Val),
 	    evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
@@ -972,13 +971,13 @@ remove_([X|Xs],X,Xs) :- !.
 remove_([X|Xs],X,[X|Ys]) :-
 	remove_(Xs,X,Ys).
 
-watch_list_([],Action).
+watch_list_([],_Action).
 watch_list_([Int|Ints],Action) :-
 	watch(Int,Action),
 	watch_list_(Ints,Action).
 
 % check if watch enabled on this interval
-check_monitor_(Int, Update, interval(Type,Val,Nodelist,Flags)) :-
+check_monitor_(Int, Update, interval(_Type,_Val,_Nodelist,Flags)) :-
 	(memberchk(watch(Action), Flags)
 	 -> once(monitor_action_(Action, Update, Int))
 	 ; true
@@ -1001,10 +1000,10 @@ monitor_action_(log, Val, Int) :-  !,  % narrow range
 	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
 monitor_action_(_, _, _).  % default to noop (as in 'none')
 
-sandbox:safe_primitive(clpBNR:watch(Int,Action)) :- % watch(X,trace) is unsafe.
+sandbox:safe_primitive(clpBNR:watch(_Int,Action)) :- % watch(X,trace) is unsafe.
 	Action \= trace.
 % only safe because watch(X,trace) is unsafe.
-sandbox:safe_primitive(clpBNR:monitor_action_(Action, Update, Int)).
+sandbox:safe_primitive(clpBNR:monitor_action_(_Action, _Update, _Int)).
 
 %
 % tracing doNode_ support - using wrap_predicate(:Head, +Name, -Wrapped, +Body)/4
@@ -1013,13 +1012,13 @@ sandbox:safe_primitive(clpBNR:monitor_action_(Action, Update, Int)).
 :- use_module(library(prolog_wrap)).
 
 trace_clpBNR(Bool)  :-                  % query or already in defined state
-	( current_predicate_wrapper(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda), 
-	                            'clpBNR:doNode_', Wrapped, Body)
+	( current_predicate_wrapper(clpBNR:doNode_(_Args, _Op, _P, _OpsLeft, _DoOver, _Agenda, _NewAgenda), 
+	                            'clpBNR:doNode_', _Wrapped, _Body)
 	 -> Bool = true ; Bool = false
 	),
 	!.
 trace_clpBNR(true)  :-                  % turn on wrapper
-	wrap_predicate(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda),
+	wrap_predicate(clpBNR:doNode_(Args, Op, _P, _OpsLeft, _DoOver, _Agenda, _NewAgenda),
 	                   'clpBNR:doNode_', 
 	                   Wrapped, 
 	                   doNode_wrap_(Wrapped, Args,Op)).

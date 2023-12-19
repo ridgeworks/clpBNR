@@ -30,7 +30,7 @@ evalNode(Op, P, Is, R) :-
 	g_inc('clpBNR:evalNode'),  % count of primitive calls
 	narrowing_op(Op, P, Is, R),
 	!.
-evalNode(Op, _, _, _):-
+evalNode(_Op, _, _, _):-
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR),             % fail immediately unless debug=true
 	current_node_(C),
@@ -98,7 +98,7 @@ to_float((L,H),(FL,FH)) :-
 
 % integral (contract to integer bounds) - optimized version of (int,P,$(1,X),_)
 
-narrowing_op(integral, P, $(X), $(NewX)) :-
+narrowing_op(integral, _P, $(X), $(NewX)) :-
 	integral_(X,NewX).
 	
 integral_((Xl,Xh),(NXl,NXh)) :-
@@ -124,7 +124,7 @@ int_(Z,X,p,NewZ,X) :-                       % persistent cases
 	!,  % succeed, persistent
 	^(Z,(B,B),NewZ).
 	
-int_(Z,X,P,NewZ,NewX) :-                    % possible narrowing case
+int_(Z,X,_P,NewZ,NewX) :-                    % possible narrowing case
 	(Z = (1,1) 
 	 -> integral_(X,NewX),              % Z true, narrow X to integers
 	    NewZ = Z
@@ -182,7 +182,7 @@ ne_int_((X,H), (X,X), (NewL,H)) :- !,  % X is a point,  and low bound of Y
 	NewL is X+1, NewL=<H.
 ne_int_((L,X), (X,X), (L,NewH)) :- !,  % X is a point,  and high bound of Y
 	NewH is X-1, L=<NewH.
-ne_int_(Y, X, Y).                      % no narrowing
+ne_int_(Y, _X, Y).                      % no narrowing
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -310,19 +310,19 @@ multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
 	non_empty(NZl,NZh).
 
-multCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
+multCase(p,s, (_Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
 	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
 	non_empty(NZl,NZh).
-multCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
+multCase(n,s, (Xl,_Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
 	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
 	non_empty(NZl,NZh).
-multCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
+multCase(s,p, (Xl,Xh), (_Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
 	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
 	non_empty(NZl,NZh).
-multCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
+multCase(s,n, (Xl,Xh), (Yl,_Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
 	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
 	non_empty(NZl,NZh).
@@ -351,7 +351,7 @@ odivCase(p,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	    NZh is minr(Zh,roundtoward(Xl/Yl,to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
-odivCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
+odivCase(p,s, (Xl,_Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Xl > 0     % X > 0
 	 -> ZIl is roundtoward(Xl/Yh,to_negative),
 	    ZIh is roundtoward(Xl/Yl,to_positive),
@@ -372,7 +372,7 @@ odivCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	    NZh is minr(Zh,roundtoward(Xl/min(-0.0,Yh),to_positive)),  % use min to preserve sign
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
-odivCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
+odivCase(n,s, (_Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Xh < 0     % X < 0
 	 -> ZIl is roundtoward(Xh/Yl,to_negative),
 	    ZIh is roundtoward(Xh/Yh,to_positive),
@@ -381,13 +381,13 @@ odivCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 
-odivCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
+odivCase(s,p, (Xl,Xh), (Yl,_Yh), (Zl,Zh), (NZl,NZh)) :-
 	Yl > 0     % Y > 0
 	 -> NZl is maxr(Zl,roundtoward(Xl/Yl,to_negative)),
 	    NZh is minr(Zh,roundtoward(Xh/Yl,to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
-odivCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
+odivCase(s,n, (Xl,Xh), (_Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Yh < 0     % Y < 0
 	 -> NZl is maxr(Zl,roundtoward(Xh/Yh,to_negative)),
 	    NZh is minr(Zh,roundtoward(Xl/Yh,to_positive)),
@@ -769,13 +769,13 @@ tanCase(Z,(Xl,Xh),Sl,Sh,(NZl,NZh),(NXl,NXh)) :-  Sh-Sl =:= 1, !, % spans one sin
 	Sg is pi*(Sl+1r2),               % closest to singularity
 	bounded_number(XSl,XSh,Sg),      % use bounded number to straddle
 	(tanCase(Z,(Xl,XSl),Sl,Sl,(NZ1l,NZ1h),(NXl,NX1h))
-	 -> (tanCase(Z,(XSh,Xh),Sh,Sh,(NZ2l,NZ2h),(_,NXh))
+	 -> (tanCase(Z,(XSh,Xh),Sh,Sh,(_NZ2l,_NZ2h),(_,NXh))
 	     -> NZl = -1.0Inf, NZh = 1.0Inf                   % both sectors, includes singularity
 	     ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h            % only lo sector
 	    )
 	 ;  tanCase(Z,(XSh,Xh),Sh,Sh,(NZl,NZh),(NXl,NXh))     % only hi sector
 	).
-tanCase(Z,X,Sl,Sh,Z,X).                                   % spans multiple singularities
+tanCase(Z,X,_Sl,_Sh,Z,X).                                   % spans multiple singularities
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -797,12 +797,12 @@ narrowing_op(and, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	andB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
 
 andB_rel_(Z,(1,1),(1,1), NewZ,(1,1),(1,1), p) :- !, ^(Z,(1,1),NewZ).  % all cases persistent (points) except last
-andB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),NewY).
-andB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),NewX).
+andB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),_NewY).
+andB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),_NewX).
 andB_rel_((1,1),X,Y,     (1,1),NewX,NewY, p)  :- !, ^(X,(1,1),NewX), ^(Y,(1,1),NewY).
 andB_rel_((0,0),X,(1,1), (0,0),NewX,(1,1), p) :- !, ^(X,(0,0),NewX).
 andB_rel_((0,0),(1,1),Y, (0,0),(1,1),NewY, p) :- !, ^(Y,(0,0),NewY).
-andB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+andB_rel_(Z,X,Y,         NewZ,NewX,NewY, _P)  :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -812,12 +812,12 @@ narrowing_op(nand, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	nandB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
 
 nandB_rel_(Z,(1,1),(1,1), NewZ,(1,1),(1,1), p) :- !, ^(Z,(0,0),NewZ).  % all cases persistent except last
-nandB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).
-nandB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),NewX).
+nandB_rel_(Z,(0,0),Y,     NewZ,(0,0),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),_NewY).
+nandB_rel_(Z,X,(0,0),     NewZ,X,(0,0), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),_NewX).
 nandB_rel_((0,0),X,Y,     (0,0),NewX,NewY, p)  :- !, ^(X,(1,1),NewX), ^(Y,(1,1),NewY).
 nandB_rel_((1,1),X,(1,1), (1,1),NewX,(1,1), p) :- !, ^(X,(0,0),NewX).
 nandB_rel_((1,1),(1,1),Y, (1,1),(1,1),NewY, p) :- !, ^(Y,(0,0),NewY).
-nandB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+nandB_rel_(Z,X,Y,         NewZ,NewX,NewY, _P)  :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -827,12 +827,12 @@ narrowing_op(or, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	orB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
 
 orB_rel_(Z,(0,0),(0,0), NewZ,(0,0),(0,0), p) :- !, ^(Z,(0,0),NewZ).  % all cases persistent (points) except last
-orB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).
-orB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),NewX).
+orB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),_NewY).
+orB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(1,1),NewZ), ^(X,(0,1),_NewX).
 orB_rel_((0,0),X,Y,     (0,0),NewX,NewY, p)  :- !, ^(X,(0,0),NewX), ^(Y,(0,0),NewY).
 orB_rel_((1,1),X,(0,0), (1,1),NewX,(0,0), p) :- !, ^(X,(1,1),NewX).
 orB_rel_((1,1),(0,0),Y, (1,1),(0,0),NewY, p) :- !, ^(Y,(1,1),NewY).
-orB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+orB_rel_(Z,X,Y,         NewZ,NewX,NewY, _P)  :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -842,12 +842,12 @@ narrowing_op(nor, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	norB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
 
 norB_rel_(Z,(0,0),(0,0), NewZ,(0,0),(0,0), p) :- !, ^(Z,(1,1),NewZ).  % all cases persistent (points) except last
-norB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),NewY).
-norB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),NewX).
+norB_rel_(Z,(1,1),Y,     NewZ,(1,1),Y, p)     :- !, ^(Z,(0,0),NewZ), ^(Y,(0,1),_NewY).
+norB_rel_(Z,X,(1,1),     NewZ,X,(1,1), p)     :- !, ^(Z,(0,0),NewZ), ^(X,(0,1),_NewX).
 norB_rel_((1,1),X,Y,     (1,1),NewX,NewY, p)  :- !, ^(X,(0,0),NewX), ^(Y,(0,0),NewY).
 norB_rel_((0,0),X,(0,0), (0,0),NewX,(0,0), p) :- !, ^(X,(1,1),NewX).
 norB_rel_((0,0),(0,0),Y, (0,0),(0,0),NewY, p) :- !, ^(Y,(1,1),NewY).
-norB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+norB_rel_(Z,X,Y,         NewZ,NewX,NewY, _P)  :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -862,7 +862,7 @@ xorB_rel_((B,B),X,(B,B), (B,B),NewX,(B,B), p) :- !, ^(X,(0,0),NewX).
 xorB_rel_((Z,Z),X,(Y,Y), (Z,Z),NewX,(Y,Y), p) :- !, ^(X,(1,1),NewX).
 xorB_rel_((B,B),(B,B),Y, (B,B),(B,B),NewY, p) :- !, ^(Y,(0,0),NewY).
 xorB_rel_((Z,Z),(X,X),Y, (Z,Z),(X,X),NewY, p) :- !, ^(Y,(1,1),NewY).
-xorB_rel_(Z,X,Y,         NewZ,NewX,NewY, P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+xorB_rel_(Z,X,Y,         NewZ,NewX,NewY, _P)   :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -872,11 +872,11 @@ narrowing_op(imB, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	imB_rel_(Z,X,Y, NewZ, NewX, NewY, P).
 
 imB_rel_(Z,(1,1),Y, New,(1,1),New,   P) :- !, ^(Z,Y,New), (New=(B,B) -> P=p ; true).   % X=1, Z=Y, persistant if point
-imB_rel_(Z,(0,0),Y, NewZ,(0,0),Y,    p) :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),NewY).        % X=0, Z=1, persistant
+imB_rel_(Z,(0,0),Y, NewZ,(0,0),Y,    p) :- !, ^(Z,(1,1),NewZ), ^(Y,(0,1),_NewY).        % X=0, Z=1, persistant
 imB_rel_(Z,X,(0,0), NewZ,NewX,(0,0), P) :- !, notB_(X,Z,NewZ,P), notB_(NewZ,X,NewX,P). % Y=0, Z=~X, persistant if point
-imB_rel_(Z,X,(1,1), NewZ,X,(1,1),    P) :- !, ^(Z,(1,1),NewZ).                      % Y=1, Z=1, persistant
+imB_rel_(Z,X,(1,1), NewZ,X,(1,1),   _P) :- !, ^(Z,(1,1),NewZ).                      % Y=1, Z=1, persistant
 imB_rel_((0,0),X,Y, (0,0),NewX,NewY, p) :- !, ^(X,(1,1),NewX), ^(Y,(0,0),NewY).     % Z=0,X=1,Y=0, persistant
-imB_rel_(Z,X,Y,     NewZ,NewX,NewY,  P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
+imB_rel_(Z,X,Y,     NewZ,NewX,NewY, _P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
