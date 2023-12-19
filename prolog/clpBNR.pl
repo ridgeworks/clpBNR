@@ -108,6 +108,7 @@ integer                               %% must be an integer value
 :- else.
 :- use_module(library(debug)).
 :- endif.
+:- use_module(library(arithmetic), []).
 
 version("0.11.4").
 
@@ -347,7 +348,7 @@ interval_domain_(T,(L,H),Dom) :- Dom=..[T,L,H].
 %
 %  delta(Int, Wid) width/span of an interval or numeric value, can be infinite
 %
-:- arithmetic_function(user:(delta/1)).
+:- arithmetic_function(delta/1).
 
 delta(Int, Wid) :-
 	getValue(Int,(L,H)),
@@ -361,7 +362,7 @@ delta(Int, Wid) :-
 %	40 (2), 10.1145/2493882. hal-00576641v1
 % Exception, single infinite bound treated as largest finite FP value
 %
-:- arithmetic_function(user:(midpoint/1)).
+:- arithmetic_function(midpoint/1).
 
 midpoint(Int, Mid) :-
 	getValue(Int,(L,H)),
@@ -377,7 +378,7 @@ midpoint_(L,H,M)       :- M1 is L/2 + H/2, M=M1.        % general case
 % Med = 0 if Int contains 0, else a number which divides Int into equal
 % numbers of FP values. Med is always a float
 %
-:- arithmetic_function(user:(median/1)).
+:- arithmetic_function(median/1).
 
 median(Int, Med) :-
 	getValue(Int,(L,H)),
