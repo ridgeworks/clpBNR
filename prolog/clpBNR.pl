@@ -24,15 +24,6 @@
  *	SOFTWARE.
  */
 
-:- if((current_prolog_flag(version,V), V < 90105)).
-
-% Use history(expanded(...) from boot/messages.pl to avoid additional message template
-:- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
-
-:- op(1199, xfx, ::).         % suppresses errors while parsing
-
-:- else.
-
 :- module(clpBNR,          % SWI module declaration
 	[
 	op(700, xfx, ::),
@@ -108,6 +99,11 @@ integer                               %% must be an integer value
 :- use_module(library(debug)).
 :- endif.
 :- use_module(library(arithmetic)).
+:- use_module(library(prolog_versions)).
+
+:- require_prolog_version('9.1.21-15', % Import/Export of arithmetic functions
+			  [ rational   % Demand rational number support
+			  ]).
 
 version("0.11.4").
 
@@ -1075,8 +1071,3 @@ init_clpBNR :-  % Note, most initialization deferred to "first use" - see user:e
 	check_features.
 
 :- initialization(init_clpBNR, now).
-
-:- endif.
-
-% remove possible temporary op definition
-:- (current_op(1199,A,::) -> op(0,A,::) ; true).
