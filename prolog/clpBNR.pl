@@ -111,8 +111,6 @@ integer                               %% must be an integer value
 
 version("0.11.4").
 
-:- style_check(-discontiguous).
-
 %
 % Define debug_clpBNR_/2 before turning on optimizer removing debug calls.
 % Note: global "optimise" flag will be restored after load completes.
