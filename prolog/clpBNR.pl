@@ -95,6 +95,7 @@ integer                               %% must be an integer value
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
 :- use_module(swish(lib/swish_debug)).
+:- set_prolog_flag(clpBNR_swish, true).
 :- else.
 :- use_module(library(debug)).
 :- endif.
@@ -686,12 +687,11 @@ chk_primitive_(Prim) :-  % wraps safe usage of unsafe current_predicate/2
 
 sandbox:safe_primitive(clpBNR:chk_primitive_(_Prim)).
 
+:- if(\+current_prolog_flag(clpBNR_swish, true)).
 % to invoke user defined primitive
 call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
 	call(clpBNR:Prim, '$op', InArgs, OutArgs, P).
-
-% really unsafe, but in a pengine a user can't define any predicates in another module, so this is safe
-sandbox:safe_meta(clpBNR:call_user_primitive(_Prim, _P, _InArgs, _OutArgs), []).
+:- endif.
 
 % only called when argument is ground
 safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types

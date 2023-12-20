@@ -882,5 +882,7 @@ imB_rel_(Z,X,Y,     NewZ,NewX,NewY, _P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y
 
 % User defined IA primitives
 
+:- if(\+current_prolog_flag(clpBNR_swish, true)).
 narrowing_op(user(Prim), P, InArgs, OutArgs) :-
 	call_user_primitive(Prim, P, InArgs, OutArgs).  % from main module body
+:- endif.
