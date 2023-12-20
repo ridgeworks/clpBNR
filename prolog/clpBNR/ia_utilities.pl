@@ -62,40 +62,14 @@ attr_portray_hook(interval(Type,Val,_N,_F),_Int) :-
 %
 % Support ellipsis format in answers (toplevel and SWISH)
 %
-user:portray('$clpBNR...'(Out)) :-           % remove quotes on stringified number in ellipsis format
-	string(Out),
-	format('~W...',[Out,[quoted(false)]]).  % safe
-
+:- if(current_prolog_flag(clpBNR_swish, true)).
+:- use_module(library(http/html_write)).
 :- multifile(term_html:portray//2).         % HTML version
 
 term_html:portray('$clpBNR...'(Out),_) -->   % remove quotes on stringified number in ellipsis format
 	{ string(Out) },
-	[<, span, ' ', class,  '="', 'pl-float', '"', >, Out, ..., </, span, >].
+	html(span(class('pl-float'), [Out, '...'])).
 
-%
-% SWIP hook for top level, SWISH, and graphical debugger clpBNR attribute display
-% two modes : 
-%	Verbose=true,  display all interval domains and associated constraints
-%	Verbose=false, display vars with no constraints - internal vars omitted in answers
-%
-sandbox:safe_global_variable('clpBNR:answermode').  % answer control parameters
-
-user:exception(undefined_global_variable,'clpBNR:answermode',retry) :- !,
-	set_default_answer_mode_(_).  % safe, tested elsewhere
-
-set_default_answer_mode_((copy,Verbose)) :- 
-	current_prolog_flag(clpBNR_verbose,Verbose),
-	g_assign('clpBNR:answermode',(copy,Verbose)).
-
-% toplevel answer control
-user:expand_query(Q,Q,Bindings,Bindings) :-
-	set_default_answer_mode_(_Mode).  % reset for new query
-
-user:expand_answer(Bindings,Bindings) :-
-	current_prolog_flag(clpBNR_verbose,Verbose),
-	add_names_(Bindings,Verbose).
-
-% SWISH answer control
 :- multifile(swish_trace:pre_context/3).
 :- multifile(swish_trace:post_context/1).
 
@@ -114,6 +88,44 @@ add_names_([Name = Var|Bindings],Verbose) :-
 	 ;  true  % Var not a clpBNR interval
 	), 	
 	add_names_(Bindings,Verbose).
+
+:- else.
+
+:- multifile
+	user:portray/1,
+	user:expand_query/4,
+	user:expand_answer/2.
+
+user:portray('$clpBNR...'(Out)) :-           % remove quotes on stringified number in ellipsis format
+	string(Out),
+	format('~W...',[Out,[quoted(false)]]).  % safe
+
+% toplevel answer control
+user:expand_query(Q,Q,Bindings,Bindings) :-
+	set_default_answer_mode_(_Mode).  % reset for new query
+
+user:expand_answer(Bindings,Bindings) :-
+	current_prolog_flag(clpBNR_verbose,Verbose),
+	add_names_(Bindings,Verbose).
+
+:- endif.
+
+%
+% SWIP hook for top level, SWISH, and graphical debugger clpBNR attribute display
+% two modes : 
+%	Verbose=true,  display all interval domains and associated constraints
+%	Verbose=false, display vars with no constraints - internal vars omitted in answers
+%
+sandbox:safe_global_variable('clpBNR:answermode').  % answer control parameters
+
+user:exception(undefined_global_variable,'clpBNR:answermode',retry) :- !,
+	set_default_answer_mode_(_).  % safe, tested elsewhere
+
+set_default_answer_mode_((copy,Verbose)) :- 
+	current_prolog_flag(clpBNR_verbose,Verbose),
+	g_assign('clpBNR:answermode',(copy,Verbose)).
+
+% SWISH answer control
 
 %
 % Constructs goals to build interval(X), format depends on Verbose setting
