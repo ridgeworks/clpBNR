@@ -168,8 +168,10 @@ user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
 :- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
 :- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
 
-sandbox:safe_prolog_flag(Flag,_) :- 
-	memberchk(Flag,[clpBNR_iteration_limit,clpBNR_default_precision,clpBNR_verbose]).
+sandbox:safe_prolog_flag(clpBNR_iteration_limit,_).
+sandbox:safe_prolog_flag(clpBNR_default_precision,_).
+sandbox:safe_prolog_flag(clpBNR_verbose,_).
+
 %
 % Set public flags (see module/thread initialization)
 %
