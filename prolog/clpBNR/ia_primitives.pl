@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman
+ *	Copyright (c) 2019-2024 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@ evalNode(Op, P, Is, R) :-
 	g_inc('clpBNR:evalNode'),  % count of primitive calls
 	narrowing_op(Op, P, Is, R),
 	!.
-evalNode(Op, _, _, _):-
+evalNode(_Op, _, _, _):-
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR),             % fail immediately unless debug=true
 	current_node_(C),
@@ -93,6 +93,7 @@ to_float((L,H),(FL,FH)) :-
 % Relational Operations (narrowing operations)
 %
 :- discontiguous clpBNR:narrowing_op/4.
+:- style_check(-singleton).  % for narrowing_op
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -124,7 +125,7 @@ int_(Z,X,p,NewZ,X) :-                       % persistent cases
 	!,  % succeed, persistent
 	^(Z,(B,B),NewZ).
 	
-int_(Z,X,P,NewZ,NewX) :-                    % possible narrowing case
+int_(Z,X,_P,NewZ,NewX) :-                   % possible narrowing case
 	(Z = (1,1) 
 	 -> integral_(X,NewX),              % Z true, narrow X to integers
 	    NewZ = Z
@@ -182,7 +183,7 @@ ne_int_((X,H), (X,X), (NewL,H)) :- !,  % X is a point,  and low bound of Y
 	NewL is X+1, NewL=<H.
 ne_int_((L,X), (X,X), (L,NewH)) :- !,  % X is a point,  and high bound of Y
 	NewH is X-1, L=<NewH.
-ne_int_(Y, X, Y).                      % no narrowing
+ne_int_(Y, _X, Y).                      % no narrowing
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -275,21 +276,23 @@ narrowing_op(add, _, $((Zl,Zh), (Xl,Xh), (Yl,Yh)), $((NZl,NZh), (NXl,NXh), (NYl,
 narrowing_op(mul, _, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	intCase(Cx,X),
 	intCase(Cy,Y),
-	(multCase(Cx,Cy,X,Y,Z,NewZ) -> true),   % NewZ := Z ^ (X*Y) (cheap once)
+	multCase(Cx,Cy,X,Y,Z,NewZ),                       % NewZ := Z ^ (X*Y)
 	intCase(CNz,NewZ),
-	(odivCase(CNz,Cx,NewZ,X,Y,Yp) -> true),           % Yp := Y ^ (Z/X),
+	odivCase(CNz,Cx,NewZ,X,Y,Yp),                     % Yp := Y ^ (Z/X),
 	intCase(Cyp,Yp),
-	(odivCase(CNz,Cyp,NewZ,Yp,X,NewX) -> true),       % NewX := X ^ (Z/Yp),
+	odivCase(CNz,Cyp,NewZ,Yp,X,NewX),                 % NewX := X ^ (Z/Yp),
 	% if X narrowed it may be necessary to recalculate Y due to non-optimal ordering.
 	(Y = Yp, \+(X = NewX)                   % if Y didn't narrow and X did
 	 -> intCase(CNx,NewX),
-	    (odivCase(CNz,CNx,NewZ,NewX,Y,NewY) -> true)  % re calculate: NewY := Y ^ NewZ/NewX
+	    odivCase(CNz,CNx,NewZ,NewX,Y,NewY)            % re calculate: NewY := Y ^ NewZ/NewX
 	 ;  NewY = Yp
 	).
 
 %
 % * cases ("Interval Arithmetic: from Principles to Implementation", Fig. 3)
 %
+% Note: for mixed sign, mixed mode, one of the rounding directions will be incorrect.
+%  For now assume(?) this will at worst cancel outward rounding
 %multCase(z,_, X, _, _, X) :- !.  % X==0
 %multCase(_,z, _, Y, _, Y).       % Y==0
 
@@ -305,9 +308,9 @@ multCase(n,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
 	NZh is minr(Zh,roundtoward(Xh*Yl,to_positive)),
 	non_empty(NZl,NZh).
-multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,roundtoward(Xh*Yh,to_negative)),
-	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
+multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
+	NZl is maxr(Zl,roundtoward(-Xh * -Yh,to_negative)),  % negate for any conversion rounding 
+	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),
 	non_empty(NZl,NZh).
 
 multCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
@@ -316,7 +319,7 @@ multCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	non_empty(NZl,NZh).
 multCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
-	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
+	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
 	non_empty(NZl,NZh).
 multCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
@@ -324,12 +327,12 @@ multCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	non_empty(NZl,NZh).
 multCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
-	NZh is minr(Zh,roundtoward(Xl*Yl,to_positive)),
+	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
 	non_empty(NZl,NZh).
 
 multCase(s,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,minr(roundtoward(Xl*Yh,to_negative),roundtoward(Xh*Yl,to_negative))),
-	NZh is minr(Zh,maxr(roundtoward(Xl*Yl,to_positive),roundtoward(Xh*Yh,to_positive))),
+	NZh is minr(Zh,maxr(roundtoward(-Xl* -Yl,to_positive),roundtoward(Xh*Yh,to_positive))),
 	non_empty(NZl,NZh).
 
 %
@@ -347,23 +350,23 @@ odivCase(p,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(p,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	sign(Xl)-sign(Yh) > 0  % X > 0 or Y < 0
-	 -> NZl is maxr(Zl,roundtoward(Xh/min(-0.0,Yh),to_negative)),  % use min to preserve sign
-	    NZh is minr(Zh,roundtoward(Xl/Yl,to_positive)),
+	 -> NZl is maxr(Zl,roundtoward(-Xh / -min(-0.0,Yh),to_negative)),  % use min to preserve sign
+	    NZh is minr(Zh,roundtoward(-Xl / -Yl          ,to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Xl > 0     % X > 0
-	 -> ZIl is roundtoward(Xl/Yh,to_negative),
-	    ZIh is roundtoward(Xl/Yl,to_positive),
-	    ( 1 is cmpr(Zl,ZIh) -> NZl is maxr(Zl,ZIl) ; NZl = Zl),  % Zl > ZIh ?
-	    (-1 is cmpr(Zh,ZIl) -> NZh is minr(Zh,ZIh) ; NZh = Zh),  % Zh > ZIl ?
+	 -> ZIh is roundtoward(Xl/Yh,to_negative),  % (ZIh,inf)
+	    ZIl is roundtoward(Xl/Yl,to_positive),  % (-inf,ZIl)
+	    ( 1 is cmpr(Zl,ZIl) -> NZl is maxr(Zl,ZIh) ; NZl = Zl),  % Zl > ZIl ?
+	    (-1 is cmpr(Zh,ZIh) -> NZh is minr(Zh,ZIl) ; NZh = Zh),  % Zh > ZIl ?
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 
 odivCase(n,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	sign(Yl)-sign(Xh) > 0  % X < 0 or Y > 0
-	 -> NZl is maxr(Zl,roundtoward(Xl/max(0.0,Yl),to_negative)),
-	    NZh is minr(Zh,roundtoward(Xh/Yh,to_positive)),
+	 -> NZl is maxr(Zl,roundtoward(-Xl / -max(0.0,Yl),to_negative)),
+	    NZh is minr(Zh,roundtoward(-Xh / -Yh,to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
@@ -374,8 +377,8 @@ odivCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Xh < 0     % X < 0
-	 -> ZIl is roundtoward(Xh/Yl,to_negative),
-	    ZIh is roundtoward(Xh/Yh,to_positive),
+	 -> ZIh is roundtoward( Xh /  Yl,to_negative),  % (ZIh,inf)
+	    ZIl is roundtoward(-Xh / -Yh,to_positive),  % (-inf,ZIl)
 	    ( 1 is cmpr(Zl,ZIh) -> NZl is maxr(Zl,ZIl) ; NZl = Zl),  % Zl > ZIh ?
 	    (-1 is cmpr(Zh,ZIl) -> NZh is minr(Zh,ZIh) ; NZh = Zh),  % Zh > ZIl ?
 	    non_empty(NZl,NZh)
@@ -383,8 +386,8 @@ odivCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 
 odivCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 	Yl > 0     % Y > 0
-	 -> NZl is maxr(Zl,roundtoward(Xl/Yl,to_negative)),
-	    NZh is minr(Zh,roundtoward(Xh/Yl,to_positive)),
+	 -> NZl is maxr(Zl,roundtoward(-Xl / -Yl,to_negative)),
+	    NZh is minr(Zh,roundtoward( Xh /  Yl,to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
@@ -535,10 +538,10 @@ pt_powrCase(N1,D1,Z,X,R,NewZ) :-  R < 0, !,      % R negative
 	Rp is -R,
 	universal_interval(UI),
 	intCase(Cz,Z),
-	(odivCase(p,Cz,(1,1),Z,UI,Zi) -> true),      % Zi := UI ^ 1/Z
+	odivCase(p,Cz,(1,1),Z,UI,Zi),                % Zi := UI ^ 1/Z
 	pt_powrCase(N1,D1,Zi,X,Rp,NZi),
 	intCase(CNzi,NZi),
-	(odivCase(p,CNzi,(1,1),NZi,Z,NewZ) -> true). % NewZ := Z ^ 1/NZi
+	odivCase(p,CNzi,(1,1),NZi,Z,NewZ).           % NewZ := Z ^ 1/NZi
 
 pt_powrCase(1,0,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator even
 	% reflect about X axis to include positive and negative roots
@@ -572,11 +575,11 @@ powr_intY_(p, Z,X,Y, NewZ,NewX,NewY) :-              % positive X, interval Y
 	powr_prim_(Z,X,Y,NewZ), non_empty(NewZ),         % NewZ := X**Y
 	universal_interval(UI),
 	intCase(Cy,Y),
-	(odivCase(p,Cy,(1,1),Y,UI,Yi) -> true),          % Yi := UI ^ 1/Y
+	odivCase(p,Cy,(1,1),Y,UI,Yi),                    % Yi := UI ^ 1/Y
 	powr_prim_(X,NewZ,Yi,NewX), non_empty(NewX),     % NewX := NewZ**(1/Y)
 	ln(NewZ,Ynum), intCase(Cyn,Ynum),
 	ln(NewX,Yden), intCase(Cyd,Yden),
-	(odivCase(Cyn,Cyd,Ynum,Yden,Y,NewY) -> true).    % NewY := Y ^ log(NewZ)/log(NewX)
+	odivCase(Cyn,Cyd,Ynum,Yden,Y,NewY).              % NewY := Y ^ log(NewZ)/log(NewX)
 
 powr_intY_(n, Z,X,Y, NewZ,NewX,NewY) :-              % negative X, interval Y
 	% In this case Y may contain an rational which is legal for negative X, e.g.,
@@ -769,7 +772,7 @@ tanCase(Z,(Xl,Xh),Sl,Sh,(NZl,NZh),(NXl,NXh)) :-  Sh-Sl =:= 1, !, % spans one sin
 	Sg is pi*(Sl+1r2),               % closest to singularity
 	bounded_number(XSl,XSh,Sg),      % use bounded number to straddle
 	(tanCase(Z,(Xl,XSl),Sl,Sl,(NZ1l,NZ1h),(NXl,NX1h))
-	 -> (tanCase(Z,(XSh,Xh),Sh,Sh,(NZ2l,NZ2h),(_,NXh))
+	 -> (tanCase(Z,(XSh,Xh),Sh,Sh,_NZ2,(_,NXh))
 	     -> NZl = -1.0Inf, NZh = 1.0Inf                   % both sectors, includes singularity
 	     ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h            % only lo sector
 	    )
@@ -787,7 +790,7 @@ narrowing_op(not, P, $(Z,X), $(NewZ, NewX)) :-
 
 notB_((0,0), _, (1,1), p) :- !.
 notB_((1,1), _, (0,0), p) :- !.
-notB_(    _, Z,     Z, _).
+notB_(    _, Z, NewZ,  _) :- ^(Z,(0,1),NewZ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -879,6 +882,8 @@ imB_rel_((0,0),X,Y, (0,0),NewX,NewY, p) :- !, ^(X,(1,1),NewX), ^(Y,(0,0),NewY). 
 imB_rel_(Z,X,Y,     NewZ,NewX,NewY,  P) :- ^(Z,(0,1),NewZ), ^(X,(0,1),NewX), ^(Y,(0,1),NewY).  % still indeterminate
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+:- style_check(+singleton).  % for narrowing_op
 
 % User defined IA primitives
 

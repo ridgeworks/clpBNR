@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2022-2023 Rick Workman
+ *	Copyright (c) 2022-2024 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,8 @@
 	mid_split/1,                % contractor to split an interval at midpoint
 	taylor_contractor/2,        % build cf_contractor based on Taylor expansion
 	taylor_merged_contractor/2, % build merged Taylor cf_contractor from list of equations
-	
+	cf_contractor/2,            % execute cf_contractor
+
 	lin_minimum/3,              % find minimum of linear problem using library(simplex)
 	lin_maximum/3,              % find maximum of linear problem using library(simplex)
 	lin_minimize/3,             % lin_minimum/3 plus bind vars to solution minimizers
@@ -104,12 +105,15 @@ select_split([X1,X2|Xs],X) :-   % compare widths and discard one interval
 %
 cf_contractor(Xs,As) :-
 	findall(Ds,(maplist(bind_to_midpoint,Xs,As),maplist(cf_domain,Xs,Ds)),[XDs]),
-	maplist(::,Xs,XDs).
+	maplist(set_domain,Xs,XDs).
 	
 bind_to_midpoint(X,A) :- A is float(midpoint(X)).
 
 cf_domain(X,D) :- 
-	number(X) -> D = real(X,X) ; domain(X,D).  % in case X narrowed to a point
+	number(X) -> D = X ; domain(X,D).  % in case X narrowed to a point
+	
+set_domain(X,D) :- 
+	number(D) -> X = D ; X::D.
 %
 % build a cf_contractor for a multivariate expression based on Taylor expansion
 %
@@ -172,7 +176,7 @@ cf_list([],[]) :- !.
 cf_list([C|Cs],[CF|CFs]) :- !,
 	cf_list(C, CF),
 	cf_list(Cs,CFs).
-cf_list((C,Cs),[CF,CFs]) :-  !,
+cf_list((C,Cs),[CF|CFs]) :-  !,
 	cf_list(C, CF),
 	cf_list(Cs,CFs).
 cf_list(C,CF) :-
@@ -181,9 +185,11 @@ cf_list(C,CF) :-
 cf_merge(CFs,CF) :- cf_merge(CFs,cf_contractor([],[]),CF).
 
 cf_merge([],CF,CF).
-cf_merge([cf_contractor(Xs,As)|CFs],cf_contractor(XsIn,AsIn),CF) :-
-	cf_add(Xs,As,XsIn,AsIn,XsOut,AsOut),
-	cf_merge(CFs,cf_contractor(XsOut,AsOut),CF).
+cf_merge([CF|CFs],CFIn,CFOut) :-
+	cf_merge(CF,CFIn,CFNxt),
+	cf_merge(CFs,CFNxt,CFOut).	
+cf_merge(cf_contractor(Xs,As),cf_contractor(XsIn,AsIn),cf_contractor(XsOut,AsOut)) :-
+	cf_add(Xs,As,XsIn,AsIn,XsOut,AsOut).
 
 cf_add([],[],Xs,As,Xs,As).
 cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
@@ -192,8 +198,7 @@ cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
 cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
 	cf_add(Xs,As,[X|XsIn],[A|AsIn],XsOut,AsOut).
 
-var_existing([Xex|_], [A|_],   X,A) :- Xex==X, !.
-var_existing([_|XsIn],[_|AsIn],X,A) :- var_existing(XsIn,AsIn,X,A).
+var_existing([Xex|Xs],[Aex|As], X,A) :- Xex==X -> Aex=A ; var_existing(Xs,As,X,A).
 
 %
 %	lin_minimum/3         % find minimum of linear problem using library(simplex)
@@ -219,7 +224,7 @@ lin_minimum_(ObjF,{Constraints},MinValue,BindVars) :-
 	init_simplex_(ObjF,Constraints,Objective,S0,Vs),
 	(minimize(Objective,S0,S)
 	 -> objective(S,MinValue), {ObjF == MinValue},
-	    (BindVars
+	    (BindVars == true
 	     -> bind_vars_(Vs,S)
 	     ;  remove_names_(Vs),
 	        {Constraints}  % apply constraints
@@ -231,7 +236,7 @@ lin_maximum_(ObjF,{Constraints},MaxValue,BindVars) :-
 	init_simplex_(ObjF,Constraints,Objective,S0,Vs),
 	(maximize(Objective,S0,S)
 	 -> objective(S,MaxValue), {ObjF == MaxValue},
-	    (BindVars
+	    (BindVars == true
 	     -> bind_vars_(Vs,S)
 	     ;  remove_names_(Vs),
 	        {Constraints}  % apply constraints
@@ -275,15 +280,16 @@ constrain_ints_([V|Vs],Sin,Sout) :-
 	% if not already an interval, make it one with finite non-negative value
 	(domain(V,D) -> true ; V::real(0,_), domain(V,D)),
 	(D == boolean -> Dom = integer(0,1); Dom = D),
-	Dom =.. [Type,L,_],
+	Dom =.. [Type,L,H],
 	(Type == integer -> constraint(integral(SV),Sin,S1) ; S1 = Sin),
 	(L < 0
-	 -> ({V >= 0}                     % apply non-negativity condition
-	     -> S2 = S1
-	     ;  fail_msg_('Negative vars not supported by \'simplex\': ~w',[V])
-	    )
-	 ;  (L =:= 0 -> S2 = S1 ; constraint([SV] >= L,S1,S2))  % non-zero Lbound constraint
+	 -> % apply non-negativity condition    
+	    ({V >= 0} -> L1 = 0 ; fail_msg_('Negative vars not supported by \'simplex\': ~w',[V]))
+	 ;  L1 = L
 	),
+	% simplex requires all vars be explicitly constrained
+	(L1 > -inf -> constraint([SV] >= L1,S1,S1a) ; S1a = S1),
+	(H  <  inf -> constraint([SV] =< H,S1a,S2)  ; S2 = S1a),	 
 	constrain_ints_(Vs,S2,Sout).
 
 bind_vars_([],_).

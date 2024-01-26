@@ -60,8 +60,8 @@ eg
 	_A::real(-1.0Inf, 1.0Inf).
 	
 	?- X::real,taylor_contractor({X**2-4*X+3==0},T),iterate_until(20,small(X),(mid_split_one([X]),T)).
-	X = 1,
-	T = cf_contractor([1], [_A]),
+	X = 1.0,
+	T = cf_contractor([1.0], [_A]),
 	_A::real(-1.0Inf, 1.0Inf) ;
 	T = cf_contractor([X], [_A]),
 	X:: 3.00000000000000...,
@@ -457,5 +457,5 @@ CISC based interval constraint systems overcame deficiencies in RISC, such as sl
 &
 	[Solving Polynomial Equations in one Variable] <- link #toc4Solving_Polynomial_Equations_in_one_Variable
 	[Progress in the solving of a circuit design problem] <- link https://www.researchgate.net/publication/2322545_Progress_in_the_Solving_of_a_Circuit_Design_Problem
-	[Algorithmic Power from Declarative Use of Redundant Constraints] <- link http://webhome.cs.uvic.ca/~vanemden/Publications/redund.pdf
+	[Algorithmic Power from Declarative Use of Redundant Constraints] <- link https://maarten.vanemden.com/Publications/redund.pdf
 	[Appendix 1] <- link #toc4Appendix_1_-__clpBNRmeta_contractor.pl__Source

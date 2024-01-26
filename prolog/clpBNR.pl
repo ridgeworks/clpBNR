@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman
+ *	Copyright (c) 2019-2024 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -23,16 +23,6 @@
  *	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  *	SOFTWARE.
  */
-
-:- if((current_prolog_flag(version,V), V < 90105)).
-
-% Use history(expanded(...) from boot/messages.pl to avoid additional message template
-:- print_message(error,history(expanded("This version of clpBNR requires SWIP 9.1.5 or greater"))).
-
-:- op(1199, xfx, ::).         % suppresses errors while parsing
-:- style_check(-singleton).   % suppresses warnings while parsing
-
-:- else.
 
 :- module(clpBNR,          % SWI module declaration
 	[
@@ -102,29 +92,42 @@ integer                               %% must be an integer value
 
 */
 
+version("0.11.5").
+
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
-:- use_module(swish(lib/swish_debug)).
+	:- create_prolog_flag(clpBNR_swish, true, [access(read_only)]).
+	:- use_module(swish(lib/swish_debug)).
 :- else.
-:- use_module(library(debug)).
+	:- use_module(library(debug)).
 :- endif.
 
-version("0.11.4").
+:- use_module(library(prolog_versions)).  % SWIP dependency enforcement
 
-:- style_check([-singleton, -discontiguous]).
+:- require_prolog_version('9.1.22',       % properly exported arithmetic functions
+	          [ rational   % require rational number support, implies bounded=false
+	          ]).
 
 %
-% Define debug_clpBNR_/2 before turning on optimizer removing debug calls.
-% Note: global "optimise" flag will be restored after load completes.
+% Optimize arithmetic, but not debug. Only called via directives.
 %
-:- set_prolog_flag(optimise,false).
+set_optimize_flags_ :-      % called at start of load
+	set_prolog_flag(optimise,true),              % scoped to file/module
+	current_prolog_flag(optimise_debug,ODflag),  % save; restore in initialization
+	nb_linkval('$optimise_debug_save',ODflag),
+	set_prolog_flag(optimise_debug,false).       % so debug/3, debugging/1 don't get "optimized"
 
+restore_optimize_flags_ :-  % called at module initialization (after load)
+	nb_getval('$optimise_debug_save',ODflag), nb_delete('$optimise_debug_save'),
+	set_prolog_flag(optimise_debug,ODflag).
+
+:- set_optimize_flags_.
+
+% local debug and trace message support
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
 
-trace_clpBNR_(FString,Args) :- debug(clpBNR(trace),FString,Args).
-
-:- set_prolog_flag(optimise,true).
-
+% sandboxing for SWISH
+:- multifile(sandbox:safe_prolog_flag/1).
 :- multifile(sandbox:safe_global_variable/1).
 :- multifile(sandbox:safe_primitive/1).
 :- multifile(sandbox:safe_meta/2).
@@ -135,7 +138,7 @@ current_node_(Node) :-  % look back to find current Op being executed for debug 
 	map_constraint_op_(Op,Args,Node),
 	!.
 
-sandbox:safe_primitive(clpBNR:current_node_(Node)). 
+sandbox:safe_primitive(clpBNR:current_node_(_Node)). 
 
 %
 % statistics
@@ -170,8 +173,9 @@ user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
 :- create_prolog_flag(clpBNR_default_precision,6,[type(integer),keep(true)]).
 :- create_prolog_flag(clpBNR_verbose,false,[type(boolean),keep(true)]).
 
-sandbox:safe_prolog_flag(Flag,_) :- 
-	memberchk(Flag,[clpBNR_iteration_limit,clpBNR_default_precision,clpBNR_verbose]).
+sandbox:safe_prolog_flag(clpBNR_iteration_limit,_).
+sandbox:safe_prolog_flag(clpBNR_default_precision,_).
+sandbox:safe_prolog_flag(clpBNR_verbose,_).
 %
 % Set public flags (see module/thread initialization)
 %
@@ -248,10 +252,13 @@ interval_object(Int, Type, Val, Nodelist) :-
 % flags (list)  abstraction
 get_interval_flags_(Int, Flags) :-
 	get_attr(Int, clpBNR, interval(_, _, _, Flags)).
-	
+
 set_interval_flags_(Int, Flags) :-  % flags assumed to be ground so no copy required
 	interval_object(Int, Type, Val, Nodelist),
 	put_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
+
+reset_interval_nodelist_(Int) :-
+	get_attr(Int, clpBNR, Def) -> setarg(3,Def,_) ; true.
 
 %
 % Interval value constants
@@ -262,8 +269,8 @@ empty_interval((1.0Inf,-1.0Inf)).
 
 % Finite intervals - 64 bit IEEE reals, 
 finite_interval(real,    (-1.0e+16,1.0e+16)).
-finite_interval(integer, (L,H)) :-  %% SWIP:
-	current_prolog_flag(bounded,false),!,  % integers are unbounded, but use tagged limits for finite default
+finite_interval(integer, (L,H)) :-  %% SWIP: use tagged limits for finite default
+%	current_prolog_flag(bounded,false),  %  required - unbounded integers
 	current_prolog_flag(min_tagged_integer,L),
 	current_prolog_flag(max_tagged_integer,H).
 finite_interval(boolean, (0,1)).
@@ -324,15 +331,11 @@ pointValue_(L,H,Int) :- (rational(L) -> Int = L ; Int = H).
 %
 %  range(Int, Bounds) for compatibility 
 %
-% for interval(Int) and number(Int), check if value is (always) in specified range, unifying any vars with current value
-range(Int, [L,H]) :- getValue(Int, (IL,IH)), number(IL), !,  % existing interval
-	(var(L) -> L=IL ; non_empty(L,IL)),  % range check (L=<IL,IH=<H), no narrowing
+range(Int, [L,H]) :- getValue(Int, (IL,IH)), !,  % existing interval or number =>  number(IL)
+	(var(L) -> L=IL ; non_empty(L,IL)),          % range check (L=<IL,IH=<H), no narrowing
 	(var(H) -> H=IH ; non_empty(IH,H)).
-% for var(Int), constrain it to be an interval with specified bounds (like a declaration)
-range(Int, [L,H]) :- var(Int),  % new interval
-	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
-	int_decl_(real, (L,H), Int),
-	getValue(Int, (L,H)).       % will bind any input var's to values
+range(Int, [L,H]) :- var(Int),  % for other var(Int), declare it to a real interval with specified bounds
+	Int::real(L,H).
 
 %
 %  domain(Int, Dom) for interval(Int)
@@ -344,10 +347,11 @@ domain(Int, Dom) :-
 interval_domain_(integer,(0,1),boolean) :- !.  % integer(0,1) is synonymous with boolean
 interval_domain_(T,(L,H),Dom) :- Dom=..[T,L,H].
 
+:- use_module(library(arithmetic), []).   % extended arithmetic functions
 %
 %  delta(Int, Wid) width/span of an interval or numeric value, can be infinite
 %
-:- arithmetic_function(user:(delta/1)).
+:- arithmetic_function(delta/1).
 
 delta(Int, Wid) :-
 	getValue(Int,(L,H)),
@@ -361,7 +365,7 @@ delta(Int, Wid) :-
 %	40 (2), 10.1145/2493882. hal-00576641v1
 % Exception, single infinite bound treated as largest finite FP value
 %
-:- arithmetic_function(user:(midpoint/1)).
+:- arithmetic_function(midpoint/1).
 
 midpoint(Int, Mid) :-
 	getValue(Int,(L,H)),
@@ -377,7 +381,7 @@ midpoint_(L,H,M)       :- M1 is L/2 + H/2, M=M1.        % general case
 % Med = 0 if Int contains 0, else a number which divides Int into equal
 % numbers of FP values. Med is always a float
 %
-:- arithmetic_function(user:(median/1)).
+:- arithmetic_function(median/1).
 
 median(Int, Med) :-
 	getValue(Int,(L,H)),
@@ -394,44 +398,45 @@ median_bound_(hi,1.0Inf,FB) :- FB is nexttoward(1.0Inf,0.0).
 median_bound_(hi,B,FB) :- FB is roundtoward(float(B), to_positive).
 
 median_(B,B,B).                          % point interval
-median_(L,H,0.0) :- L < 0.0, H > 0.0.    % contains 0 (handles (-inf,inf)
+median_(L,H,0.0) :- L < 0.0, H > 0.0.    % contains 0: handles (-inf,inf)
 median_(L,H,M)   :- M is copysign(sqrt(abs(L))*sqrt(abs(H)),L).      % L and H have same sign
 
 %
 %  lower_bound and upper_bound
 %
 lower_bound(Int) :-
-	getValue(Int,(L,H)),
+	getValue(Int,(L,_H)),
 	Int=L.
 
 upper_bound(Int) :-
-	getValue(Int,(L,H)),
+	getValue(Int,(_L,H)),
 	Int=H.
 
 %
 % Interval declarations
 %
+Rs::Dom :- list(Rs),!,                    % list of vars
+	intervals_(Rs,Dom).
 
-Ints::Dom :- list(Ints),!,
-	intervals_(Ints,Dom).
-	
-R::Dom :- var(R), var(Dom), !,  % declare R = real(L,H), Note: R can be interval 
-	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
-	int_decl_(real,(_,_),R),
-	domain(R,Dom).
+R::Dom :-                                 % single var
+	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization 
+	(var(Dom)                             % domain undefined
+	 -> (var(R) -> int_decl_(real,_,R) ; true),  % default or domain query (if interval(R) else fail)
+	    domain(R,Dom)                     % extract domain
+	 ;  Dom=..[Type|Bounds],              % domain defined
+	    Val=..[','|Bounds],
+	    int_decl_(Type,Val,R)
+	).
 
-R::Dom :-  var(Dom), !,         % domain query (if interval(R) else fail)
-	domain(R,Dom). % "domain" query, unify interval Type and Bounds
+intervals_([],_Def).
+intervals_([Int|Ints],Def) :-
+	Int::Def, !,
+	intervals_(Ints,Def).
 
-R::Dom :-                       % interval(R) or number(R) and nonvar(Dom) 
-	Dom=..[Type|Bounds],
-	(Bounds=[] -> Val=(_,_) ; Val=..[','|Bounds]),
-	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization
-	int_decl_(Type,Val,R).
-
-int_decl_(boolean,_,R) :- !,      % boolean is integer; 0=false, 1=true, ignore any bounds.
+int_decl_(boolean,_,R) :- !,          % boolean is integer; 0=false, 1=true, ignore any bounds.
 	int_decl_(integer,(0,1),R).
-	
+int_decl_(Type,(','),R) :- !,         % no bounds, fill with vars
+	int_decl_(Type,(_,_),R).
 int_decl_(Type,Val,R) :- interval_object(R,CType,CVal,_NL), !,  % already interval
 	(Type = CType, Val = CVal         % query, no change
 	 -> true
@@ -443,8 +448,7 @@ int_decl_(Type,Val,R) :- interval_object(R,CType,CVal,_NL), !,  % already interv
 	    updateValue_(CVal, New, R, 1, Agenda, NewAgenda),  % update value (Agenda empty if no value change)
 	    stable_(NewAgenda)            % then execute Agenda
 	).
-
-int_decl_(Type,(L,H),R) :- var(R), !,        % new interval (R can't be existing interval)
+int_decl_(Type,(L,H),R) :- var(R), !,    % new interval (R can't be existing interval)
 	lower_bound_val_(Type,L,IL),
 	upper_bound_val_(Type,H,IH),
 	C is cmpr(IL,IH),  % compare bounds
@@ -453,44 +457,39 @@ int_decl_(Type,(L,H),R) :- var(R), !,        % new interval (R can't be existing
 	 ;  C == -1,                         % necessary condition: IL < IH
 	    put_attr(R, clpBNR, interval(Type, (IL,IH), _NL, []))  % attach clpBNR attribute
 	).
-
-int_decl_(Type,(L,H),R) :- (Type=integer -> integer(R) ; number(R)), !,    % R already a point value, check range
+int_decl_(Type,(L,H),R) :- constant_type_(Type,R), % R already a point value, check range
 	lower_bound_val_(Type,L,IL), non_empty(IL,R),  % IL=<R,
 	upper_bound_val_(Type,H,IH), non_empty(R,IH).  % R=<IH.
 
-int_decl_(Type,(','),R) :- !,                   % no bounds, fill with vars
-	int_decl_(Type,(_,_),R).
-
-intervals_([],_Def).
-intervals_([Int|Ints],Def) :-
-	Int::Def, !,
-	intervals_(Ints,Def).
-
-lower_bound_val_(Type,L,IL) :- var(L), !,  % unspecified bound, make it finite
-	finite_interval(Type,(IL,_)).
+lower_bound_val_(Type,L,L) :- var(L), !,   % unspecified bound, make it finite
+	finite_interval(Type,(L,_)).
 lower_bound_val_(real,L,IL) :-             % real: evaluate and round outward (if float)
 	((L == pi ; L == e)
 	 -> IL is roundtoward(L,to_negative)
 	 ;  Lv is L,
 	    (preciseBnd(Lv) -> IL=Lv ; IL is nexttoward(Lv,-1.0Inf)) 
 	).
-lower_bound_val_(integer,L,IL) :-          % integer: make integer, fail if inf
-	IL is ceiling(L), IL \= 1.0Inf.
+lower_bound_val_(integer,L,IL) :-          % integer: make integer
+	IL is ceiling(L).
 lower_bound_val_(boolean,L,IL) :-          % boolean: narrow to L=0
 	IL is max(0,ceiling(L)).
 
-upper_bound_val_(Type,H,IH) :- var(H), !,  % unspecified bound, make it finite
-	finite_interval(Type,(_,IH)).
+upper_bound_val_(Type,H,H) :- var(H), !,   % unspecified bound, make it finite
+	finite_interval(Type,(_,H)).
 upper_bound_val_(real,H,IH) :-             % real: evaluate and round outward (if float)
 	((H == pi ; H == e)
 	 -> IH is roundtoward(H,to_positive)
 	 ;  Hv is H,
 	    (preciseBnd(Hv) -> IH=Hv ; IH is nexttoward(Hv,1.0Inf)) 
 	).
-upper_bound_val_(integer,H,IH) :-          % integer: make integer, fail if -inf
-	IH is floor(H), IH \= -1.0Inf.
+upper_bound_val_(integer,H,IH) :-          % integer: make integer
+	IH is floor(H).
 upper_bound_val_(boolean,H,IH) :-          % boolean: narrow to H=1
 	IH is min(1,floor(H)).
+
+constant_type_(real,C) :- number(C).
+constant_type_(integer,C) :- integer(C), !.
+constant_type_(integer,C) :- float(C), float_class(C,infinite).
 
 applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	get_attr(Int,clpBNR,interval(Type,Val,NodeList,Flags)),
@@ -513,8 +512,8 @@ applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 %
 attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
 	number(Num),
-	IntDef = interval(Type,(L,H),Nodelist,Flags),
-	(Type=integer -> integer(Num) ; true),   % check that Num is consistent with Type
+	IntDef = interval(Type,(L,H),Nodelist,_Flags),
+	constant_type_(Type,Num),                % numeric consistent with type
 	% L=<Num, Num=<H, assumes L < H
 	cmpr(L,Num) + cmpr(Num,H) < 0, !,        % and in range (not NaN)
 	(debugging(clpBNR) -> monitor_unify_(IntDef, Num) ; true),
@@ -539,9 +538,9 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 	    stable_(Agenda)                      % broadcast change
 	).
 
-attr_unify_hook(interval(Type,Val,Nodelist,Flags), V) :-   % new value out of range
+attr_unify_hook(interval(Type,Val,_Nodelist,_Flags), V) :-   % new value out of range
 	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
-	debugging(clpBNR, true),       % fail immediately unless debug=true
+	debugging(clpBNR),             % fail immediately unless debugging
 	debug_clpBNR_('Failed to unify ~w::(~w) with ~w',[Type,Val,V]),
 	fail.
 
@@ -577,7 +576,7 @@ mergeNodes_([node(Op,_,_,Ops)|Ns],NodeList,NewList) :-  % if same Op and Ops, di
 mergeNodes_([N|Ns],NodeList,[N|NewList]) :-             % not a duplicate, retain
 	mergeNodes_(Ns,NodeList,NewList).
 
-matching_node_([node(Op,_,_,NOps)|Ns],Op,Ops) :-
+matching_node_([node(Op,_,_,NOps)|_Ns],Op,Ops) :-
 	NOps==Ops, !.  % identical args
 matching_node_([N|Ns],Op,Ops) :-
 	nonvar(N),     % not end of list
@@ -625,7 +624,7 @@ buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('Add ~p',{C}),
 	% need to catch errors from ground expression evaluation
 	catch(build_(C, 1, boolean, Agenda, NewAgenda),_Err,fail), !.
-buildConstraint_(C,Agenda,NewAgenda) :-
+buildConstraint_(C,_Agenda,_NewAgenda) :-
 	debug_clpBNR_('{} failure due to bad or inconsistent constraint: ~p',{C}),
 	fail.
 
@@ -649,7 +648,6 @@ build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constan
 	).
 build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal
 	number(L), number(H), !,
-	S is integer(sign(H-L)), 
 	C is cmpr(L,H),  % compare bounds
 	(C == 0
 	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
@@ -660,7 +658,7 @@ build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: int
 build_(Num, Int, VarType, Agenda, Agenda) :-            % pre-compile constants pi and e
 	(Num == pi ; Num == e), !,
 	int_decl_(VarType,(Num,Num),Int).  
-build_(Exp, Num, VarType, Agenda, Agenda) :-            % pre-compile any ground precise Exp
+build_(Exp, Num, _, Agenda, Agenda) :-                  % pre-compile any ground precise Exp
 	ground(Exp),
 	safe_(Exp),                                         % safe to evaluate using is/2
 	Num is Exp,
@@ -675,7 +673,7 @@ build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primiti
 build_(Exp, Z, _, Agenda, NewAgenda) :-                 % user defined
 	Exp =.. [Prim|Args],
 	chk_primitive_(Prim),
-	build_args_([Z|Args],Objs,Types,Agenda,ObjAgenda),
+	build_args_([Z|Args],Objs,_Types,Agenda,ObjAgenda),
 	newNode_(user(Prim),Objs,ObjAgenda,NewAgenda).
 
 build_args_([],[],_,Agenda,Agenda).
@@ -688,14 +686,14 @@ chk_primitive_(Prim) :-  % wraps safe usage of unsafe current_predicate/2
 	UsrHead =..[Prim,'$op',_,_,_],
 	current_predicate(_,clpBNR:UsrHead).
 
-sandbox:safe_primitive(clpBNR:chk_primitive_(Prim)).
+sandbox:safe_primitive(clpBNR:chk_primitive_(_Prim)).
 
 % to invoke user defined primitive
 call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
 	call(clpBNR:Prim, '$op', InArgs, OutArgs, P).
 
 % really unsafe, but in a pengine a user can't define any predicates in another module, so this is safe
-sandbox:safe_meta(clpBNR:call_user_primitive(Prim, P, InArgs, OutArgs), []).
+sandbox:safe_meta(clpBNR:call_user_primitive(_Prim, _P, _InArgs, _OutArgs), []).
 
 % only called when argument is ground
 safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types
@@ -710,7 +708,7 @@ safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0
 	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),                     % evaluable by is/2
-	F =.. [Op|Args],
+	F =.. [_Op|Args],
 	safe_(Args).
 
 %  a constraint must evaluate to a boolean 
@@ -783,7 +781,7 @@ remap_(Op,$(Z,X),Z==C) :-
 newNode_(eq, [Z,X,Y], Agenda, Agenda) :- Z==1, !, X=Y.
 newNode_(Op, Objs, Agenda, NewAgenda) :-
 	Args =.. [$|Objs],  % store arguments as $/N where N=1..3
-	NewNode = node(Op, P, 0, Args),  % L=0
+	NewNode = node(Op, _P, 0, Args),  % L=0
 	addNode_(Objs,NewNode),
 	% increment count of added nodes, will be decremented on backtracking/failure
 	g_incb('clpBNR:node_count'),
@@ -893,7 +891,7 @@ doNode_($(ZArg,XArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-       % Arit
 	    NewAgenda = Agenda
 	).
  
-doNode_($(Arg), Op, P, OpsLeft, _, Agenda, NewAgenda) :-                  % Arity 1 Op
+doNode_($(Arg), Op, P, _OpsLeft, _, Agenda, NewAgenda) :-                 % Arity 1 Op
 	(var(P)                                          % check persistent bit
 	 -> getValue(Arg,Val),
 	    evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
@@ -939,16 +937,18 @@ updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with 
 % propgate if sufficient narrowing (> 10%)
 propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
 
-linkNodeList_(X, List, List) :- var(X), !.       % end of indefinite list? ...
 linkNodeList_([X|Xs], List, NewList) :-
-	(arg(3,X,Linked), Linked == 1                % test linked flag (only SWIP VM codes)
-	 -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
-	 ;  linkNode_(List, X, NextList),            % not linked add it to list
-	    linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
+	(var(X)
+	 -> List = NewList                               % end of indefinite list
+	 ;  (arg(3,X,Linked), Linked == 1                % test linked flag (only SWIP VM codes)
+	     -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
+	     ;  linkNode_(List, X, NextList),            % not linked add it to list
+	        linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
+	    )
 	).
 
-linkNode_(List/[X|NextTail], X, List/NextTail) :-  % add to list
-	setarg(3,X,1).                               % set linked bit
+linkNode_(List/[X|NextTail], X, List/NextTail) :-    % add to list
+	setarg(3,X,1).                                   % set linked bit
 
 :- include(clpBNR/ia_utilities).  % print,solve, etc.
 
@@ -971,13 +971,13 @@ remove_([X|Xs],X,Xs) :- !.
 remove_([X|Xs],X,[X|Ys]) :-
 	remove_(Xs,X,Ys).
 
-watch_list_([],Action).
+watch_list_([],_Action).
 watch_list_([Int|Ints],Action) :-
 	watch(Int,Action),
 	watch_list_(Ints,Action).
 
 % check if watch enabled on this interval
-check_monitor_(Int, Update, interval(Type,Val,Nodelist,Flags)) :-
+check_monitor_(Int, Update, interval(_Type,_Val,_Nodelist,Flags)) :-
 	(memberchk(watch(Action), Flags)
 	 -> once(monitor_action_(Action, Update, Int))
 	 ; true
@@ -1000,25 +1000,25 @@ monitor_action_(log, Val, Int) :-  !,  % narrow range
 	debug_clpBNR_('Set value of ~p to (~p)',[Int,Val]).
 monitor_action_(_, _, _).  % default to noop (as in 'none')
 
-sandbox:safe_primitive(clpBNR:watch(Int,Action)) :- % watch(X,trace) is unsafe.
+sandbox:safe_primitive(clpBNR:watch(_Int,Action)) :- % watch(X,trace) is unsafe.
 	Action \= trace.
 % only safe because watch(X,trace) is unsafe.
-sandbox:safe_primitive(clpBNR:monitor_action_(Action, Update, Int)).
+sandbox:safe_primitive(clpBNR:monitor_action_(_Action, _Update, _Int)).
 
 %
 % tracing doNode_ support - using wrap_predicate(:Head, +Name, -Wrapped, +Body)/4
-% trace_clpBNR/3 is unsafe (wrapping is global, depends on debug topics)
+% trace_clpBNR/1 is unsafe (wrapping is global)
 %
 :- use_module(library(prolog_wrap)).
 
 trace_clpBNR(Bool)  :-                  % query or already in defined state
-	( current_predicate_wrapper(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda), 
-	                            'clpBNR:doNode_', Wrapped, Body)
+	( current_predicate_wrapper(clpBNR:doNode_(_Args, _Op, _P, _OpsLeft, _DoOver, _Agenda, _NewAgenda), 
+	                            'clpBNR:doNode_', _Wrapped, _Body)
 	 -> Bool = true ; Bool = false
 	),
 	!.
 trace_clpBNR(true)  :-                  % turn on wrapper
-	wrap_predicate(clpBNR:doNode_(Args, Op, P, OpsLeft, DoOver, Agenda, NewAgenda),
+	wrap_predicate(clpBNR:doNode_(Args, Op, _P, _OpsLeft, _DoOver, _Agenda, _NewAgenda),
 	                   'clpBNR:doNode_', 
 	                   Wrapped, 
 	                   doNode_wrap_(Wrapped, Args,Op)).
@@ -1028,10 +1028,8 @@ trace_clpBNR(false) :-                  % turn off wrapper
 
 doNode_wrap_(Wrapped, Args,Op) :-
 	map_constraint_op_(Op,Args,C),
-	(Wrapped
-	 -> trace_clpBNR_("~p.",C)
-	 ;  trace_clpBNR_("** fail ** ~p.",C)
-	).
+	Wrapped,                 % execute wrapped doNode_
+	debug_clpBNR_("~p.",C).  % print trace message , fail messages from evalNode_, attr_unify_hook
 
 %
 % Get all defined statistics
@@ -1044,10 +1042,8 @@ clpStatistics.
 %
 % module initialization
 %
-check_features :-
-	current_prolog_flag(bounded,true) -> print_message(error, clpBNR(bounded)) ; true.
-
-version_info :-
+init_clpBNR :-
+	restore_optimize_flags_,
 	print_message(informational, clpBNR(versionInfo)),
 	print_message(informational, clpBNR(arithmeticFlags)).  % cautionary, set on first use
 
@@ -1055,13 +1051,10 @@ check_hooks_safety :-  % safety check on any hooks (test only code)
 	% Note: calls must have no side effects
 	ignore(attr_portray_hook([],_)),                                            % fails
 	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
-	ignore(user:portray('$clpBNR...'(_))),                                      % fails
-	ignore(term_html:portray('$clpBNR...'(_),_,_,_)).                           % fails
+%	ignore(term_html:portray('$clpBNR...'(_),_,_,_)),                           % fails
+	ignore(user:portray('$clpBNR...'(_))).                                      % fails
 
 :- multifile prolog:message//1.
-
-prolog:message(clpBNR(bounded)) -->
-	[ 'clpBNR requires unbounded integers and rationals.'-[] ].
 
 prolog:message(clpBNR(versionInfo)) -->
 	{ version(Version) },
@@ -1070,13 +1063,4 @@ prolog:message(clpBNR(versionInfo)) -->
 prolog:message(clpBNR(arithmeticFlags)) -->
 	[ '  Arithmetic global flags will be set to prefer rationals and IEEE continuation values.'-[] ].
 
-init_clpBNR :-  % Note, most initialization deferred to "first use" - see user:exception/3
-	version_info,
-	check_features.
-
-:- initialization(init_clpBNR, now).
-
-:- endif.
-
-% remove possible temporary op definition
-:- (current_op(1199,A,::) -> op(0,A,::) ; true).
+:- initialization(init_clpBNR, now).  % Most initialization deferred to "first use" - see user:exception/3

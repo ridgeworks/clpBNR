@@ -8,11 +8,12 @@ CLP(BNR) is an instance of CLP(*R*), i.e., CLP over the domain of real numbers. 
 * CLP(BNR) supports an "integral" constraint which forces interval bounds to be integers, enabling constraints over finite domain problems within the relational interval arithmetic framework; booleans can be represented as integer intervals with bounds `((0,1))` and  primitives to support boolean logic are included. Including integers and booleans within a single arithmetic framework enables natural solutions to mixed domain problems.
 * Implementation: For simplicity and portability reasons, this version of CLP(BNR) is entirely implemented in SWI-Prolog. The main dependencies include attributed variables, support for rationals and IEEE floating point numbers (including rounding modes), and global variables for operational measurements.
 
-Versions of `clpBNR` 0.11.0 and later require SWI-Prolog 9.1.5 or later for mathematically correct comparison of mixed numeric values. In addition, versions greater than V0.11.0 define an API for users to implement custom interval narrowing operations - see the Reference section of the [Guide to CLP(BNR)][clpBNR_UG] for further details.
+Versions of `clpBNR` 0.11.5 and later require SWI-Prolog 9.1.22 or later for properly exprted arithmetic functions on intervals. In addition, versions greater than V0.11.0 define an API for users to implement custom interval narrowing operations - see the Reference section of the [Guide to CLP(BNR)][clpBNR_UG] for further details.
 
 As of version 0.11.4, `library(clpBNR)` and `library(clpBNR_toolkit)` are pengine sandbox compliant so they can installed on [SWISH][swish]. Some of the developer centric features, available when running directly on SWI-Prolog, are not available in a sandbox including:
 * `trace_clpBNR/1` to trace the execution of the fixed point iterator
 * `watch/2` with the `'trace'` option
+* custom interval arithmetic primitives are not supported
 
 
 ## A Brief Introduction
@@ -150,7 +151,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.11.4
+	Installed version:      0.11.5
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -158,7 +159,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.11.4 ***.
+	% *** clpBNR v0.11.5 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
 Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.

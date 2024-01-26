@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman
+ *	Copyright (c) 2019-2024 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -77,7 +77,7 @@ num_separate_(Exp,Exp,0).
 num_rhs_(N,N,E,E)   :- !.
 num_rhs_(0,N,E,RHS) :- !, (E==0 -> RHS = -N ; RHS = E-N).
 num_rhs_(N,0,E,RHS) :- !, (E==0 -> RHS = N ; RHS = E+N).
-num_rhs_(L,R,E,E+N) :- N is L-R, (E==0 -> RHS = N ; RHS = E+N).
+num_rhs_(L,R,E,RHS) :- N is L-R, (E==0 -> RHS = N ; RHS = E+N).
 
 num_exp_vars_(Exp,Vars) :-  % collect vars in arithmetic expressions, fails if none
 	exp_vars_(Exp,V/V,Vs/[]),	
@@ -389,7 +389,7 @@ reduce_term_items_([T1,T2|Ts],Exp) :-
 
 
 build_term_(E,    C,   Op, Exp)   :- var(E), Exp =.. [Op,E,C].
-build_term_(1,    A**B,/,  A**NB) :- rational(B), NB is -B .
+build_term_(1,    Exp, /,  A**NB) :- nonvar(Exp), Exp=A**B, rational(B), NB is -B .
 build_term_(1,    Exp, *,  Exp).
 build_term_(1,    Exp, /,  1/Exp).
 build_term_(One/B,C,   *,  C/B)   :- One==1.

@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2023 Rick Workman
+ *	Copyright (c) 2019-2024 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -55,94 +55,82 @@ name_vars_([TVar|TVars],[OVar|OVars],N) :-
 %
 % SWIP attribute portray hook - used if write_attributes=portray
 %
-attr_portray_hook(interval(Type,Val,N,F),_Int) :-
+attr_portray_hook(interval(Type,Val,_Node,_Flags),_Int) :-
 	interval_domain_(Type,Val,Dom),
 	format('~w',Dom).                       % safe
 
 %
-% Support ellipsis format in answers (toplevel and SWISH)
+% Support ellipsis format in answers
 %
-user:portray('$clpBNR...'(Out)) :-           % remove quotes on stringified number in ellipsis format
+user:portray('$clpBNR...'(Out)) :-          % remove quotes on stringified number in ellipsis format
 	string(Out),
 	format('~W...',[Out,[quoted(false)]]).  % safe
 
-:- multifile(term_html:portray//2).         % HTML version
-
-term_html:portray('$clpBNR...'(Out),_) -->   % remove quotes on stringified number in ellipsis format
-	{ string(Out) },
-	[<, span, ' ', class,  '="', 'pl-float', '"', >, Out, ..., </, span, >].
-
 %
-% SWIP hook for top level, SWISH, and graphical debugger clpBNR attribute display
-% two modes : 
+% SWIP hooks for answer formatting - two modes : 
 %	Verbose=true,  display all interval domains and associated constraints
-%	Verbose=false, display vars with no constraints - internal vars omitted in answers
+%	Verbose=false, display var domains with no constraints - internal vars omitted
 %
-sandbox:safe_global_variable('clpBNR:answermode').  % answer control parameters
-
-user:exception(undefined_global_variable,'clpBNR:answermode',retry) :- !,
-	set_default_answer_mode_(_).  % safe, tested elsewhere
-
-set_default_answer_mode_((copy,Verbose)) :- 
-	current_prolog_flag(clpBNR_verbose,Verbose),
-	g_assign('clpBNR:answermode',(copy,Verbose)).
-
-% toplevel answer control
-user:expand_query(Q,Q,Bindings,Bindings) :-
-	set_default_answer_mode_(Mode).  % reset for new query
-
-user:expand_answer(Bindings,Bindings) :-
-	current_prolog_flag(clpBNR_verbose,Verbose),
+user:expand_answer(Bindings,Bindings) :-          % for toplevel answer control
+	current_prolog_flag(clpBNR_verbose,Verbose),  % save verbose mode in attributes
 	add_names_(Bindings,Verbose).
 
-% SWISH answer control
-:- multifile(swish_trace:pre_context/3).
-:- multifile(swish_trace:post_context/1).
-
-swish_trace:pre_context(_,_,_) :-
-	set_default_answer_mode_(Mode).  % reset for new query
-	
-swish_trace:post_context(Dict) :-
-	current_prolog_flag(clpBNR_verbose,Verbose),
-	add_names_(Dict.bindings,Verbose).
-
-% annotate variables in Bindings
+% annotate interval variables in Bindings
 add_names_([],_).
+add_names_([Var|Bindings],Verbose) :- var(Var), !,
+	add_names_(['' = Var|Bindings],Verbose).
 add_names_([Name = Var|Bindings],Verbose) :-
 	(get_interval_flags_(Var,Flags)
-	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags])
-	 ;  true  % Var not a clpBNR interval
-	), 	
+	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),        % mainly to attach Verbose
+	    (Verbose == false -> reset_interval_nodelist_(Var) ; true)  % Nodes restored on backtrack
+	 ;  (compound(Var)                 % Var not a clpBNR interval, if compound...
+	     -> term_variables(Var,Vars),
+	        add_names_(Vars,Verbose)   % mark any internal intervals  
+	     ; true                        % else nothing to mark
+	    )
+	),
 	add_names_(Bindings,Verbose).
 
 %
-% Constructs goals to build interval(X), format depends on Verbose setting
+%  SWISH versions:
+%
+:- if(current_prolog_flag(clpBNR_swish, true)).
+
+% portray (HTML)
+:- use_module(library(http/html_write)).
+:- multifile(term_html:portray//2).
+
+term_html:portray('$clpBNR...'(Out),_) -->   % avoid quotes on stringified number in ellipsis format
+	{ string(Out) },
+	html(span(class('pl-float'), [Out, '...'])).
+
+% for answer formatting
+:- multifile(swish_trace:post_context/1).
+
+swish_trace:post_context(Dict) :-
+	expand_answer(Dict.bindings,_).
+
+:- endif.  % current_prolog_flag(clpBNR_swish, true)
+
+%
+% Constructs goals to build interval(X)
 %
 attribute_goals(X) -->
-	{(get_interval_flags_(X, Flags), memberchk(name(_,Verbose),Flags)
-       -> Phase = answer,
-          g_assign('clpBNR:answermode',(Phase,Verbose))  % force to answer phase
-       ;  g_read('clpBNR:answermode',(Phase,Verbose))    % use existing values
-     ),
-	 domain_goals_(Verbose,Phase,X,Goals)
+	{(interval_object(X, Type, Val, Nodes)
+ 	  -> (get_interval_flags_(X,Flags), memberchk(name(_,false),Flags), var(Nodes) 
+ 	      -> intValue_(Val,Type,Dom),           % non-verbose and empty nodelist => "pretty" value
+	         Goals = [X::Dom]
+	      ;  interval_domain_(Type, Val, Dom),  % full copy 
+	         constraints_(Nodes,X,Cs),          % reverse map to list of original constraints
+	         to_comma_exp_(Cs,X::Dom,Goals)
+	     )
+	  ;  Goals = []
+	 )
 	},
 	list_dcg_(Goals).  % avoids "unsafe" call to phrase/3
 
 list_dcg_([]) --> [].
 list_dcg_([H|T]) --> [H], list_dcg_(T).
-
-domain_goals_(false,answer,X,C) :-
-	get_interval_flags_(X, Flags), memberchk(name(_,_),Flags), !,  % annotated var?
-	domain_goals_(false,copy,X,C).
-domain_goals_(false,copy,X,[X::Dom]) :-
-	interval_object(X, Type, Val, _), !,
-	intValue_(Val,Type,Dom).
-domain_goals_(true,_,X,Cs) :-             % Verbose=true, vars and constraints always output
-	interval_object(X, Type, Val, Nodes), !,
-	interval_domain_(Type, Val, Dom), 
-	constraints_(Nodes,X,NCs),            % reverse map to list of original constraints
-	to_comma_exp_(NCs,X::Dom,Cs).
-domain_goals_(_,_,X,[]).                  % catchall but normally non-query attvar, Verbose=false
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
@@ -157,7 +145,7 @@ constraints_([_|Nodes],X,Cs) :-
 to_comma_exp_([],Decl,[Decl]).
 to_comma_exp_([N|NCs],Decl,[(Decl,{Cs})]) :-
 	to_comma_cexp_(NCs,N,Cs).
-	
+
 to_comma_cexp_([],In,In).
 to_comma_cexp_([C|Cs],In,Out) :-
 	to_comma_cexp_(Cs,(In,C),Out).
@@ -173,12 +161,12 @@ to_comma_cexp_([C|Cs],In,Out) :-
 % 6. Subterm intervals as sub-terms printed as domain (Type(L,H)).
 %
 intValue_((0,1),integer,boolean).                  % boolean
-intValue_((L,H),real,'$clpBNR...'(Out)) :-          % virtual zero (zero or subnormal) 
+intValue_((L,H),real,'$clpBNR...'(Out)) :-         % virtual zero (zero or subnormal) 
 	zero_float_(L),
 	zero_float_(H), !,
 	format(chars(Zero),"~16f",0.0),
 	string_chars(Out,[' '|Zero]).                  % space prefix 
-intValue_((L,H),real,'$clpBNR...'(Out)) :-          % two floats with minimal leading match
+intValue_((L,H),real,'$clpBNR...'(Out)) :-         % two floats with minimal leading match
 	float_chars_(L,LC),
 	float_chars_(H,HC),
 	sign_chars_(LC,HC,ULC,UHC,Codes/Match),
@@ -186,7 +174,7 @@ intValue_((L,H),real,'$clpBNR...'(Out)) :-          % two floats with minimal le
 	matching_(ZLC,UHC,Match,0,Dec,MLen),
 	MLen>Dec+1, !,	% minimum of one matching digit after decimal point
 	string_codes(Out,Codes).
-intValue_((L,H),Type,Dom) :-                        % default, just convert rationals
+intValue_((L,H),Type,Dom) :-                       % default, just convert rationals
 	rational_fraction_(L,FL),
 	rational_fraction_(H,FH),
 	interval_domain_(Type, (FL,FH), Dom).
@@ -233,7 +221,7 @@ matching_([LC,LC1|LCs],[HC,HC1|HCs],[HC|Cs],N,Dec,Nout) :- % match after roundin
 	digit_match_(LC,LC1,HC,HC1), !,
 	N1 is N+1,
 	matching_([LC1|LCs],[HC1|HCs],Cs,N1,Dec,Nout).
-matching_(LCs,HCs,[],N,Dec,N) :-                    % non-matching after '.'
+matching_(_LCs,_HCs,[],N,Dec,N) :-                  % non-matching after '.'
 	nonvar(Dec). 
 
 digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
@@ -252,7 +240,7 @@ enumerate(X) :-
 	between(L,H,X).             % gen values, constraints run on unification
 enumerate(X) :- list(X), !,     % list of ..
 	enumerate_list_(X).
-enumerate(X).                   % X not enumerable, skip it
+enumerate(_X).                  % X not enumerable, skip it
 
 enumerate_list_([]).
 enumerate_list_([X|Xs]) :-
@@ -313,7 +301,7 @@ global_maximum(Exp,Z,P) :-
 global_minimum(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	global_minimum(Exp,Z,P).
-global_minimum(Exp,Z,P) :- ground(Exp), !,
+global_minimum(Exp,Z,_P) :- ground(Exp), !,
 	Z is Exp.
 global_minimum(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,false).
@@ -329,7 +317,7 @@ global_maximize(Exp,Z,P) :-
 global_minimize(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	global_minimize(Exp,Z,P).
-global_minimize(Exp,Z,P) :- ground(Exp), !,
+global_minimize(Exp,Z,_P) :- ground(Exp), !,
 	Z is Exp.
 global_minimize(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,true).
@@ -338,7 +326,7 @@ global_optimum_(Exp,Z,P,BindVars) :-
 	term_variables(Exp,Xs),                           % vars to search on
 	{Z==Exp},                                         % Steps 1. - 4.
 	box_([Z|Xs],[(Zl,Zh)|XVs]),                       % construct initial box
-	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars).    % and start iteration
+	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),_ZTree,BindVars).   % and start iteration
 
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	continue_MS(Zl,Zh,P,Xs,XVs,False),                % Step 12., check termination condition
@@ -349,7 +337,7 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	tree_insert(ZTree1,V2,ZTree2),                    % Step 10. for V2
 	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
 	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
-iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-      % termination criteria (Step 12.) met
+iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-    % termination criteria (Step 12.) met
 	Z::real(Zl,Zh),
 	(BindVars -> optimize_vars_(Xs,XVs) ; true).      % optional minimizer narrowing
 
@@ -367,18 +355,18 @@ continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
 	SErr is 10.0**(-min(6,P+2)), % ?? heuristic
 	simplesolveall_(Xs,SErr),                    % validate solution
 	!, fail.                                     % no narrowing escapes
-continue_MS(Zl,Zh,_,_,XVs,false).                % continue with false positive
+continue_MS(_Zl,_Zh,_,_,_XVs,false).             % continue with false positive
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(False,_,_,_,_,[]) :- False == false, !.  % if false positive return "fail" result
-eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-            % Step 7., calculate F(V) and save
+eval_MS(_,Z,Xs,XVs,XConstraint,_FV) :-           % Step 7., calculate F(V) and save
 	nb_setval('clpBNR:eval_MS',[]),                      % [] means failure to evaluate
 	buildConstraint_(XConstraint,T/T,Agenda),
 	build_box_MS(Xs,XVs,Agenda),
 	box_([Z|Xs],[(Zl,Zh)|NXVs]),                 % copy Z and Xs solution bounds
 	nb_setval('clpBNR:eval_MS',Zl-(Zh,NXVs)),            % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
-eval_MS(_,Z,Xs,XVs,XConstraint,FV) :-
+eval_MS(_,_,_,_,_,FV) :-
 	nb_getval('clpBNR:eval_MS',FV).                      % retrieve solution ([] on failure)
 
 sandbox:safe_global_variable('clpBNR:eval_MS').
@@ -392,7 +380,7 @@ build_box_MS([X|Xs],[XNew|XVs],Agenda) :-
 
 tree_insert(Tree,[],Tree) :-!.
 tree_insert(MT,Data,Ntree) :- var(MT), !,
-	Ntree = n(L,R,Data).
+	Ntree = n(_L,_R,Data).
 tree_insert(n(L,R,K-Data), NK-NData, Ntree) :- -1 is cmpr(NK,K), !,  % NK<K
 	tree_insert(L, NK-NData, NewL),
 	Ntree = n(NewL,R,K-Data).
@@ -425,10 +413,10 @@ widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
 	midpoint_(L,H,XfMid), !,              % must be "splittable" so
 	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
-widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),X0,Xf,XfMid) :-
+widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
 	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
 	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
-widest1_MS([X|Xs],[XV|XVs],W0,X0,Xf,XfMid) :-
+widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
 	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
 
 % Midpoint test, Step 11+:
@@ -444,7 +432,7 @@ splitsolve(X) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	splitsolve(X,P).
 
-splitsolve(X,P) :-
+splitsolve(X,_P) :-
 	number(X), !.                 % already a point value
 splitsolve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
@@ -464,16 +452,15 @@ flatten_list([H|T], Tail, List) :- !,
 flatten_list(N,Tail,[N|Tail]).
 
 simplesolveall_(Xs,Err) :-
-	select_wide_(Xs,D1,X),
-	interval_object(X, Type, (Xl,Xh), _),
-	midpoint_(Xl,Xh,Xmid),
-	choice_generator_(Type,X,(Xl,Xh),Xmid,Err,Choices),
+	select_wide_(Xs,_,X),
+	interval_object(X, Type, V, _),
+	split_choices_(Type,X,V,Err,Choices),
 	!,
-	simplesolve_choices_(Choices),  % generate alternatives
+	xpsolve_choice(Choices),  % from solve/1, generate alternatives
 	simplesolveall_(Xs,Err).
-simplesolveall_(Xs,Err).  % terminated
+simplesolveall_(_Xs,_Err).  % terminated
 
-select_wide_([X],_,X) :- !.       % select last remaining element
+select_wide_([X],_,X) :- !.        % select last remaining element
 select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
 	(var(D1) -> delta(X1,D1) ; true),
 	delta(X2,D2),
@@ -482,17 +469,10 @@ select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
 	 ;  select_wide_([X2|Xs],D2,X)
 	).
 
-%	bisect_interval(real,X,[Xl,Xh],Xmid,Err,({X=< ::(Xmid,Xmid)};{::(Xmid,Xmid)=<X})) :-
-choice_generator_(real,X,(Xl,Xh),Xmid,Err,bisect_interval_(real,X,Xmid)) :-
-	\+ chk_small(Xl,Xh,Err), !.  % choice_generator_ fails if X is small real
-choice_generator_(integer,X,(Xl,Xh),_,_,enumerate(X)):-            % enumerate narrow integers
-	Xh-Xl =< 16, !.
-choice_generator_(integer,X,_,Xmid,_,bisect_interval_(integer,X,Xmid)).  % bisect the rest
-
-simplesolve_choices_(bisect_interval_(_,X,Pt)) :- constrain_(X=< ::(Pt,Pt)).
-simplesolve_choices_(bisect_interval_(real,X,Pt)) :- constrain_(::(Pt,Pt)=<X).   % must use =<
-simplesolve_choices_(bisect_interval_(integer,X,Pt)) :- constrain_(::(Pt,Pt)<X).  % can use <
-simplesolve_choices_(enumerate(X)) :- enumerate(X).
+split_choices_(real,X,V,Err,split(X,::(SPt,SPt))) :- !,
+	splitinterval_real_(V,SPt,Err).            % from solve/1, but splits anywhere
+split_choices_(integer,X,V,_Err,Cons) :-
+	splitinterval_(integer,X,V,_,Cons).        % from solve/1
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -514,7 +494,6 @@ simplesolve_choices_(enumerate(X)) :- enumerate(X).
 %  of the strategy used in the solve in BNRP V. 3. In this sense, the
 %  combination: " solve(X), absolve(X) "  { in that order } does something
 %  like what "solve(X)"did under the old system.
-
 
 absolve( X ):-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -571,18 +550,18 @@ solve(X) :-
 solve(X,P) :-
 	interval(X), !,               % if single interval, put it into a list
 	solve([X],P).
-solve(X,P) :-
+solve(X,_P) :-
 	number(X), !.                 % already a point value
 solve(X,P) :-                     % assume list
 	Err is 10.0**(-(P+1)),        % convert digits of precision to normalized error value 
 	xpsolveall_(X,Err).
 
-xpsolveall_([],Err) :- !.
+xpsolveall_([],_Err) :- !.
 xpsolveall_(Xs,Err) :-
 	xpsolve_each_(Xs,Us,Err),     % split once and collect successes
 	xpsolveall_(Us,Err).          % continue to split remaining
 
-xpsolve_each_([],[],Err).
+xpsolve_each_([],[],_Err).
 xpsolve_each_([X|Xs],[X|Us],Err) :-
 	interval_object(X,Type,V,_),          % get interval type and value
 	splitinterval_(Type,X,V,Err,Choices), % split interval
@@ -596,65 +575,59 @@ xpsolve_each_([X|Xs],[U|Us],Err) :-
 	list(X), !,                           % nested list
 	xpsolve_each_(X,U,Err),               % split nested list
 	xpsolve_each_(Xs,Us,Err).             % then others in main list
-xpsolve_each_([X|Xs],Us,Err) :-
+xpsolve_each_([_X|Xs],Us,Err) :-
 	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
 
 xpsolve_choice(split(X,SPt)) :- constrain_(X =< SPt).  % avoid meta call
 xpsolve_choice(split(X,SPt)) :- constrain_(SPt =< X).
+xpsolve_choice(split_integer(X,SPt)) :- constrain_(X =< SPt).
+xpsolve_choice(split_integer(X,SPt)) :- constrain_(SPt < X).
 xpsolve_choice(enumerate(X)) :- enumerate(X).
 
 %
 % try to split interval - fails if unsplittable (too narrow)
 %
-splitinterval_(real,X,V,Err,split(X,SPt)) :-
+splitinterval_(real,X,V,Err,split(X,::(SPt,SPt))) :-  % split on point value
 	splitinterval_real_(V,Pt,Err),          % initial guess
 	split_real_(X,V,Pt,Err,SPt).
-
-splitinterval_(integer,X,_,_,_) :-           % bounds must be finite since bigints supported
-	getValue(X,(L,H)),
-	((L == -1.0Inf ; H == 1.0Inf) -> !,fail).
 splitinterval_(integer,X,V,_,Cons) :- 
-	( splitinterval_integer_(V,Pt)                       % try to split 
-	 -> Cons = split(X,Pt)                               % success
-	 ;  Cons = enumerate(X)                              % fail, use enumerate on X
+	V = (L,H),
+	( H-L < 15
+	 -> Cons = enumerate(X)                              % small enough to enumerate
+	 ;  splitinterval_integer_(V,Pt),                    % splittable at Pt
+	    Cons = split_integer(X,Pt)                       % success
 	).
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
 
-
 %  split a real interval
-split_real_(X,_,Pt,_,::(Pt,Pt)) :-          % Pt not in solution space, split here
-	X\=Pt, !.  % not({X==Pt}).
-split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try lower range
-	split_real_lo(X,(L,Pt),NPt,Err), !.
-split_real_(X,(L,H),Pt,Err,::(NPt,NPt)) :-  % Pt in current solution space, try upper range
-	split_real_hi(X,(Pt,H),NPt,Err).
+split_real_(X,_,Pt,_,Pt) :-                % Pt not in solution space, split here
+	X = Pt -> fail ; !.  % not({X==Pt}).
+split_real_(X,(L,_H),Pt,Err,NPt) :-        % Pt in current solution space, try lower range
+	split_real_lo(X,L,Pt,NPt,Err), !.
+split_real_(X,(_L,H),Pt,Err,NPt) :-        % Pt in current solution space, try upper range
+	split_real_hi(X,Pt,H,NPt,Err).
 
-split_real_lo(X,(L,Pt),NPt,Err) :-         % search lower range for a split point 
+split_real_lo(X,L,Pt,NPt,Err) :-           % search lower range for a split point 
 	splitinterval_real_((L,Pt),SPt,Err),
-	(X\=SPt -> NPt=SPt ; split_real_lo(X,(L,SPt),NPt,Err)).
+	(X\=SPt -> NPt=SPt ; split_real_lo(X,L,SPt,NPt,Err)).
 
-split_real_hi(X,(Pt,H),NPt,Err) :-         % search upper range for a split point 
+split_real_hi(X,Pt,H,NPt,Err) :-           % search upper range for a split point 
 	splitinterval_real_((Pt,H),SPt,Err),
-	(X\=SPt -> NPt=SPt ; split_real_hi(X,(SPt,H),NPt,Err)).
+	(X\=SPt -> NPt=SPt ; split_real_hi(X,SPt,H,NPt,Err)).
 
 %
 % splitinterval_integer_ and splitinterval_real_
 %
 splitinterval_integer_((L,H),0) :-
 	L < 0, H > 0, !.                  % contains 0 but not bounded by 0 
-/*
-splitinterval_integer_((-1.0Inf,H),Pt) :-
-	!,
-	Pt is H*10-5,                     % subtract 5 in case H is 0. (-5, -15, -105, -1005, ...)
-	float(Pt) > -1.0Inf.
-splitinterval_integer_((L,1.0Inf), Pt) :-
-	!,
-	Pt is L*10+5,                     % add 5 in case L is 0. (5, 15, 105, 1005, ...)
-	float(Pt) < 1.0Inf.
-*/
-splitinterval_integer_((L,H),Pt) :- 
-	H-L >= 16,                        % don't split ranges smaller than 16
+splitinterval_integer_((-1.0Inf,H),Pt) :-  !,  % infinite lower bound, integers unbounded
+	finite_interval(integer, (Pt,_)), % split at finite integer min if in range
+	H > Pt.
+splitinterval_integer_((L,1.0Inf), Pt) :-  !,  % infinite upper bound, integers unbounded
+	finite_interval(integer, (_,Pt)), % split at finite integer max if in range
+	L < Pt.
+splitinterval_integer_((L,H),Pt) :-   % all positive or negative (including zero)  
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
 splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on (precisely) 0.
@@ -709,7 +682,9 @@ pd(F,X,DD) :-
 	     ; pd_f(F,X,DD)
 	    )
 	).
-	
+
+:- style_check(-singleton).        % for pd_f
+
 pd_f(-U,X,DX) :-                   % DX = -DU
 	pd(U,X,DU),
 	pd_minus(DU,DX).
@@ -832,3 +807,5 @@ pd_sqrt(DU,DX)   :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
 pd_sin(DU,DX)    :- ground(DU) -> DX is sin(DU)  ; DX = sin(DU).
 
 pd_cos(DU,DX)    :- ground(DU) -> DX is cos(DU)  ; DX = cos(DU).
+
+:- style_check(+singleton).  % exit pd_f
