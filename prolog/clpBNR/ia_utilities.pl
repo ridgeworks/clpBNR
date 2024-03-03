@@ -164,6 +164,7 @@ intValue_((0,1),integer,boolean).                  % boolean
 intValue_((L,H),real,'$clpBNR...'(Out)) :-         % virtual zero (zero or subnormal) 
 	zero_float_(L),
 	zero_float_(H), !,
+	format(chars(Zero),"~16f",[0.0]),
 	format(chars(Zero),"~16f",0.0),
 	string_chars(Out,[' '|Zero]).                  % space prefix 
 intValue_((L,H),real,'$clpBNR...'(Out)) :-         % two floats with minimal leading match

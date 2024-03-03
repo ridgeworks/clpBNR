@@ -72,6 +72,7 @@
 	watch/2,               % enable monitoring of changes for interval or (nested) list of intervals
 	trace_clpBNR/1         % enable/disable tracing of clpBNR narrowing ops
 	]).
+:- use_module(library(arithmetic)).
 
 /*		missing(?) functionality from original CLP(BNR): utility accumulate/2.		*/
 
@@ -1049,7 +1050,7 @@ init_clpBNR :-
 
 check_hooks_safety :-  % safety check on any hooks (test only code)
 	% Note: calls must have no side effects
-	ignore(attr_portray_hook([],_)),                                            % fails
+	ignore(attr_portray_hook(_,_)),                                            % fails
 	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
 %	ignore(term_html:portray('$clpBNR...'(_),_,_,_)),                           % fails
 	ignore(user:portray('$clpBNR...'(_))).                                      % fails
