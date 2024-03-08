@@ -1,0 +1,144 @@
+<div class="notebook">
+
+    <div class="nb-cell markdown" name="md1">
+        # CLP(BNR) Quickstart Guide
+
+        CLP(BNR) is a dialect of constraint logic programming over the continuous domain of reals using interval arithmetic to ensure mathematical correctness. A minimal amount of code is required to start; just "use" the `clpBNR` module found in the library:
+    </div>
+
+    <div class="nb-cell program" data-background="true" name="p1">
+        :- use_module(library(clpBNR)).
+        :- use_module(library(clpBNR_toolkit)). % optional
+    </div>
+
+    <div class="nb-cell markdown" name="md2">
+        A simple query using CLP(BNR):
+    </div>
+
+    <div class="nb-cell query" name="q1">
+        X::real, {X**2-2*X+1==0}.
+    </div>
+
+    <div class="nb-cell markdown" name="md3">
+        Note that intervals (`clpBNR` attributed variables) are "declared" and displayed in answers using the `::` infix operator between the interval and its domain (type and optional bounds). If `real` intervals are small enough, the output is in ellipsis format containing common digits in the interval's lower and upper bound. For wider intervals (those spanning 0) the expanded form is used.
+
+        Arithmetic expressions can be used to define bounds in declarations:
+    </div>
+
+    <div class="nb-cell query" name="q2">
+        X::real(-pi/2,pi/2).
+    </div>
+
+    <div class="nb-cell markdown" name="md16">
+        Since integers are a sub-domain of reals, CLP(BNR) can also be used for finite domain problems using "type" `integer`. And Booleans can be mapped to integers 0 and 1, so they are supported as well. An example query showing the default bounds for each type:
+    </div>
+
+    <div class="nb-cell query" name="q13">
+        R::real, N::integer, B::boolean.
+    </div>
+
+    <div class="nb-cell markdown" name="md4">
+        The environment flag `clpBNR_verbose` can be used to control the format answer output values. When set to `true` (default is `false`) the expanded form is used and the structure of the constraint network is output, although this is usually too much detail for normal use. Try experimenting with the flag and see how the query output changes:
+    </div>
+
+    <div class="nb-cell program" data-background="true" name="p2">
+        :- set_prolog_flag(clpBNR_verbose,false).
+    </div>
+
+    <div class="nb-cell markdown" name="md6">
+        As demonstrated in the first example query, constraints are a sequence of one or more boolean expressions enclosed in curly brackets (`{}/1`). To succeed, all constraints must be consistently true when the constraint is applied (otherwise `{}/1` will fail) and when any of the variable domains change.
+
+        Constraint sub-expressions in `clpBNR` use the standard Prolog set of arithmetic functions extended with some boolean operations (`'and'`, `'or'`, `'not'`, ...). Equivalency uses `'=='` but supports synonyms `'=:='` and `'is'` (internally, there's no difference). The complete set of arithmetic functions and any restrictions on their use can be found in [A Guide to CLP(BNR)](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html). A few example queries:
+    </div>
+
+    <div class="nb-cell query" name="q5">
+        {X == Y+1.1, Y &gt;= 1}.
+    </div>
+
+    <div class="nb-cell markdown" name="md7">
+        Note the slightly fuzzed values for "imprecise" floating point constants); this ensures any real values are included in the interval regardless of input conversion (decimal to binary) errors . (`integer` and `rational` constants are considered precise.)
+    </div>
+
+    <div class="nb-cell query" name="q4">
+        {X == cos(X)}.
+    </div>
+
+    <div class="nb-cell markdown" name="md8">
+        A "`::`" declaration is not required here, but in general it's a good idea to do so. Non-declared variables are assumed to have infinite bounds (`(-inf,inf)`) which weakens constraint propagation.
+    </div>
+
+    <div class="nb-cell query" name="q6">
+        {A or B, C and D}.
+    </div>
+
+    <div class="nb-cell markdown" name="md9">
+        For most problems constraint propagation is insufficient to generate an useful answer and a "labelling" predicate is required (as in `clpfd`). It's actually necessary to separate solutions when multiple solutions exist since a `clpBNR` constrained interval must contain all solutions. The most general `clpBNR` labelling predicate is `solve` which does a bifurcated search on one or more intervals by the dividing the problem into sub-problems at points where no solution exists. Splitting stops when all intervals are "small" as expressed in number of digits; the default is 6, but can be altered using the environment flag `clpBNR_default_precision`. This provides a configurable tradeoff between answer precision and speed of execution.
+
+        Examples using `solve/1`:
+    </div>
+
+    <div class="nb-cell query" name="q7">
+        X::real, {17*X**256+35*X**17-99*X==0}, solve(X)
+    </div>
+
+    <div class="nb-cell markdown" name="md10">
+        Even when using `solve/1`, multiple "equivalent" solutions may sometimes be generated due to precision limits:
+    </div>
+
+    <div class="nb-cell query" name="q8">
+        X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, solve(X).
+    </div>
+
+    <div class="nb-cell markdown" name="md11">
+        Another narrowing predicate (interval domains can only narrow, they can't get wider), `absolve/1`, which nibbles from the bounds inwards, can sometimes be used to eliminate redundant answers:
+    </div>
+
+    <div class="nb-cell query" name="q9">
+        X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, solve(X), absolve(X).
+    </div>
+
+    <div class="nb-cell markdown" name="md12">
+        `solve/1` can work with a list of intervals; consider the intersection of the circle `X**2+Y**2==2` and the parabola `Y-X**2==0`:
+    </div>
+
+    <div class="nb-cell query" name="q10">
+        [X,Y]::real, {X**2+Y**2==2, Y-X**2==0}, solve([X,Y]).
+    </div>
+
+    <div class="nb-cell markdown" name="md13">
+        Constraints are not confined to be linear; another example:
+    </div>
+
+    <div class="nb-cell query" name="q11">
+        [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}.
+    </div>
+
+    <div class="nb-cell markdown" name="md14">
+        This shows that if the problem is sufficiently constrained, `solve/1` isn't even required. And there's nothing magical about `solve/1`; it just systematically applies more constraints until the sub-problem is sufficiently constrained that constraint propagation narrows the intervals to an acceptable precise value. Custom labelling predicates suited to the problem at hand are relatively easy to implement.
+
+        This is just a brief introduction to `clpBNR`. Additional information and many examples (finding roots and global optima, using numerical integration to solve differential equations, optimization techniques, etc.) can be found in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
+
+        A few final hints:
+        * In general, `clpBNR` doesn't generate any errors but just silently failing isn't very helpful during development. To alleviate this problem, the debug topic `clpBNR` can be used to effect "noisy" failures as well as to provide some basic constraint propagation trace information. (Debug mode also enables other other development features like low level tracing and interval watchpoints.) Default is:
+    </div>
+
+    <div class="nb-cell program" data-background="true" name="p3">
+        :- nodebug(clpBNR).  % to enable topic, change 'nodebug' to 'debug'
+    </div>
+
+    <div class="nb-cell markdown" name="md15">
+        * Use the `clpStatistics` family of predicates (as described in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html)) to display performance information, such as CPU time, number of narrowing operations, stack usage, etc., e.g.,
+    </div>
+
+    <div class="nb-cell query" name="q12">
+        clpStatistics, [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}, clpStatistics(SS).
+    </div>
+
+    <div class="nb-cell markdown" name="md5">
+        * Some development features of `clpBNR` are unavailable on SWISH due to sandboxing concerns:
+        1. low level tracing (`trace_clpBNR/1`).
+        2. Watch points with `trace` option (`watch/2`).
+        3. Custom (application defined) interval primitives.
+    </div>
+
+</div>

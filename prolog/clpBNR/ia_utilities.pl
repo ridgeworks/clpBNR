@@ -24,10 +24,24 @@
 %
 % compatibility predicate
 %
-% print_interval(Term), print_interval(Stream,Term)
-%	prints Term to optional Stream with intervals expanded to domains
-%	uses format/3 so extended Stream options, e.g., atom(A), are supported
-%
+/** 
+print_interval(?T) is semidet
+
+Succeeds printing term T with interval expanded to domains and vars labelled =V=*; fails if output fails. Provided for historical compatibility, use system output facilities instead. Example:
+==
+?- X::real,print_interval(f(X)),X=42.
+f(V0::real(-1.0e+16,1.0e+16))
+X = 42.
+==
+@deprecated use =|format/2|=
+*/
+/**  
+print_interval(+Stream,?T) is semidet
+
+Same as =|print_interval|= with output to a stream. It uses =|format/3|= so extended stream options, e.g., atom(A), are supported.
+
+@deprecated use =|format/3|=
+ */
 print_interval(Term) :- 
 	printed_term_(Term,Out),
 	format('~w',[Out]).          % safe
@@ -57,7 +71,7 @@ name_vars_([TVar|TVars],[OVar|OVars],N) :-
 %
 attr_portray_hook(interval(Type,Val,_Node,_Flags),_Int) :-
 	interval_domain_(Type,Val,Dom),
-	format('~w',Dom).                       % safe
+	format('~w',[Dom]).                     % safe
 
 %
 % Support ellipsis format in answers
@@ -71,8 +85,9 @@ user:portray('$clpBNR...'(Out)) :-          % remove quotes on stringified numbe
 %	Verbose=true,  display all interval domains and associated constraints
 %	Verbose=false, display var domains with no constraints - internal vars omitted
 %
-user:expand_answer(Bindings,Bindings) :-          % for toplevel answer control
-	current_prolog_flag(clpBNR_verbose,Verbose),  % save verbose mode in attributes
+user:expand_answer(Bindings,Bindings) :-              % for toplevel answer control
+	\+term_attvars(Bindings,[]),                      % fail to alternatives if no attributes 
+	current_prolog_flag(clpBNR_verbose,Verbose),      % save verbose mode in attributes
 	add_names_(Bindings,Verbose).
 
 % annotate interval variables in Bindings
@@ -83,11 +98,8 @@ add_names_([Name = Var|Bindings],Verbose) :-
 	(get_interval_flags_(Var,Flags)
 	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),        % mainly to attach Verbose
 	    (Verbose == false -> reset_interval_nodelist_(Var) ; true)  % Nodes restored on backtrack
-	 ;  (compound(Var)                 % Var not a clpBNR interval, if compound...
-	     -> term_variables(Var,Vars),
-	        add_names_(Vars,Verbose)   % mark any internal intervals  
-	     ; true                        % else nothing to mark
-	    )
+	 ;  term_attvars(Var,Vars),
+	    add_names_(Vars,Verbose)                                    % mark any internal intervals  
 	),
 	add_names_(Bindings,Verbose).
 
@@ -97,7 +109,6 @@ add_names_([Name = Var|Bindings],Verbose) :-
 :- if(current_prolog_flag(clpBNR_swish, true)).
 
 % portray (HTML)
-:- use_module(library(http/html_write)).
 :- multifile(term_html:portray//2).
 
 term_html:portray('$clpBNR...'(Out),_) -->   % avoid quotes on stringified number in ellipsis format
@@ -164,7 +175,7 @@ intValue_((0,1),integer,boolean).                  % boolean
 intValue_((L,H),real,'$clpBNR...'(Out)) :-         % virtual zero (zero or subnormal) 
 	zero_float_(L),
 	zero_float_(H), !,
-	format(chars(Zero),"~16f",0.0),
+	format(chars(Zero),"~16f",[0.0]),
 	string_chars(Out,[' '|Zero]).                  % space prefix 
 intValue_((L,H),real,'$clpBNR...'(Out)) :-         % two floats with minimal leading match
 	float_chars_(L,LC),
@@ -184,11 +195,11 @@ zero_float_(B) :- float(B), float_class(B,C), (C=zero ; C=subnormal).
 float_chars_(B,Cs) :-
 	rational_fraction_(B,F),
 	float(F), float_class(F, normal),
-	format(chars(Cs),'~16f',F),  % same length after '.' (pads with trailing 0's)
-	length(Cs,Len), Len=<32.     % reverts to precise format if too long
+	format(chars(Cs),'~16f',[F]),  % same length after '.' (pads with trailing 0's)
+	length(Cs,Len), Len=<32.       % reverts to precise format if too long
 
 rational_fraction_(B,FB) :-
-	rational(B,_,D), D \= 1, !,  % non-integer rational
+	rational(B,_,D), D \= 1, !,    % non-integer rational
 	FB is float(B).
 rational_fraction_(F,0.0) :- 
 	float(F),
@@ -232,9 +243,42 @@ digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
 % char test for properly formatted number 
 digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
-%
-%  enumerate integer and boolean intervals
-%
+/** 
+enumerate(?Term:term_List) is nondet
+
+Succeeds non-deterministically by enumerating values of any Term. Enumerating is defined as follows:
+* enumerating a list enumerates each item in the list (in that order).
+* enumerating an interval of type =integer= sets the interval to each value in the domain starting from the lower bound.
+* enumeration of any other term succeeds with no other effect.
+Examples:
+==
+?- X::integer(1,2), enumerate(X).
+X = 1 ;
+X = 2.
+
+?- Is=[X,Y], Is::integer(1,2), enumerate(Is).
+Is = [1, 1],
+X = Y, Y = 1 ;
+Is = [1, 2],
+X = 1,
+Y = 2 ;
+Is = [2, 1],
+X = 2,
+Y = 1 ;
+Is = [2, 2],
+X = Y, Y = 2.
+
+?- X::real, enumerate(X).
+X::real(-1.0e+16, 1.0e+16).
+
+?- enumerate(sam).
+true.
+
+?- B::boolean, enumerate([42,-1.0,B,Z]).
+B = 0 ;
+B = 1.
+==
+*/
 enumerate(X) :-
 	interval_object(X, integer, (L,H), _), !,
 	between(L,H,X).             % gen values, constraints run on unification
@@ -247,10 +291,31 @@ enumerate_list_([X|Xs]) :-
 	(integer(X) -> true ; enumerate(X)),  % optimization: X already an integer, skip it
 	enumerate_list_(Xs).
 
-%
-% Definition of "small" interval based on width and precision value
-%   (defaults to clpBNR_default_precision)
-%
+/**
+small(+X:numeric_List) is semidet
+
+Succeeds if the width of the domain of Numeric is less than the value defined by the environment flag =clpBNR_default_precision= which is a positive integer specifying number of digits; otherwise fails. For example, a =clpBNR_default_precision= value of 6 (the default) defines a domain width limit of =1e-7=. Numbers have a domain width of 0, so they are always "=small=".
+
+If Numeric is a list of numerics, all elements of the list must be "=small=". Examples:
+==
+?- X::real, small(X).
+false.
+
+?- X::real(-1e-10,1e-10), small(X).
+X::real(-1.0000000000000002e-10, 1.0000000000000002e-10).
+
+?- X::real(-1e-10,1e-10), small([X,42]).
+X::real(-1.0000000000000002e-10, 1.0000000000000002e-10).
+==
+Note that this is really only useful for =real= intervals; =integer= intervals are not small until they become point values. 
+ */
+/**
+small(+Numeric,+Precision) is semidet
+
+Succeeds if the width of the domain of Numeric is less than the value defined by P (digits of precision); otherwise fails. As with =|small/1|=, Numeric can be a single numeric or list of numerics.
+
+@see =|small/1|=
+ */
 small(V) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	small(V,P).
@@ -280,6 +345,58 @@ chk_small(L,H,Err) :-                     % from CLIP?
 	    ErrH \= 1.0Inf                    % overflow check
 	).
 
+/** 
+global_maximum(+Exp,?Z:numeric) is semidet
+
+Succeeds if Z unifies with the global maximum of (evaluated) expression Exp; otherwise fails. Exp must be an actual expression which can be evaluated as part of the search for the global optima, not an interval equal to the evaluated expression. Any solutions will be constrained to be at the global maximum which may result in narrowing any intervals in  Exp. 
+
+The maximum allowable width for the generated maximum is determined by the current default precision (environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,3r4*pi), global_maximum(X*sin(4*X),Z).
+X:: 1.994...,
+Z:: 1.97918... .
+== 
+Note that intervals in the expression may not narrow significantly if more than one maximum can found using the the initial domains. In such cases, additional "searching", e.g., using =|solve/1|=, may be necessary.
+
+@see =|global_maximize/2|=
+*/
+/** 
+global_maximum(+Exp,?Z:numeric,+Precision:integer) is semidet
+
+Same as =|global_maximum/2|= with additional argument defining precision (overrides environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,3r4*pi), global_maximum(X*sin(4*X),Z,4).
+X:: 1.99...,
+Z:: 1.979... .
+== 
+
+@see =|global_maximum/2|=
+*/
+/**
+global_minimum(+Exp,?Z:numeric) is semidet
+
+Succeeds if Z unifies with the global minimum of (evaluated) expression Exp; otherwise fails. This is analogous to =|global_maximum/2|= for finding minima. See =|global_maximum/2|= for more details. Example:
+==
+?- X::real(0,1r2*pi), global_minimum(X*sin(4*X),Z).
+X:: 1.228...,
+Z:: -1.203617... .
+== 
+
+@see =|global_maximum/2, global_minimize/2|=
+*/
+/** 
+global_minimum(+Exp,?Z:numeric,+Precision:integer) is semidet
+
+Same as =|global_minimum/2|= with additional argument defining precision (overrides environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,1r2*pi),global_minimum(X*sin(4*X),Z,4).
+X:: 1.23...,
+Z:: -1.203... .
+== 
+
+@see =|global_minimum/2|=
+*/
+
 %
 %  global_minimum(Exp,Z) - Z is an interval containing one or more global minimums of Exp.
 %  global_maximum(Exp,Z) - as above but global maximums
@@ -306,6 +423,56 @@ global_minimum(Exp,Z,_P) :- ground(Exp), !,
 global_minimum(Exp,Z,P) :-
 	global_optimum_(Exp,Z,P,false).
 
+/** 
+global_maximize(+Exp,?Z:numeric) is semidet
+
+Succeeds if Z unifies with the global maximum of (evaluated) expression Exp; otherwise fails. Exp must be an actual expression which can be evaluated as part of the search for the global optima, not an interval equal to the evaluated expression. Any solutions will be constrained to be at the global maximum (Z), and the intervals in Exp will be narrowed to the maximizers found for the global maximum value. If the global maximum satsfies multiple sets of maximizers, they will be lost. Finding a single set of maximizers is often sufficient for many practical problems.
+
+The maximum allowable width for the generated maximum is determined by the current default precision (environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,3r4*pi), global_maximize(X*sin(4*X),Z).
+X:: 1.994666...,
+Z:: 1.97918... .
+== 
+
+@see =|global_maximum/2|=
+*/
+/** 
+global_maximize(+Exp,?Z:numeric,+Precision:integer) is semidet
+
+Same as =|global_maximize/2|= with additional argument defining precision (overrides environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,3r4*pi), global_maximize(X*sin(4*X),Z,4).
+X:: 1.9947...,
+Z:: 1.979... .
+== 
+
+@see =|global_maximum/3|=
+*/
+/**
+global_minimize(+Exp,?Z:numeric) is semidet
+
+Succeeds if Z unifies with the global minimum of (evaluated) expression Exp; otherwise fails. This is analogous to =|global_maximize/2|= for finding minima and a single set of minimizers. See =|global_maximize/2|= for more details. Example:
+==
+?- X::real(0,1r2*pi), global_minimize(X*sin(4*X),Z).
+X:: 1.228295...,
+Z:: -1.203617... .
+== 
+
+@see =|global_maximize/2|=
+*/
+/** 
+global_minimize(+Exp,?Z:numeric,+Precision:integer) is semidet
+
+Same as =|global_minimize/2|= with additional argument defining precision (overrides environment flag  =clpBNR_default_precision=). Example:
+==
+?- X::real(0,1r2*pi),global_minimize(X*sin(4*X),Z,4).
+X:: 1.2283...,
+Z:: -1.203... .
+== 
+
+@see =|global_minimize/2|=
+*/
 % Copy of global_maximum & global_minimum with BindVars=true
 global_maximize(Exp,Z) :-
 	global_minimize(-Exp,NZ),
@@ -424,122 +591,30 @@ widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
 %midpoint_MS(L,H,M) :-  % L and H finite, non-zero ==> geometric/arithmetic mean
 %	M is min(sqrt(abs(L)),abs(L)/2)*sign(L)+min(sqrt(abs(H)),abs(H)/2)*sign(H).
 
-%
-%  splitsolve(Int) - joint search on list of intervals
-%  simple split, e.g., no filtering on splutions, etc.
-%
-splitsolve(X) :-
-	current_prolog_flag(clpBNR_default_precision,P),
-	splitsolve(X,P).
+/**
+solve(X:numeric_List) is nondet
 
-splitsolve(X,_P) :-
-	number(X), !.                 % already a point value
-splitsolve(X,P) :-
-	interval(X), !,               % if single interval, put it into a list
-	Err is 10.0**(-P),
-	simplesolveall_([X],Err).
-splitsolve(X,P) :-                % assumed to be a list
-	flatten_list(X,[],XF),        % flatten before iteration
-	Err is 10.0**(-P),
-	simplesolveall_(XF,Err).
+Succeeds if a solution can be found for all values in X where the resultant domain of any value if narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=); otherwise fails. This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the solution space (unlike =|splitsolve/1|=); this avoids the splitting a single solution range into multiple solutions (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
+==
+?- X::real, {17*X**256+35*X**17-99*X==0}, solve(X).
+X:: 0.0000000000000000... ;
+X:: 1.005027892894011... .
 
-% flatten list(s) using difference lists
-flatten_list(V,Tail,[V|Tail])   :- var(V), !.
-flatten_list([],Tail,Tail)      :- !.
-flatten_list([H|T], Tail, List) :- !,
-	flatten_list(H, HTail, List),
-	flatten_list(T, Tail, HTail).
-flatten_list(N,Tail,[N|Tail]).
+?- [X,Y]::real, {X+Y==1,X-Y==1}, solve([X,Y]).
+X:: 1.0000000000000...,
+Y::real(-4.96269692007445e-14, 4.96269692007445e-14).
+==
+The two main use cases for =|solve/1|= are a) to separate multiple solutions in a within domain (or set of domains), and b) to overcome the well known dependancy issue when using interval arithmetic. (In `clpfd` terminology, =|solve/1|= is a labelling predicate.)
 
-simplesolveall_(Xs,Err) :-
-	select_wide_(Xs,_,X),
-	interval_object(X, Type, V, _),
-	split_choices_(Type,X,V,Err,Choices),
-	!,
-	xpsolve_choice(Choices),  % from solve/1, generate alternatives
-	simplesolveall_(Xs,Err).
-simplesolveall_(_Xs,_Err).  % terminated
+@see =|splitsolve/1|=
+*/
+/**
+solve(X:numeric_List,Precision:integer) is nondet
 
-select_wide_([X],_,X) :- !.        % select last remaining element
-select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
-	(var(D1) -> delta(X1,D1) ; true),
-	delta(X2,D2),
-	(D1 >= D2
-	 -> select_wide_([X1|Xs],D1,X)
-	 ;  select_wide_([X2|Xs],D2,X)
-	).
+Same as =|solve/1|= with precision defined by Precision.
 
-split_choices_(real,X,V,Err,split(X,::(SPt,SPt))) :- !,
-	splitinterval_real_(V,SPt,Err).            % from solve/1, but splits anywhere
-split_choices_(integer,X,V,_Err,Cons) :-
-	splitinterval_(integer,X,V,_,Cons).        % from solve/1
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%					absolve( X )
-%					absolve( X, Precision)
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%  absolve( X ), for X an interval or list of intervals, is intended 
-%  solely to trim up the boundaries of what is essentially a single
-%  (non-point)  solution to a problem. Hence absolve- unlike the rest
-%  of the solve family -  is deterministic!
-%	 The strategy used in absolve( derived from the old V 3 solve) is to 
-%  work in from the edges of the interval ("nibbling away") until you
-%  cannot go nay farther, then reduce step size and resume nibbling.
-%  Control parameters limit the number of successive halvings of the 
-%  step size, which is initially half the interval width. 
-%  		Note that absolve and solve each abstract a different part of
-%  of the strategy used in the solve in BNRP V. 3. In this sense, the
-%  combination: " solve(X), absolve(X) "  { in that order } does something
-%  like what "solve(X)"did under the old system.
-
-absolve( X ):-
-	current_prolog_flag(clpBNR_default_precision,P),
-	absolve(X,P),!.
-
-absolve(X, _ ):- number(X), !.
-absolve(X, Limit ):- interval_object(X, Type, Val, _), !,  % interval
-	delta_(Type,Val,Delta),
-	% if bound is already a solution avoid the work
-	(not(not(lower_bound(X))) -> true ; absolve_l(X,Type,Delta,1,Limit)),
-	(not(not(upper_bound(X))) -> true ; absolve_r(X,Type,Delta,1,Limit)).
-
-absolve([],_).		% extends to lists
-absolve([X|Xs],Lim):- absolve(X,Lim),!, absolve(Xs,Lim).
-
-delta_(integer,(L,U),D) :- D is U div 2 - L div 2.
-delta_(real,   (L,U),D) :- D is U/2 - L/2.
-
-absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
-	getValue(X,(LB1,UB1)), 
-	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
-	Split is LB1 + DL1,
-	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not(constrain_(X=< ::(Split,Split))),!,
-	constrain_(X>= ::(Split,Split)),          % so X must be >
-	absolve_l(X,Type, DL1, NL1, Limit).
-absolve_l(_,_,_,_,_).                         % final result
-         
-absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
-	getValue(X,(LB1,UB1)), 
-	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
-	Split is UB1 - DU1,
-	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not(constrain_(X>= ::(Split,Split))),!,
-	constrain_(X=< ::(Split,Split)),          % so X must be <
-	absolve_r(X,Type, DU1, NU1,Limit).
-absolve_r(_,_,_,_,_).                         % final result
-
-trim_point_( N,N, _Type, _Limit, Delta, Delta).
-trim_point_( N,M, integer, Limit, Delta, Result):- N<Limit,N1 is N + 1,
-       D is  Delta div 2,
-       trim_point_(N1,M, integer, Limit,D, Result).
-trim_point_( N,M, real, Limit, Delta, Result):- N<Limit,N1 is N + 1,
-       D is  Delta/2,
-       trim_point_(N1,M,real, Limit,D, Result).
-
+@see =|solve/1|=
+*/
 %
 %  solve(Int) - joint search on list of intervals
 %
@@ -646,16 +721,185 @@ splitinterval_real_((L,H),Pt,E) :-     % finite L,H, positive or negative but no
 	splitMean_(L,H,Pt), !,
 	L < Pt,Pt < H.                     % split point must be between L and H
 
-%splitinterval_real_([L,H],Pt,E) :-
-%	writeln('FAIL'([L,H],Pt,E)),fail.
-
 % (approx.) geometric mean of L and H (same sign)
 splitMean_(L,H,M) :-  L >=0, !,  % positive range
 	(L=:=0 -> M is min(H/2, sqrt( H)) ; M is sqrt(L)*sqrt(H)).
 splitMean_(L,H,M) :-             % negative range
 	(H=:=0 -> M is max(L/2,-sqrt(-L)) ; M is -sqrt(-L)*sqrt(-H)). 
 
+/**
+splitsolve(X:numeric_List) is nondet
 
+Succeeds if a solution can be found for all values in X where the resultant domain of any value if narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=); otherwise fails. This is done by splitting any intervals in order of their widths until all domains are smaller than the required limit. Other solutions can be generated on backtracking.
+
+Normally =|solve/1|= is a better choice but this predicate can be used when =|solve/1|= cannot find a suitable non-solution value to use to split an interval (or intervals). This predicate is also less computationally expensive, but may result in many solutions being produced for a single wider interval. (This is why =|solve/1|= splits on non-solutions.) 
+
+@see =|solve/1|=
+*/
+/**
+splitsolve(X:numeric_List,Precision:integer) is nondet
+
+Same as =|splitsolve/1|= with precision defined by Precision.
+
+@see =|splitsolve/1|=
+*/
+%
+%  splitsolve(Int) - joint search on list of intervals
+%  simple split, e.g., no filtering on splutions, etc.
+%
+splitsolve(X) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	splitsolve(X,P).
+
+splitsolve(X,_P) :-
+	number(X), !.                 % already a point value
+splitsolve(X,P) :-
+	interval(X), !,               % if single interval, put it into a list
+	Err is 10.0**(-P),
+	simplesolveall_([X],Err).
+splitsolve(X,P) :-                % assumed to be a list
+	flatten_list(X,[],XF),        % flatten before iteration
+	Err is 10.0**(-P),
+	simplesolveall_(XF,Err).
+
+% flatten list(s) using difference lists
+flatten_list(V,Tail,[V|Tail])   :- var(V), !.
+flatten_list([],Tail,Tail)      :- !.
+flatten_list([H|T], Tail, List) :- !,
+	flatten_list(H, HTail, List),
+	flatten_list(T, Tail, HTail).
+flatten_list(N,Tail,[N|Tail]).
+
+simplesolveall_(Xs,Err) :-
+	select_wide_(Xs,_,X),
+	interval_object(X, Type, V, _),
+	split_choices_(Type,X,V,Err,Choices),
+	!,
+	xpsolve_choice(Choices),  % from solve/1, generate alternatives
+	simplesolveall_(Xs,Err).
+simplesolveall_(_Xs,_Err).  % terminated
+
+select_wide_([X],_,X) :- !.        % select last remaining element
+select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
+	(var(D1) -> delta(X1,D1) ; true),
+	delta(X2,D2),
+	(D1 >= D2
+	 -> select_wide_([X1|Xs],D1,X)
+	 ;  select_wide_([X2|Xs],D2,X)
+	).
+
+split_choices_(real,X,V,Err,split(X,::(SPt,SPt))) :- !,
+	splitinterval_real_(V,SPt,Err).            % from solve/1, but splits anywhere
+split_choices_(integer,X,V,_Err,Cons) :-
+	splitinterval_(integer,X,V,_,Cons).        % from solve/1
+
+/**
+absolve(X:numeric_List) is semidet
+
+Succeeds if a if X is a numeric (or list of numeric); otherwise fails. =|absolve|= is intended solely to trim up the boundaries of what is essentially a single (non-point)  solution to a problem. The strategy used  is to work in from the edges of the interval ("nibbling away") at subdomains which are inconsistent until you cannot go farther, then reduce step size and resume nibbling. In this case, the the environment flag  =clpBNR_default_precision= is used to specify the number of step size reductions to apply; the initial step size is half the interval width.
+
+=|absolve|= can be used to further narrow intervals after =|solve|= to "sharpen" the result; example:
+==
+?- X::real,{X**4-4*X**3+4*X**2-4*X+3==0},solve(X).
+X:: 1.000000... ;
+X:: 1.0000000... ;
+X:: 3.000000... ;
+X:: 3.000000... ;
+false.
+
+?- X::real,{X**4-4*X**3+4*X**2-4*X+3==0},solve(X),absolve(X).
+X:: 1.00000000... ;
+X:: 3.00000000... ;
+false.
+==
+*/
+/**
+absolve(X:numeric_List,Precision:integer) is nondet
+
+Same as =|absolve/1|= with precision defined by Precision.
+
+@see =|absolve/1|=
+*/
+
+%  absolve( X ), for X an interval or list of intervals, is intended 
+%  solely to trim up the boundaries of what is essentially a single
+%  (non-point)  solution to a problem. Hence absolve- unlike the rest
+%  of the solve family -  is deterministic!
+%	 The strategy used in absolve( derived from the old V 3 solve) is to 
+%  work in from the edges of the interval ("nibbling away") until you
+%  cannot go nay farther, then reduce step size and resume nibbling.
+%  Control parameters limit the number of successive halvings of the 
+%  step size, which is initially half the interval width. 
+%  		Note that absolve and solve each abstract a different part of
+%  of the strategy used in the solve in BNRP V. 3. In this sense, the
+%  combination: " solve(X), absolve(X) "  { in that order } does something
+%  like what "solve(X)"did under the old system.
+
+absolve( X ):-
+	current_prolog_flag(clpBNR_default_precision,P),
+	absolve(X,P),!.
+
+absolve(X, _ ):- number(X), !.
+absolve(X, Limit ):- interval_object(X, Type, Val, _), !,  % interval
+	delta_(Type,Val,Delta),
+	% if bound is already a solution avoid the work
+	(not(not(lower_bound(X))) -> true ; absolve_l(X,Type,Delta,1,Limit)),
+	(not(not(upper_bound(X))) -> true ; absolve_r(X,Type,Delta,1,Limit)).
+
+absolve([],_).		% extends to lists
+absolve([X|Xs],Lim):- absolve(X,Lim),!, absolve(Xs,Lim).
+
+delta_(integer,(L,U),D) :- D is U div 2 - L div 2.
+delta_(real,   (L,U),D) :- D is U/2 - L/2.
+
+absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
+	getValue(X,(LB1,UB1)), 
+	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
+	Split is LB1 + DL1,
+	LB1 < Split, Split < UB1,                 % in range, not endpoint
+	not(constrain_(X=< ::(Split,Split))),!,
+	constrain_(X>= ::(Split,Split)),          % so X must be >
+	absolve_l(X,Type, DL1, NL1, Limit).
+absolve_l(_,_,_,_,_).                         % final result
+         
+absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
+	getValue(X,(LB1,UB1)), 
+	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
+	Split is UB1 - DU1,
+	LB1 < Split, Split < UB1,                 % in range, not endpoint
+	not(constrain_(X>= ::(Split,Split))),!,
+	constrain_(X=< ::(Split,Split)),          % so X must be <
+	absolve_r(X,Type, DU1, NU1,Limit).
+absolve_r(_,_,_,_,_).                         % final result
+
+trim_point_( N,N, _Type, _Limit, Delta, Delta).
+trim_point_( N,M, integer, Limit, Delta, Result):- N<Limit,N1 is N + 1,
+       D is  Delta div 2,
+       trim_point_(N1,M, integer, Limit,D, Result).
+trim_point_( N,M, real, Limit, Delta, Result):- N<Limit,N1 is N + 1,
+       D is  Delta/2,
+       trim_point_(N1,M,real, Limit,D, Result).
+
+/**
+partial_derivative(+Exp, -X, ?Drv) is semidet
+
+Suucceds if the (symbolic) partial derivative of Exp with respect to variable X is Drv; otherwise fails. The syntax of Exp is determined by normal `clpBNR` (and Prolog) arithmetic syntax. Examples:
+
+==
+?- partial_derivative(X**2,X,Drv).
+Drv = 2*X.
+
+?- partial_derivative(X/Y,X,Drv).
+Drv = 1/Y.
+
+?- partial_derivative(X/Y,Y,Drv).
+Drv = -1*X/Y**2.
+
+?- partial_derivative(max(X,Y),Y,Drv).
+false.
+==
+This predicate can be used in generating additional constraints, e.g., local optima with a gradient of 0, or in constructing meta-contractors like the Taylor series contractor described in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
+*/
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 %					partial_derivative(E, X, D)

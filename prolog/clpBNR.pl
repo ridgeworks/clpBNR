@@ -92,12 +92,32 @@ integer                               %% must be an integer value
 
 */
 
-version("0.11.5").
+/** <module> clpBNR: Constraint Logic Programming over Continuous Domain of Reals
+
+CLP(BNR) (=|library(clpbnr)|=, henceforth just =clpBNR=) is a CLP over the domain of real numbers extended with ±∞. Since integers are a proper subset of reals, and booleans (0 or 1) a subset of integers, these "sub-domains" are also supported.
+
+Since the set of real numbers is continuous it's not possible to represent an aribitray real number, e.g., π in the finite resources of a computer. So =clpBNR= uses intervals to represent the domain of a numeric variable. A real variable X has a domain of (L,U) if L ≤ X ≤ U where L and U are numeric values which can be finitely represented, e.g., floats, integers or rationals.
+
+The use of intervals (and interval arithmetic) provides guarantees of completeness and correctness - unlike floating point arithmetic - by sacrificing some precision since calulations using floating point domain bounds will be outward rounded.
+
+Finiteness is guaranteed since intervals can only get narrower over the course of a computation. Certainty is only guaranteed if there are no solutions (i.e., query fails) - final interval values may contain 0, 1, or many solutions. When this occurs, the application can further constrain the solution, e.g., by testing specific (point) values in the domain, or by making use of some external knowledge of the problem being solved.
+
+More extensive documentation and many examples are provided in [A Guide to CLP(BNR)](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html) (HTML version included with this pack in directory =|docs/|=).
+
+Documentation for exported predicates follows. The "custom" types include:
+*  _interval_  : a variable with a =clpBNR= attribute
+*  _numeric_   : an _interval_ or a _number_
+*  _|*_list|_  : a list of _|*|_
+*  _|*_List|_  : a _|*|_ or a list of _|*|_
+*/
+
+version("0.11.6").
 
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
 	:- create_prolog_flag(clpBNR_swish, true, [access(read_only)]).
 	:- use_module(swish(lib/swish_debug)).
+	:- use_module(library(http/html_write)).
 :- else.
 	:- use_module(library(debug)).
 :- endif.
@@ -192,6 +212,70 @@ set_prolog_flags :-
 	set_prolog_flag(float_undefined,nan),
 	set_prolog_flag(write_attributes,portray).         % thread-local, init to 'portray'
 
+/** 
+clpStatistics is det
+
+Resets =clpBNR= statistics - always succeeds.
+
+=clpBNR= collects a number of "operational measurements" on a per-thread basis and combines them with some system statistics for subsequent querying. =clpBNR= measurements include:
+
+| =narrowingOps=   | number of interval primitives called |
+| =narrowingFails= | number of interval primitive failures |
+| =node_count=     | number of nodes in =clpBNR= constraint network |
+| =max_iterations= | maximum number of iterations before throttling occurs (=|max/limit|= |
+
+System statistics included in =clpStatistics=:
+
+| =userTime=     | from =|statistics:cputime|=                         |
+| =gcTime=       | from =|statistics:garbage_collection.Time|=         |
+| =globalStack=  | from =|statistics:globalused/statistics:global|=    |
+| =trailStack=   | from =|statistics:trailused/statistics:trail|=      |
+| =localStack=   | from =|statistics:localused/statistics:local|=      |
+| =inferences=   | from =|statistics:inferences|=                      |
+ */
+/** 
+clpStatistic(?S) is nondet
+
+Succeeds if S unifies with a =clpStatistic= value; otherwise fails. On backtracking all values that unify with S will be generated. Examples:
+==
+?- clpStatistics, X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, clpStatistic(narrowingOps(Ops)).
+Ops = 2245,
+X::real(-1.509169756145379, 4.18727500493995).
+
+?- clpStatistics, X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, clpStatistic(S).
+S = userTime(0.02277600000000035),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = gcTime(0.0),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = globalStack(43696/524256),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = trailStack(664/133096),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = localStack(1864/118648),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = inferences(86215),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = narrowingOps(2245),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = narrowingFails(0),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = node_count(9),
+X::real(-1.509169756145379, 4.18727500493995) ;
+S = max_iterations(2245/3000),
+X::real(-1.509169756145379, 4.18727500493995).
+==
+*/
+/** 
+clpStatistics(?Ss) is semidet
+
+Succeeds if Ss unifies with a list of =clpStatistic='s values; otherwise fails. Example:
+==
+?- clpStatistics, X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, clpStatistics(Ss).
+Ss = [userTime(0.023398999999999504), gcTime(0.001), globalStack(19216/131040), trailStack(1296/133096), localStack(2184/118648), inferences(82961), narrowingOps(2245), narrowingFails(0), node_count(9), max_iterations(2245/3000)],
+X::real(-1.509169756145379, 4.18727500493995).
+==
+ */
+
 :- discontiguous clpBNR:clpStatistics/0, clpBNR:clpStatistic/1.
 
 clpStatistics :-
@@ -215,10 +299,12 @@ clpStatistic(localStack(U/T)) :- statistics(localused,U), statistics(local,T).
 
 clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('clpBNR:inferences',I0), I is I1-I0.
 
-%
-% list filter for compatibility
-%	Note: not equivalent to is_list/1 but executes in O(1) time.
-%
+/** 
+list(?X:list) is semidet
+
+Succeeds if X is a list; otherwise fails.
+Note: not equivalent to is_list/1 but executes in _|O(1)|_ time. This filter is provided for historical compatability.
+ */
 list(X) :- compound(X) ->  X=[_|_] ; X==[].
 
 :- include(clpBNR/ia_primitives).  % interval arithmetic relations via evalNode/4.
@@ -232,22 +318,44 @@ list(X) :- compound(X) ->  X=[_|_] ; X==[].
 % Intervals are constrained (attributed) variables.
 %
 % Current interval bounds updates via setarg(Val) which is backtrackable
-%
-%  interval(Int)  - filter
-%
+/** 
+interval(?X:interval) is semidet
+
+Succeeds if X is an interval, i.e., a variable with a `clpBNR` attribute; otherwise fails.
+ */
 interval(Int) :- get_attr(Int, clpBNR, _).
 
-%
-%  interval_degree/2   % N = number of constraints on interval(Int), 0 for number(Int)
-%
+/** 
+interval_degree(?X:numeric,?N:integer) is semidet
+
+Succeeds if X is _numeric_ and N = number of `clpBNR` constraints on X; otherwise fails. If X is a number, N = 0. Examples:
+==
+?- {X==Y+1}, interval_degree(X,N).
+N = 1,
+X::real(-1.0Inf, 1.0Inf),
+Y::real(-1.0Inf, 1.0Inf).
+
+?- interval_degree(42,N).
+N = 0.
+==
+ */
 interval_degree(X, N) :- 
 	interval_object(X, _, _, Nodelist)
-	-> system:'$skip_list'(N, Nodelist, _) % optimized for SWIP, handles indefinite lists
+	-> len_nodelist(Nodelist,0,N)          % current number of elements in (indefinite) Nodelist
 	;  number(X), N = 0.                   % number -> no constraints ; fail
+
+len_nodelist([T],N,N) :- var(T), !.        % end of indefinite list
+len_nodelist([_|T],Nin,N) :- 
+	Nout is Nin+1,
+	len_nodelist(T,Nout,N).
 
 % internal abstraction
 interval_object(Int, Type, Val, Nodelist) :-
 	get_attr(Int, clpBNR, interval(Type, Val, Nodelist, _)).
+
+% removes constraints in Nodelist
+reset_interval_nodelist_(Int) :-
+	get_attr(Int, clpBNR, Def) -> setarg(3,Def,_) ; true.
 
 % flags (list)  abstraction
 get_interval_flags_(Int, Flags) :-
@@ -256,9 +364,6 @@ get_interval_flags_(Int, Flags) :-
 set_interval_flags_(Int, Flags) :-  % flags assumed to be ground so no copy required
 	interval_object(Int, Type, Val, Nodelist),
 	put_attr(Int, clpBNR, interval(Type, Val, Nodelist, Flags)).
-
-reset_interval_nodelist_(Int) :-
-	get_attr(Int, clpBNR, Def) -> setarg(3,Def,_) ; true.
 
 %
 % Interval value constants
@@ -270,7 +375,6 @@ empty_interval((1.0Inf,-1.0Inf)).
 % Finite intervals - 64 bit IEEE reals, 
 finite_interval(real,    (-1.0e+16,1.0e+16)).
 finite_interval(integer, (L,H)) :-  %% SWIP: use tagged limits for finite default
-%	current_prolog_flag(bounded,false),  %  required - unbounded integers
 	current_prolog_flag(min_tagged_integer,L),
 	current_prolog_flag(max_tagged_integer,H).
 finite_interval(boolean, (0,1)).
@@ -283,12 +387,23 @@ integerBnd(B) :- integer(B).
 % precise bounds values
 preciseBnd(1.0Inf).
 preciseBnd(-1.0Inf).
-preciseBnd(B) :- rational(B).
+preciseBnd(1.5NaN) :- !, fail.
+preciseBnd(B) :-  
+	rational(B) -> true 
+	; 0 is cmpr(B,rationalize(B)). % rational(B)=:=rationalize(B), fails if float not precise
 
+/** 
+nb_setbounds(?X:interval,+Bs:number_list) is semidet
+
+Succeeds if X is an _interval_ and  can be narrowed to the bounds =|Bs = [L,U]|=; otherwise fails. On backtracking, this value is not undone.
+
+Caution: this predicate is non-logical and intended for specialized use case, e.g., some branch-and-bound algorithms (narrow to current solution, then backtrack to next solution).
+ */
 %
 %  non-backtracking set bounds for use with branch and bound
 %
 nb_setbounds(Int, [L,U]) :- 
+	number(L), number(U),
 	get_attr(Int, clpBNR, Def),
 	arg(2, Def, Val),             % WAM code
 	^(Val,(L,U),NewVal),          % new range is intersection (from ia_primitives)
@@ -328,6 +443,22 @@ putValue_(New, Int, NodeList) :-
 pointValue_(-0.0,_,0.0) :-!.
 pointValue_(L,H,Int) :- (rational(L) -> Int = L ; Int = H).
 
+/** 
+range(?X,?Bs:number_list) is semidet
+
+Succeeds if X is _numeric_ and  Bs unifies with a list containing the lower and upper bound of X; otherwise fails. If X is a logic variable range(X,[2,3]) is equivalent to X::real(2,3). If X is a number the lower and upper bounds are the same. Examples:
+==
+?- X::integer(1,10), range(X,Bs).
+Bs = [1, 10],
+X::integer(1, 10).
+
+?- range(42,Bs).
+Bs = [42, 42].
+
+?- range(X,[2,3]).
+X::real(2, 3).
+==
+ */
 %
 %  range(Int, Bounds) for compatibility 
 %
@@ -337,9 +468,24 @@ range(Int, [L,H]) :- getValue(Int, (IL,IH)), !,  % existing interval or number =
 range(Int, [L,H]) :- var(Int),  % for other var(Int), declare it to a real interval with specified bounds
 	Int::real(L,H).
 
-%
-%  domain(Int, Dom) for interval(Int)
-%
+/** 
+domain(?X:interval,?Dom) is semidet
+
+Succeeds if X is an interval and Dom unifies with the domain of X; otherwise fails. Dom is a compound term with a functor specifying the type (real or integer) and the arguments specifying the bounds. If X has a domain of integer(0,1), Dom will be boolean. Examples:
+==
+?- range(X,[2,3]), domain(X,Dom).
+Dom = real(2, 3),
+X::real(2, 3).
+
+?- X::integer(0,1),domain(X,Dom).
+Dom = boolean,
+X::boolean.
+
+?- domain(X,Dom).
+false.
+==
+Note: unlike range/2, domain/2 will not change X.
+ */
 domain(Int, Dom) :-
 	interval_object(Int, Type, Val, _),
 	interval_domain_(Type, Val, Dom).
@@ -347,7 +493,27 @@ domain(Int, Dom) :-
 interval_domain_(integer,(0,1),boolean) :- !.  % integer(0,1) is synonymous with boolean
 interval_domain_(T,(L,H),Dom) :- Dom=..[T,L,H].
 
-:- use_module(library(arithmetic), []).   % extended arithmetic functions
+:- use_module(library(arithmetic), [arithmetic_function/1]).   % extended arithmetic functions
+
+/** 
+delta(?X:numeric,?W:number) is semidet
+
+Succeeds if X is numeric and W unifies with the width of X (=|upper bound-lowerbound|=); otherwise fails. Examples:
+==
+?- X:: real(1r2,5r3),delta(X,D).
+D = 7r6,
+X::real(0.5, 1.6666666666666667).
+
+?- delta(42,W).
+W = 0.
+==
+=|delta|= is also available as an arithmetic function:
+==
+?- X::real(1r2,pi), W is delta(X).
+W = 2.6415926535897936,
+X::real(0.5, 3.1415926535897936).
+==
+ */
 %
 %  delta(Int, Wid) width/span of an interval or numeric value, can be infinite
 %
@@ -357,6 +523,25 @@ delta(Int, Wid) :-
 	getValue(Int,(L,H)),
 	Wid is roundtoward(H-L,to_positive).
 
+/** 
+midpoint(?X:numeric,?M:number) is semidet
+
+Succeeds if X is numeric and M unifies with the midpoint of X; otherwise fails. Examples:
+==
+?- X:: real(1r2,5r3), midpoint(X,M).
+M = 13r12,
+X::real(0.5, 1.6666666666666667).
+
+?- midpoint(42,M).
+M = 42.
+==
+=|midpoint|= is also available as an arithmetic function:
+==
+?- X::real(1r2,pi), M is midpoint(X).
+M = 1.8207963267948968,
+X::real(0.5, 3.1415926535897936).
+==
+ */
 %
 %  midpoint(Int, Wid) midpoint of an interval or numeric value
 % based on:
@@ -376,6 +561,25 @@ midpoint_(-1.0Inf,H,M) :- !, M is nexttoward(-1.0Inf,0)/2 + H/2.
 midpoint_(L,1.0Inf,M)  :- !, M is L/2 + nexttoward(1.0Inf,0)/2.
 midpoint_(L,H,M)       :- M1 is L/2 + H/2, M=M1.        % general case
 
+/** 
+median(?X:numeric,?M:float) is semidet
+
+Succeeds if X is numeric and M unifies with the median of X; otherwise fails. The median is 0 if the domain of X contains 0; otherwise it is the floating point value which  divides the interval into two sub-domains each containing approximately equal numbers of floating point values. Examples:
+==
+?- X:: real(1r2,5r3), median(X,M).
+M = 0.9128709291752769,
+X::real(0.5, 1.6666666666666667).
+
+?- median(42,M).
+M = 42.0.
+==
+=|median|= is also available as an arithmetic function:
+==
+?- X::real(1r2,pi), M is median(X).
+M = 1.2533141373155003,
+X::real(0.5, 3.1415926535897936).
+==
+ */
 %
 % median(Int,Med) from CLP(RI)
 % Med = 0 if Int contains 0, else a number which divides Int into equal
@@ -404,17 +608,78 @@ median_(L,H,M)   :- M is copysign(sqrt(abs(L))*sqrt(abs(H)),L).      % L and H h
 %
 %  lower_bound and upper_bound
 %
+/** 
+lower_bound(?X:numeric) is semidet
+
+Succeeds if X is numeric and unifies with the lower bound of its domain. Examples:
+==
+?- X::integer(1,10),lower_bound(X).
+X = 1.
+
+?- X = 42, lower_bound(X).
+X = 42.
+==
+Note that lower_bound will unify X with a number on success, but it may fail if this value is inconsistent with current constraints.
+ */
 lower_bound(Int) :-
 	getValue(Int,(L,_H)),
 	Int=L.
 
+/** 
+upper_bound(?X:numeric) is semidet
+
+Succeeds if X is numeric and unifies with the upper bound of its domain. Examples:
+==
+?- X::integer(1,10),upper_bound(X).
+X = 10.
+
+?- X = 42, upper_bound(X).
+X = 42.
+==
+Note that upper_bound will unify X with a number on success, but it may fail if this value is inconsistent with current constraints.
+ */
 upper_bound(Int) :-
 	getValue(Int,(_L,H)),
 	Int=H.
 
-%
-% Interval declarations
-%
+/** 
+::(-X:numeric_List,?Dom) is semidet
+
+Succeeds if variable X has domain Dom; otherwise fails. If Dom, or either bound of Dom, is a variable (or missing), it will be unified with the default value depending on its type. Default domains are =|real(-1.0e+16, 1.0e+16)|= and =|integer(-72057594037927936, 72057594037927935)|=. Examples:
+==
+?- X::real(-pi/2,pi/2).
+X::real(-1.5707963267948968, 1.5707963267948968).
+
+?- X::real, Y::integer.
+X::real(-1.0e+16, 1.0e+16),
+Y::integer(-72057594037927936, 72057594037927935).
+
+?- Y::integer(1,_), Y::Dom.
+Dom = integer(1, 72057594037927935),
+Y::integer(1, 72057594037927935).
+
+?- B::boolean.
+B::boolean.
+
+?- 42::Dom.
+false.
+==
+Note that bounds can be defined using arithmetic expressions.
+
+Alternatively, the first argument may be a list of variables:
+==
+?- [B1,B2,B3]::boolean.
+B1::boolean,
+B2::boolean,
+B3::boolean.
+
+?- length(Vs,3), Vs::real(-1,1).
+Vs = [_A, _B, _C],
+_A::real(-1, 1),
+_B::real(-1, 1),
+_C::real(-1, 1).
+==
+ */
 Rs::Dom :- list(Rs),!,                    % list of vars
 	intervals_(Rs,Dom).
 
@@ -582,9 +847,54 @@ matching_node_([N|Ns],Op,Ops) :-
 	nonvar(N),     % not end of list
 	matching_node_(Ns,Op,Ops).
 
-%
-% New Constraints use { ... } syntax.
-%
+/** 
+{+Constraints} is semidet
+
+Succeeds if Constraints is a sequence of one or more boolean expressions (typically equalities and inequalities) defining a set of valid and consistent constraints; otherwise fails. The ',' binary operator is used to syntactically separate individual constraints and has semantics _and_ (similar to the use of ',' in clause bodies). Arithmetic expressions are expressed using the same set of operators used in functional Prolog arithmetic (listed below) with addition of boolean operators to support that sub-domain of reals.
+
+Table of supported interval relations:
+
+| =|+  -  *  /|=                             | arithmetic                                |
+| =|**|=                                     | includes real exponent, odd/even integer  |
+| =|abs|=                                    | absolute value                            |
+| =|sqrt|=                                   | positive square root                      |
+| =|min  max|=                               | binary min/max                            |
+| =|==  is  <>  =\=  =<  >=  <  >|=          | comparison (`is` and `=\=` synonyms for `==` and `<>`)|
+| =|<=|=                                     | included (one way narrowing)              |
+| =|and  or  nand  nor  xor  ->  ,|=         | boolean (`,` synonym for `and`)           |
+| =|-  ~|=                                   | unary negate and not (boolean)            |
+| =|exp  log|=                               | exp/ln                                    |
+| =|sin  asin  cos  acos  tan  atan|=        | trig functions                            |
+| =|integer|=                                | must be an integer value                  |
+
+`clpBNR` defines the following additional operators for use in constraint expressions:
+
+|	op(200, fy, ~)        | boolean 'not'   |
+|	op(500, yfx, and)     | boolean 'and'   |
+|	op(500, yfx, or)      | boolean 'or'    |
+|	op(500, yfx, nand)    | boolean 'nand'  |
+|	op(500, yfx, nor)     | boolean 'nor'   |
+ 
+Note that the comparison operators `<>`, `=\=`, '<' and '>' are unsound (due to incompleteness) over the `real` domain but sound over the `integer` domain. Strict inequality (`<>` and `=\=`) is disallowed for type `real` (will be converted to type `integer`) but `<` and `>` are supported for reals since they may be useful for things like branch and bound searches (with caution). The boolean functions are restricted to type 'boolean', constraining their argument types accordingly. Some examples:
+
+==
+?- {X == Y+1, Y >= 1}.
+X::real(2, 1.0Inf),
+Y::real(1, 1.0Inf).
+
+?- {X == cos(X)}.
+X:: 0.73908513321516... .
+
+?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}.
+X::real(-1.509169756145379, 4.18727500493995).
+
+?- {A or B, C and D}.
+C = D, D = 1,
+A::boolean,
+B::boolean.
+==
+Note that any variable in a constraint expression with no domain will be assigned the most general value consistent with the operator types, e.g., =|real(-1.0Inf,1.0Inf)|=, =boolean=, etc.
+ */
 {Cons} :-
 	g_read('clpBNR:thread_init_done',_),      % ensures per-thread initialization
 	term_variables(Cons, CVars),
@@ -646,13 +956,13 @@ build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constan
 	 -> Int=Num                                         % infinities are point values
 	 ;	int_decl_(VarType,(Num,Num),Int)                % may be fuzzed, so not a point
 	).
-build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal
+build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal (without fuzzing)
 	number(L), number(H), !,
 	C is cmpr(L,H),  % compare bounds
 	(C == 0
 	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
 	 ;	C == -1,                                        % necessary condition: L < H
-	    once(VarType == real ; true),                   % if undefined Type, use 'real'
+	    once(VarType = real ; true),                    % if undefined Type, use 'real'
 	    put_attr(Int, clpBNR, interval(VarType, (L,H), _NL, []))  % create clpBNR attribute
 	).
 build_(Num, Int, VarType, Agenda, Agenda) :-            % pre-compile constants pi and e
@@ -662,7 +972,6 @@ build_(Exp, Num, _, Agenda, Agenda) :-                  % pre-compile any ground
 	ground(Exp),
 	safe_(Exp),                                         % safe to evaluate using is/2
 	Num is Exp,
-	% (Num == 1.5NaN -> !, fail ; preciseBnd(Num))      % fail build_ if nan
 	preciseBnd(Num),                                    % precise result
 	!.
 build_(Exp, Z, _, Agenda, NewAgenda) :-                 % deconstruct to primitives
@@ -952,9 +1261,11 @@ linkNode_(List/[X|NextTail], X, List/NextTail) :-    % add to list
 
 :- include(clpBNR/ia_utilities).  % print,solve, etc.
 
-%
-% set monitor action on an interval using `watch` flags
-%
+/** 
+watch(+X:interval_List,+Action:atom) is semidet
+
+Succeeds if X is an interval and Action is an atom; otherwise fails. If successful, and Action is not =none=, a watchpoint is placed on X. Watchpoints are only "actioned" when the debug topic =clpBNR= is enabled. If Action = =log= a debug message is printed when the interval doman narrows. If Action = =trace= the debugger is invoked. If Action = =none= the watchpoint is removed.
+ */
 watch(Int,Action) :-
 	atom(Action), 
 	current_module(clpBNR),  % this just marks watch/2 as unsafe regarding body
@@ -1005,6 +1316,11 @@ sandbox:safe_primitive(clpBNR:watch(_Int,Action)) :- % watch(X,trace) is unsafe.
 % only safe because watch(X,trace) is unsafe.
 sandbox:safe_primitive(clpBNR:monitor_action_(_Action, _Update, _Int)).
 
+/** 
+trace_clpBNR(?B:boolean) is semidet
+
+Succeeds if B can be unified with the current value of the =clpBNR= trace flag or if the trace flag can be set to B (`true` or `false`); otherwise fails. If the trace flag is =true= and the =clpBNR= debug topic is enabled, a trace of the fixed point iteration is displayed. 
+ */
 %
 % tracing doNode_ support - using wrap_predicate(:Head, +Name, -Wrapped, +Body)/4
 % trace_clpBNR/1 is unsafe (wrapping is global)
@@ -1047,12 +1363,13 @@ init_clpBNR :-
 	print_message(informational, clpBNR(versionInfo)),
 	print_message(informational, clpBNR(arithmeticFlags)).  % cautionary, set on first use
 
-check_hooks_safety :-  % safety check on any hooks (test only code)
-	% Note: calls must have no side effects
+:- if(false).  % test code used to test sandbox worthiness of hooks
+check_hooks_safety :-   % Note: calls must have no side effects
 	ignore(attr_portray_hook([],_)),                                            % fails
 	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
 %	ignore(term_html:portray('$clpBNR...'(_),_,_,_)),                           % fails
 	ignore(user:portray('$clpBNR...'(_))).                                      % fails
+:- endif.
 
 :- multifile prolog:message//1.
 

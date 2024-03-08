@@ -8,61 +8,62 @@ Material in this section draws heavily on two sources: for theory, see [New Comp
 
 ##### Unconstrained Optimization
 
-CLP(BNR) provides a pair of general purpose predicates for tackling global optimization problems: `global_minimum` and `global_maximum`. The simplest form of these predicates finds the global min/max (the second argument, `Z`, in the examples below) for the objective function specified by the first argument. From "Shaum's" (example 10.1):
+CLP(BNR) provides a pair of general purpose predicates for tackling global optimization problems: `global_minimum` and `global_maximum`. The simplest form of these predicates finds the global min/max (the second argument, `Z`, in the examples below) for the objective function specified by the first argument. An example from "Shaum's" (10.14): find the maximum value of  {`x^3-6x^2+9x+6`} (we'll use the Horner form since that seems to generally be more performant for polynomials) over a range of {`x`} of {`0..4`}, :
 eg
-	﻿?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
-	X:: 7.8...,
-	Z:: 61.6850... .
-The predicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). They do not provide the *minimisers* - indeed there may be more than one set of minimiser values. In the example above some narrowing of `X` has occurred but, in general, one of the solve predicates can be used to separate and sharpen minimizer values. Since there really aren't any "point solutions" to the objective function (unlike like finding roots of an equation discussed earlier), `splitsolve` is usually better suited to this problem.
+	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z).
+	X::real(0, 4.0),
+	Z:: 6.00000... .
+The global optimization perdicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). Note that while a minimum value is generated (`Z:: 6.00000...`), `X` has not narrowed at all. However, `X` is now constrained by `Z`, i.e., `{X*(X*(X-6)+9)+6==Z}`. In general, there may be many values of `X` (a *minimimizer*) where the minimum value occurs. (In this example there is a global minimum at two places, only one of which is a local minimum). To find the minimizer(s), use `solve/1`:
 eg
-	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), splitsolve(X).
-	X:: 7.84965...,
-	Z:: 61.6850... ;
-	X:: 7.84966...,
-	Z:: 61.6850... ;
-	X:: 7.8496...,
-	Z:: 61.6850... ;
-	X:: 7.84967...,
-	Z:: 61.6850... .
-	
-	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
-	X:: 7.849654...,
-	Z:: 61.68501... ;
-	X:: 7.8...,
-	Z:: 61.6850... ;
-	X:: 7.8583098...,
-	Z:: 61.685009... ;
+	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
+	X::real(0, 2.38418636043686e-7),
+	Z:: 6.00000... ;
+	X:: 2.999154...,
+	Z:: 6.00000... ;
+	X:: 3.00...,
+	Z:: 6.00000... ;
+	X:: 3.000845...,
+	Z:: 6.00000... ;
 	false.
-As we saw earlier, there may be answers for the same solution due to precision limits on the splitting process. 
-
+As with finding roots, `solve` may return several superfluous solutions due to floating point inaccuracies, but `absolve/1` may be effective at eliminating at least some of them, as in this case:
+eg
+	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X), absolve(X).
+	X::real(0, 2.38418636043686e-7),
+	Z:: 6.00000... ;
+	X:: 3.00...,
+	Z:: 6.00000... ;
+	false.
+This example has two global minima, `0.0` and `3.0` - only the latter is also a local minimum. Also note that while `Z` has 6 digit precision, `X` has considerable less (the imprecision of `Z` is amplified in generating `X`). To get more precise answers, the precision of the `global_minimum` calculation must be increased:
+eg
+	?- X::real(0,4.0),global_minimum(X*(X*(X-6)+9)+6,Z,8),solve(X),absolve(X).
+	X::real(0, 1.8626453489169047e-9),
+	Z:: 6.0000000... ;
+	X:: 3.000...,
+	Z:: 6.0000000... ;
+	false.
 For many problems, the only requirement is to find *any* solution; in fact this is often stated as a "Solution Convention". From [Schaum's Outlines, Operations Research], Chapter 1:
 
 >	"In any mathematical program, we seek *a* solution. If a number of equally optimal solutions exist then any one will do. *There is no preference between equally optimal solutions if there is no preference stipulated in the constraints.*"
 
 When this is all that's required, the alternative `global_minimize` and `global_maximize` will narrow the variables to the single solution generated when the min/max value for the objective is calculated, so that no separate solve step is required. 
 eg
-	﻿?- X::real(0,20), global_maximize(X*(5*pi-X),Z).
-	X:: 7.85398...,
-	Z:: 61.6850... .
-All the global optimizing predicates take an optional third argument: a precision value which overrides the current value of the `clpBNR_default_precision` flag. Use of this argument can control the tradeoff between precision and execution time (as it does for other search predicates like `solve` and `splitsolve`):
-eg
-	?- X::real(0,20),global_maximum(X*(5*pi-X),Z,3).
-	X::real(7.715508871420848, 7.992454396528164),
-	Z:: 61.7... .
+	?- X::real(0,4.0), global_minimize(X*(X*(X-6)+9)+6,Z).
+	X:: 3.000000...,
+	Z:: 6.00000... .
 These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
 eg
-	?- [X1,X2,X3]::real,global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
+	?- [X1,X2,X3]::real, global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
 	X1:: 2.500...,
 	X2:: 3.000...,
 	X3:: 0.400...,
 	Z::real(-1.8040366808093224e-7, 0).
 
-	?- [X1,X2]::integer(-100,100),global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
+	?- [X1,X2]::integer(-100,100), global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
 	X1 = 2,
 	X2 = 3,
 	Z:: 10.07577656955144... .
 
-	?- [X1,X2]::integer(-100,100),global_minimum((1-X1)**2+100*(X2-X1**2)**2,Z).
+	?- [X1,X2]::integer(-100,100), global_minimum((1-X1)**2+100*(X2-X1**2)**2,Z).
 	X1 = X2, X2 = 1,
 	Z = 0.
 
@@ -70,41 +71,38 @@ eg
 
 Moving to CLP usually involves a paradigm shift from "generate and test" to to "apply test, then generate". This facilitates solving constrained optimization problems; just apply the constraints before calling the global optimization predicate. Some examples from "Schaum's" (chapter 12):
 eg
-	﻿?- {X**2+Y**2==1},global_minimum(X+Y,Z).
+	﻿?- {X**2+Y**2==1}, global_minimum(X+Y,Z).
 	X:: -0.70...,
 	Y:: -0.70...,
 	Z:: -1.41421... .
 	
-	﻿?- {X**2+Y**2==1},global_minimum(X+Y,Z),splitsolve([X,Y]).
-	X:: -0.707107...,
-	Y:: -0.70710...,
+	?- {X**2+Y**2==1}, global_minimum(X+Y,Z), solve([X,Y]), absolve([X,Y]).
+	X:: -0.70...,
+	Y:: -0.70...,
 	Z:: -1.41421... .
 	
-	﻿?- {X**2+Y**2==1},global_minimize(X+Y,Z).
+	﻿?- {X**2+Y**2==1}, global_minimize(X+Y,Z).
 	X:: -0.707107...,
 	Y:: -0.707106...,
 	Z:: -1.41421... .
 	
-	?- [X1,X2,X3]::real(0,2*pi), {-X1*X2**3+X1**2*X3**2==5}, global_maximum(sin(X1*X2+X3),Z),splitsolve([X1,X2,X3]).
-	X1:: 1.49453...,
-	X2:: 0.049137...,
-	X3:: 1.49618...,
-	Z:: 0.99999931... .
-	
-	﻿?- [X1,X2,X3]::integer,{X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z),splitsolve([X1,X2,X3]).
+	?- Xs=[X1,X2,X3], Xs::integer, {X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z), solve(Xs).
+	Xs = [1, -27, 19],
 	X1 = 1,
 	X2 = -27,
 	X3 = 19,
 	Z = -1091.
 	
-	?- [X1,X2]::real(_,_),{X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z),splitsolve([X1,X2]).
-	X1:: 0.33333...,
-	X2:: 1.66666...,
+	?- Xs=[X1,X2], Xs::real, {X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z), solve(Xs), absolve(Xs).
+	Xs = [X1, X2],
+	X1:: 0.33...,
+	X2:: 1.66...,
 	Z:: 2.24934... .
 	
-	?- [X1,X2]::real(0,_),{X1+2*X2=<3,8*X1+5*X2>=10}, global_minimum((X1-2)**2+(X2-2)**2,Z),splitsolve([X1,X2]).
-	X1:: 1.39923...,
-	X2:: 0.800381...,
+	?- Xs=[X1,X2], Xs::real(0,_), {X1+2*X2=<3,8*X1+5*X2>=10},  global_minimum((X1-2)**2+(X2-2)**2,Z), solve(Xs), absolve(Xs).
+	Xs = [X1, X2],
+	X1:: 1.40...,
+	X2:: 0.800...,
 	Z:: 1.80000... .
 Most of these examples generate answers fairly quickly, but it's not hard to come up with examples that take a long time and millions of narrowing operations. Constraining the search space and using the tunable precision flag can help to produce acceptable answers in a reasonable time frame. And mixing local optimization techniques with global searches can result in sharper answers in less time as we'll see later.
 
@@ -152,7 +150,7 @@ eg
 	
 	?- Boxes=[Green,Grey,Yellow,Orange,Blue], Boxes::integer(0,_),
 	{Green*12+Grey*1+Yellow*4+Orange*1+Blue*2 =< 15},
-	global_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,Take), splitsolve(Boxes).
+	global_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,Take), solve(Boxes).
 	Boxes = [0, 3, 3, 0, 0],
 	Green = Orange, Orange = Blue, Blue = 0,
 	Grey = Yellow, Yellow = 3,
@@ -186,14 +184,16 @@ Maximum revenue of $360 can be achieved by building 3 model I screens and no mod
 
 The hidden constraints bound the days for each mine to `integer(0,7)`:
 eg
-	﻿?- [M_Idays,M_IIdays,M_IIIdays]::integer(0,7), Cost::integer(0,_),
+	?- M_days=[M_Idays,M_IIdays,M_IIIdays], M_days::integer(0,7), Cost::integer(0,_),
 	{4*M_Idays+6*M_IIdays+M_IIIdays >= 54, 4*M_Idays+4*M_IIdays+6*M_IIIdays >= 65}, 
-	global_minimum(20*M_Idays+22*M_IIdays+18*M_IIIdays, Cost), splitsolve([M_Idays,M_IIdays,M_IIIdays]).
+	global_minimum(20*M_Idays+22*M_IIdays+18*M_IIIdays, Cost), solve(M_days).
+	M_days = [2, 7, 5],
 	M_Idays = 2,
 	M_IIdays = 7,
 	M_IIIdays = 5,
 	Cost = 284 ;
 	false.
+
 Minimum cost (single solution) to achieve target production is $284,000 running Mine I for 2 days, Mine II for 7 days, and Mine 3 for 5 days.
 
 ##### The Investor
@@ -269,7 +269,7 @@ eg
 	Premium::real(0, 36666.666666666664),
 	Domestic::real(13735.04638671875, 56666.666666666664),
 	Foreign::real(10000, 65019.938151041664).
-The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated. This can be done by using the generated single solution produced by `global_minimize` or by using one of the solve predicates, in this case `splitsolve`:
+The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated. Since any set of minimizers will suffice for this problem (there may only be one), `global_maximize` may be good enough:
 eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	{
@@ -289,28 +289,58 @@ eg
 	Premium::real(4991.455078125, 5008.544921875),
 	Domestic::real(39991.455078125, 40008.544921875),
 	Foreign::real(14991.455078125, 15008.544921875).
-	
-	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	{
-	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+`solve` isn't particularly effective for this problem because it can't find a non-solution value to split a domain (all variables are "imprecise"). `splitsolve` isn't as demanding so it provides useful results. But the less demanding strategy also results in many sub-solutions derived from the maximum profit value - perhaps that's good enough:
+eg
+	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{Regular==RegDom+RegFor, Regular=<100000, Regular>=50000, Premium==PremDom+PremFor, Premium=<20000, Premium>=5000,
 	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	},
-	global_maximum(OF,Profit,3), splitsolve([RegDom,RegFor,PremDom,PremFor]),
-	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	global_maximum(OF,Profit,3), solve(Prod),
+	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37712.62...,
-	RegFor:: 12287.3...,
-	PremDom:: 2281.62...,
-	PremFor:: 2737.95...,
+	RegDom::real(37700.08389719467, 40000),
+	RegFor::real(10000, 12299.916102805328),
+	PremDom::real(0, 2299.915704881891),
+	PremFor::real(2727.272593380415, 5059.814534824517),
+	Regular::real(50000, 52299.91610280533),
+	Premium::real(5000, 7359.730239706409),
+	Profit::real(124940.185546875, 125059.814453125),
+	Domestic::real(37700.08389719467, 42299.915704881896),
+	Foreign::real(12727.272593380414, 17359.730637629847) ;
+	false.
+	
+	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{Regular==RegDom+RegFor, Regular=<100000, Regular>=50000, Premium==PremDom+PremFor, Premium=<20000, Premium>=5000,
+	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
+	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
+	},
+	global_maximum(OF,Profit,3), splitsolve(Prod),
+	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	Prod = [RegDom, RegFor, PremDom, PremFor],
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37716.6...,
+	RegFor:: 12283.4...,
+	PremDom:: 2275.83...,
+	PremFor:: 2731.00...,
+	Regular::real(50000, 50000.009897958356),
+	Premium:: 5006.8...,
 	Profit:: 124940.2...,
-	Regular:: 50000.0...,
-	Premium:: 5019.5...,
-	Domestic:: 39994.2...,
-	Foreign:: 15025.3... .
-In this case using `splitsolve` is of dubious value since there are very many possible answers given the wide domain of `Profit`. Due to order of the search used by `splitsolve`, a solution at the low end of the profit range is generated: produce 50,000 barrels of regular and ~5020 barrels of premium gas using ~39994 barrels of domestic and ~15025 barrels of foreign oil.
-
-This is quite close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximum` at the expense of longer calculation time:
+	Domestic:: 39992.4...,
+	Foreign:: 15014.4... ;
+	Prod = [RegDom, RegFor, PremDom, PremFor],
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37716.6...,
+	RegFor:: 12283.4...,
+	PremDom:: 2275.83...,
+	PremFor:: 2731.00...,
+	Regular::real(50000, 50000.00989796513),
+	Premium:: 5006.8...,
+	Profit:: 124940.2...,
+	Domestic:: 39992.4...,
+	Foreign:: 15014.4... .
+This is reasonably close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximize` at the expense of longer calculation time:
 eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
 	{
@@ -361,7 +391,7 @@ eg
 	
 	?- Boxes=[Green,Grey,Yellow,Orange,Blue], Boxes::integer(0,_),
 	lin_maximum(Green*4+Grey*2+Yellow*10+Orange*1+Blue*2,{Green*12+Grey*1+Yellow*4+Orange*1+Blue*2 =< 15},
-	Take),splitsolve(Boxes).
+	Take),solve(Boxes).
 	Boxes = [0, 3, 3, 0, 0],
 	Green = Orange, Orange = Blue, Blue = 0,
 	Grey = Yellow, Yellow = 3,
@@ -382,7 +412,7 @@ eg
 	?- [M_Idays,M_IIdays,M_IIIdays]::integer(0,7),
 	lin_minimum(20*M_Idays+22*M_IIdays+18*M_IIIdays,
 	{4*M_Idays+6*M_IIdays+M_IIIdays>=54,4*M_Idays+4*M_IIdays+6*M_IIIdays>=65},
-	Min),splitsolve([M_Idays,M_IIdays,M_IIIdays]).
+	Min),solve([M_Idays,M_IIdays,M_IIIdays]).
 	M_Idays = 2,
 	M_IIdays = 7,
 	M_IIIdays = 5,
@@ -716,9 +746,14 @@ eg
 	 X:: 7.8...,
 	 Z:: 61.6850... .
 	 
-	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),splitsolve(X).
-	X:: 7.84965...,
-	Z:: 61.6850... .
+	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),solve(X).
+	X:: 7.849654...,
+	Z:: 61.68501... ;
+	X:: 7.8...,
+	Z:: 61.6850... ;
+	X:: 7.8583098...,
+	Z:: 61.685009... ;
+	false.
 	
 	﻿?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
 	OF = X*(5*pi-X),
@@ -748,13 +783,13 @@ Again much sharper answers in much less time. In general, it's advantageous to u
 
 If `X` denotes the amount of each spread to be made. the objective is to maximize `Pd*Xd_Pr*Xr`. To eliminate excess inventory, production must not exceed demand, i.e., `Xd=<Dd` and `Xr=<Dr`. Fom the availability of the raw ingredients, `0.2*X1+0.2*X2=<20` and `0.8*X1+0.3*X2=<60`. The solution is given by:
 eg
-	﻿?- [Xd,Xr,Pd,Pr]::real(0,_), OF=Pd*Xd+Pr*Xr,
+	?- [Xd,Xr,Pd,Pr]::real(0,_), OF=Pd*Xd+Pr*Xr,
 	local_maxima(OF,{0.2*Xd+0.2*Xr=<20, 0.8*Xd+0.3*Xr=<60, Xd=<190-25*Pd, Xr=<250-50*Pr}),
-	global_maximum(OF,Income), splitsolve([Xd,Xr,Pd,Pr]).
+	global_maximum(OF,Income), solve([Xd,Xr,Pd,Pr]).
 	OF = Pd*Xd+Pr*Xr,
 	Xd:: 55.00000...,
 	Xr:: 45.00000...,
-	Pd:: 5.4000000...,
+	Pd:: 5.400000...,
 	Pr:: 4.1000000...,
 	Income:: 481.50000000000... ;
 	false.

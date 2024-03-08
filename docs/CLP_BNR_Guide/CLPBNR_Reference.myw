@@ -539,9 +539,9 @@ eg
 	false.
 
 .pred	**splitsolve**(*+Intervals*), **splitsolve**(*+Intervals, ++Integer*)
-**splitsolve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). Each interval is split at its midpoint.
+**splitsolve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). For more than one interval, the widest interval at the time of selection is used. Each interval is split at its midpoint.
  
-If the *Intervals* list length is greater than one, the widest interval is split at each step. **splitsolve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
+**splitsolve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
 
 The second argument can be used to override the current global precision value (flag `clpBNR_default_precision`).
 
@@ -559,7 +559,7 @@ eg
 Other examples using **splitsolve** can be found in earlier sections of this User Guide.
 
 .pred	**solve**(*+Intervals+*), **solve**(*+Intervals, ++Integer*)
-Like **splitsolve**, **solve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). **solve** is intended only for cases where a fixed point is a join of several smaller fix points.  If a point in the interval can be found which is not a solution, the  problem can be decomposed into two smaller problems. This is applied recursively until the interval becomes "small" or no split point can be found.
+Like **splitsolve**, **solve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). If *Intervals* is a list, individual intervals are selected on a round robin basis, repeating when the end of the list is reached. This is applied recursively until all intervals are "small" or no split point can be found. **solve** is intended for cases where a fixed point is a join of several smaller fix points.  (If a point in the interval can be found which is not a solution, the  problem can be decomposed into two smaller problems.)
 
 If the *Intervals* list length is greater than one, the leftmost interval in the list is split. Like **splitsolve**, **solve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
 eg
