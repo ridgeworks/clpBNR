@@ -126,6 +126,14 @@
         :- nodebug(clpBNR).  % to enable topic, change 'nodebug' to 'debug'
     </div>
 
+    <div class="nb-cell markdown" name="md18">
+        * use `help/1` for online documentation
+    </div>
+
+    <div class="nb-cell query" name="q3">
+        help(delta).
+    </div>
+
     <div class="nb-cell markdown" name="md15">
         * Use the `clpStatistics` family of predicates (as described in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html)) to display performance information, such as CPU time, number of narrowing operations, stack usage, etc., e.g.,
     </div>
@@ -139,6 +147,10 @@
         1. low level tracing (`trace_clpBNR/1`).
         2. Watch points with `trace` option (`watch/2`).
         3. Custom (application defined) interval primitives.
+    </div>
+
+    <div class="nb-cell markdown" name="md17">
+        * Questions, bug reports and enhancement requests can be submitted [here](https://github.com/ridgeworks/clpBNR/issues).
     </div>
 
 </div>
