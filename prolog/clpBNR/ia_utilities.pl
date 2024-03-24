@@ -98,8 +98,9 @@ add_names_([Name = Var|Bindings],Verbose) :-
 	(get_interval_flags_(Var,Flags)
 	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),        % mainly to attach Verbose
 	    (Verbose == false -> reset_interval_nodelist_(Var) ; true)  % Nodes restored on backtrack
-	 ;  term_attvars(Var,Vars),
-	    add_names_(Vars,Verbose)                                    % mark any internal intervals  
+	 ;  nonvar(Var),
+	    term_attvars(Var,Vars),
+	    add_names_(Vars,Verbose)                                    % mark any internal intervals
 	),
 	add_names_(Bindings,Verbose).
 
