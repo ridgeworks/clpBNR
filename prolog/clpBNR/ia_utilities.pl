@@ -98,7 +98,8 @@ add_names_([Name = Var|Bindings],Verbose) :-
 	(get_interval_flags_(Var,Flags)
 	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),        % mainly to attach Verbose
 	    (Verbose == false -> reset_interval_nodelist_(Var) ; true)  % Nodes restored on backtrack
-	 ;  term_attvars(Var,Vars),
+	 ;  nonvar(Var),
+	    term_attvars(Var,Vars),
 	    add_names_(Vars,Verbose)                                    % mark any internal intervals  
 	),
 	add_names_(Bindings,Verbose).
@@ -594,7 +595,7 @@ widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
 /**
 solve(X:numeric_List) is nondet
 
-Succeeds if a solution can be found for all values in X where the resultant domain of any value if narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=); otherwise fails. This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the solution space (unlike =|splitsolve/1|=); this avoids the splitting a single solution range into multiple solutions (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
+Succeeds if a solution can be found for all values in X where the resultant domain of any value is narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=); otherwise fails. This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the solution space (unlike =|splitsolve/1|=); this avoids the splitting a single solution range into multiple solutions (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
 ==
 ?- X::real, {17*X**256+35*X**17-99*X==0}, solve(X).
 X:: 0.0000000000000000... ;
@@ -660,63 +661,57 @@ xpsolve_choice(split_integer(X,SPt)) :- constrain_(SPt < X).
 xpsolve_choice(enumerate(X)) :- enumerate(X).
 
 %
-% try to split interval - fails if unsplittable (too narrow)
+% try to split interval - fails if unsplittable (real too narrow)
 %
-splitinterval_(real,X,V,Err,split(X,::(SPt,SPt))) :-  % split on point value
-	splitinterval_real_(V,Pt,Err),          % initial guess
-	split_real_(X,V,Pt,Err,SPt).
-splitinterval_(integer,X,V,_,Cons) :- 
-	V = (L,H),
-	( H-L < 15
-	 -> Cons = enumerate(X)                              % small enough to enumerate
-	 ;  splitinterval_integer_(V,Pt),                    % splittable at Pt
-	    Cons = split_integer(X,Pt)                       % success
-	).
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
+splitinterval_(integer,X,(L,H),_,Cons) :- 
+	( H-L < 15
+	 -> Cons = enumerate(X)                              % small enough to enumerate
+	 ;  splitinterval_integer_(L,H,Pt),                  % splittable at Pt
+	    Cons = split_integer(X,Pt)                       % success
+	).
+splitinterval_(real,X,(L,H),Err,split(X,::(Pt,Pt))) :-   % splittable at Pt
+	splittable_(X,L,H,Err,Pt).
 
-%  split a real interval
-split_real_(X,_,Pt,_,Pt) :-                % Pt not in solution space, split here
-	X = Pt -> fail ; !.  % not({X==Pt}).
-split_real_(X,(L,_H),Pt,Err,NPt) :-        % Pt in current solution space, try lower range
-	split_real_lo(X,L,Pt,NPt,Err), !.
-split_real_(X,(_L,H),Pt,Err,NPt) :-        % Pt in current solution space, try upper range
-	split_real_hi(X,Pt,H,NPt,Err).
-
-split_real_lo(X,L,Pt,NPt,Err) :-           % search lower range for a split point 
-	splitinterval_real_((L,Pt),SPt,Err),
-	(X\=SPt -> NPt=SPt ; split_real_lo(X,L,SPt,NPt,Err)).
-
-split_real_hi(X,Pt,H,NPt,Err) :-           % search upper range for a split point 
-	splitinterval_real_((Pt,H),SPt,Err),
-	(X\=SPt -> NPt=SPt ; split_real_hi(X,SPt,H,NPt,Err)).
+%  split a real interval at a point which isn't a solution
+splittable_(X,L,H,Err,Pt) :-
+	splitinterval_real_(L,H,SPt,Err),      % SPt = initial guess, fails if not splittable
+	(\+ X = SPt                            % test for consistency (expensive) 
+	 -> Pt = SPt                           % Not a solution, use it
+	  ; % Note: -> ; better alternative to (meta-call) once/1 with ;
+	    (splittable_(X,L,SPt,Err,Pt)       % SPt in current solution space, try lower range
+	     -> true
+	      ; splittable_(X,SPt,H,Err,Pt)    % then upper
+	    )
+	).
 
 %
 % splitinterval_integer_ and splitinterval_real_
 %
-splitinterval_integer_((L,H),0) :-
+splitinterval_integer_(L,H,0) :-
 	L < 0, H > 0, !.                  % contains 0 but not bounded by 0 
-splitinterval_integer_((-1.0Inf,H),Pt) :-  !,  % infinite lower bound, integers unbounded
+splitinterval_integer_(-1.0Inf,H,Pt) :-  !,  % infinite lower bound, integers unbounded
 	finite_interval(integer, (Pt,_)), % split at finite integer min if in range
 	H > Pt.
-splitinterval_integer_((L,1.0Inf), Pt) :-  !,  % infinite upper bound, integers unbounded
+splitinterval_integer_(L,1.0Inf,Pt) :-  !,  % infinite upper bound, integers unbounded
 	finite_interval(integer, (_,Pt)), % split at finite integer max if in range
 	L < Pt.
-splitinterval_integer_((L,H),Pt) :-   % all positive or negative (including zero)  
+splitinterval_integer_(L,H,Pt) :-     % all positive or negative (including zero)  
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
-splitinterval_real_((L,H),0,E) :-     % if interval contains 0, split on (precisely) 0.
+splitinterval_real_(L,H,0,E) :-       % if interval contains 0, split on (precisely) 0.
 	L < 0, H > 0, !,                  % cut in case error criteria fails
 	(H-L) > E.                        % fail if width is less than error criteria, overflow is OK
-splitinterval_real_((-1.0Inf,H),Pt,_) :-  % neg. infinity to H=<0
+splitinterval_real_(-1.0Inf,H,Pt,_) :-  % neg. infinity to H=<0
 	!,  % if following overflows, split failed
 	Pt is float(H*10-1),               % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
 	Pt > -1.0Inf.                      % Pt must be finite
-splitinterval_real_((L,1.0Inf),Pt,_) :-   % L>=0 to pos. infinity
+splitinterval_real_(L,1.0Inf,Pt,_) :-  % L>=0 to pos. infinity
 	!,  % if following overflows, split failed
 	Pt is float(L*10+1),               % add 1 in case L is 0. (1, 11, 101, 1001, ...)
 	Pt < 1.0Inf.                       % Pt as float must be finite
-splitinterval_real_((L,H),Pt,E) :-     % finite L,H, positive or negative but not split, Pt\=0.
+splitinterval_real_(L,H,Pt,E) :-       % finite L,H, positive or negative but not split, Pt\=0.
 	\+ chk_small(L,H,E),               % only split if not small 
 	splitMean_(L,H,Pt), !,
 	L < Pt,Pt < H.                     % split point must be between L and H
@@ -745,7 +740,7 @@ Same as =|splitsolve/1|= with precision defined by Precision.
 */
 %
 %  splitsolve(Int) - joint search on list of intervals
-%  simple split, e.g., no filtering on splutions, etc.
+%  simple split, e.g., no filtering on solutions, etc.
 %
 splitsolve(X) :-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -788,8 +783,8 @@ select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
 	 ;  select_wide_([X2|Xs],D2,X)
 	).
 
-split_choices_(real,X,V,Err,split(X,::(SPt,SPt))) :- !,
-	splitinterval_real_(V,SPt,Err).            % from solve/1, but splits anywhere
+split_choices_(real,X,(L,H),Err,split(X,::(SPt,SPt))) :- !,
+	splitinterval_real_(L,H,SPt,Err).            % from solve/1, but splits anywhere
 split_choices_(integer,X,V,_Err,Cons) :-
 	splitinterval_(integer,X,V,_,Cons).        % from solve/1
 

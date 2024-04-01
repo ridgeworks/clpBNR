@@ -111,7 +111,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.11.6").
+version("0.11.7").
 
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
