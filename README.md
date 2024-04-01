@@ -139,6 +139,8 @@ Further explanation and examples, including a complete reference section, can be
 
 ## Getting Started
 
+CLP(BNR) is available online on SWISH - no downloading required; see the [CLP(BNR) QuickStart Guide](https://swish.swi-prolog.org/p/CLP(BNR)%20QuickStart%20Guide.swinb).
+
 If SWI-Prolog has not been installed, see [downloads](http://www.swi-prolog.org/Download.html). A current development release or stable release 9.1.22 or greater is required for `clpBNR` 0.11.5 or later. Earlier versions of `clpBNR` can run on older versions SWI-Prolog - see README's for those releases for details. (Past releases can be found in the repo "Releases" e.g., <https://github.com/ridgeworks/clpBNR/archive/v0.9.2.zip>.)
 
 If you do not want to download this entire repo, a package can be installed using the URL `https://github.com/ridgeworks/clpBNR.git`. Once installed, it can be loaded with `use_module/1`. For example:
@@ -151,7 +153,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.11.6
+	Installed version:      0.11.7
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -159,10 +161,10 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.11.6 ***.
+	% *** clpBNR v0.11.7 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
-Or if the respository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
+Or if the repository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
 
 The `clpBNR` module declaration is:
 
