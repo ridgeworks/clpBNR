@@ -88,21 +88,25 @@ user:portray('$clpBNR...'(Out)) :-          % remove quotes on stringified numbe
 user:expand_answer(Bindings,Bindings) :-              % for toplevel answer control
 	\+term_attvars(Bindings,[]),                      % fail to alternatives if no attributes 
 	current_prolog_flag(clpBNR_verbose,Verbose),      % save verbose mode in attributes
-	add_names_(Bindings,Verbose).
+	add_names_(Bindings,Verbose,IntFlag),
+	nonvar(IntFlag).                                  % at least one interval in bindings
 
 % annotate interval variables in Bindings
-add_names_([],_).
-add_names_([Var|Bindings],Verbose) :- var(Var), !,
-	add_names_(['' = Var|Bindings],Verbose).
-add_names_([Name = Var|Bindings],Verbose) :-
+add_names_([],_,_).
+add_names_([Var|Bindings],Verbose,IntFlag) :- var(Var), !,
+	add_names_(['' = Var|Bindings],Verbose,IntFlag).
+add_names_([Name = Var|Bindings],Verbose,IntFlag) :-
 	(get_interval_flags_(Var,Flags)
-	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),        % mainly to attach Verbose
-	    (Verbose == false -> reset_interval_nodelist_(Var) ; true)  % Nodes restored on backtrack
-	 ;  nonvar(Var),
-	    term_attvars(Var,Vars),
-	    add_names_(Vars,Verbose)                                    % mark any internal intervals  
+	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),         % mainly to attach Verbose
+	    (Verbose == false -> reset_interval_nodelist_(Var) ; true),  % Nodes restored on backtrack
+	    IntFlag = true
+	 ;  (nonvar(Var)
+	     -> term_attvars(Var,Vars),
+	        add_names_(Vars,Verbose,IntFlag)                         % mark any internal intervals 
+	     ;  true
+	    )
 	),
-	add_names_(Bindings,Verbose).
+	add_names_(Bindings,Verbose,IntFlag).
 
 %
 %  SWISH versions:
