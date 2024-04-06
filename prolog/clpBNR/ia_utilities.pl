@@ -671,20 +671,25 @@ splitinterval_(integer,X,(L,H),_,Cons) :-
 	 ;  splitinterval_integer_(L,H,Pt),                  % splittable at Pt
 	    Cons = split_integer(X,Pt)                       % success
 	).
-splitinterval_(real,X,(L,H),Err,split(X,::(Pt,Pt))) :-   % splittable at Pt
-	splittable_(X,L,H,Err,Pt).
+splitinterval_(real,X,(L,H),Err,split(X,::(SPt,SPt))) :-  % split on point value
+	splitinterval_real_(L,H,Pt,Err),          % initial guess
+	split_real_(X,L,H,Pt,Err,SPt).
+	
+%  split a real interval
+split_real_(X,_,_,Pt,_,Pt) :-              % Pt not in solution space, split here
+	\+ X = Pt -> !.
+split_real_(X,L,_H,Pt,Err,NPt) :-          % Pt in current solution space, try lower range
+	split_real_lo(X,L,Pt,NPt,Err), !.
+split_real_(X,_L,H,Pt,Err,NPt) :-          % Pt in current solution space, try upper range
+	split_real_hi(X,Pt,H,NPt,Err).
 
-%  split a real interval at a point which isn't a solution
-splittable_(X,L,H,Err,Pt) :-
-	splitinterval_real_(L,H,SPt,Err),      % SPt = initial guess, fails if not splittable
-	(\+ X = SPt                            % test for consistency (expensive) 
-	 -> Pt = SPt                           % Not a solution, use it
-	  ; % Note: -> ; better alternative to (meta-call) once/1 with ;
-	    (splittable_(X,L,SPt,Err,Pt)       % SPt in current solution space, try lower range
-	     -> true
-	      ; splittable_(X,SPt,H,Err,Pt)    % then upper
-	    )
-	).
+split_real_lo(X,L,Pt,NPt,Err) :-           % search lower range for a split point 
+	splitinterval_real_(L,Pt,SPt,Err),
+	(\+ X = SPt -> NPt = SPt ; split_real_lo(X,L,SPt,NPt,Err)).
+
+split_real_hi(X,Pt,H,NPt,Err) :-           % search upper range for a split point 
+	splitinterval_real_(Pt,H,SPt,Err),
+	(\+ X = SPt -> NPt = SPt ; split_real_hi(X,SPt,H,NPt,Err)).
 
 %
 % splitinterval_integer_ and splitinterval_real_
