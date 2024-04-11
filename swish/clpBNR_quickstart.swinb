@@ -20,7 +20,7 @@ X::real, {X**2-2*X+1==0}.
 </div>
 
 <div class="nb-cell markdown" name="md3">
-Note that intervals (`clpBNR` attributed variables) are "declared" and displayed in answers using the `::` infix operator between the interval and its domain (type and optional bounds). If `real` intervals are small enough, the output is in ellipsis format containing common digits in the interval's lower and upper bound. For wider intervals (those spanning 0) the expanded form is used.
+Note that intervals (`clpBNR` attributed variables) are "declared" and displayed in answers using the `::` infix operator between the interval and its domain (type and optional bounds). If `real` intervals are small enough, the output is in ellipsis format containing common digits in the interval's lower and upper bound. For wider intervals (including those spanning 0) the expanded form is used.
 
 Arithmetic expressions can be used to define bounds in declarations:
 </div>
@@ -126,14 +126,6 @@ A few final hints:
 :- nodebug(clpBNR).  % to enable topic, change 'nodebug' to 'debug'
 </div>
 
-<div class="nb-cell markdown" name="md18">
-* use `help/1` for online documentation
-</div>
-
-<div class="nb-cell query" name="q3">
-help(delta).
-</div>
-
 <div class="nb-cell markdown" name="md15">
 * Use the `clpStatistics` family of predicates (as described in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html)) to display performance information, such as CPU time, number of narrowing operations, stack usage, etc., e.g.,
 </div>
@@ -151,6 +143,11 @@ clpStatistics, [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}, clpStatistics(SS).
 
 <div class="nb-cell markdown" name="md17">
 * Questions, bug reports and enhancement requests can be submitted [here](https://github.com/ridgeworks/clpBNR/issues).
+</div>
+
+<div class="nb-cell markdown" name="md18">
+Other notebooks pertaining to CLP(BNR):
+- [Real Computer Arithmetic - Why Intervals?](https://swish.swi-prolog.org/p/Real%20Computer%20Arithmetic%20-%20Why%20Intervals.swinb)
 </div>
 
 </div>
