@@ -116,8 +116,11 @@ add_names_([Name = Var|Bindings],Verbose,IntFlag) :-
 % portray (HTML)
 :- multifile(term_html:portray//2).
 
-term_html:portray('$clpBNR...'(Out),_) -->   % avoid quotes on stringified number in ellipsis format
-	{ string(Out) },
+term_html:portray(Term,_) -->   % avoid quotes on stringified number in ellipsis format
+	{ nonvar(Term),
+	  Term = '$clpBNR...'(Out),
+	  string(Out)
+	},
 	html(span(class('pl-float'), [Out, '...'])).
 
 % for answer formatting
