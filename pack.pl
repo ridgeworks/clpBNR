@@ -5,4 +5,4 @@ author('Rick Workman', 'ridgeworks@mac.com').
 home('https://github.com/ridgeworks/clpBNR').
 download('https://github.com/ridgeworks/clpBNR.git').
 requires(prolog >= '9.1.22').
-requires(prolog:rational).
+requires(prolog:rationals).
