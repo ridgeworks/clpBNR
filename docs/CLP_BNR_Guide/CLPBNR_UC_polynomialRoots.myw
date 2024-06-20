@@ -166,10 +166,10 @@ Of course had the constraint been entered in a factored form (eliminating the de
 eg
 	?- {(X-1)**2==0}.
 	X = 1.
-By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints. This will be explored further in [Constructing Metalevel Contractors].
+By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints. This will be explored further in [Using Metalevel Contractors].
 
 <#TableOfContents>
 
 &
-	[Constructing Metalevel Contractors] <- link #toc4Constructing_Metalevel_Contractors
+	[Using Metalevel Contractors] <- link #toc4Using_Metalevel_Contractors
 	[Horner's Method] <- link https://en.wikipedia.org/wiki/Horner's_method

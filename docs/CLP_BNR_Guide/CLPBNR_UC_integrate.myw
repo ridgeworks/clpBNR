@@ -483,4 +483,4 @@ This topic just covers a small but useful subclass of science and engineering pr
 &
 	[Application of Relational Interval Arithmetic to Ordinary Differential Equations] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/ODEsOlder.pdf
 	[Applied Differential Equations, 2nd Ed., M.R. Spiegel] <- link https://www.scribd.com/document/357337779/Murray-R-Spiegel-Applied-Differential-Equations-Prentice-Hall-Inc-1967
-	[Appendix 3] <- link #toc4Appendix_3_-__integrateV.pl__Source
+	[Appendix 1] <- link #toc4Appendix_1_-__integrateV.pl__Source

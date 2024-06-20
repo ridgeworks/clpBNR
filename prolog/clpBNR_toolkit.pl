@@ -125,10 +125,14 @@ Use =|clpBNR:small|= as a pre-test to avoid splitting intervals which are alread
 @see =|clpBNR:small/1|=
 */
 mid_split(X) :-
-	number(X)                    % optimise number case
+	(number(X)                    % optimise number case
 	 -> true
-	 ;  midpoint(X,M),           % fails if not an interval
-	    ({X=<M} ; {M=<X}).       % possible choicepoint
+	 ;  (small(X)
+	     -> true
+	     ;  midpoint(X,M),       % fails if not an interval
+	        ({X=<M} ; {M=<X})    % possible choicepoint
+	    )
+	).
 %
 % select interval with largest width
 %
@@ -457,7 +461,8 @@ init_simplex_(ObjF,Constraints,Objective,S,Vs) :-
 	(Vs = []
 	 -> fail_msg_('No variables in expression to optimize: ~w',[ObjF])
 	 ;  sim_constraints_(Constraints,S0,S1),
-	    constrain_ints_(Vs,S1,S),
+	    _::real(_,Max),  % max value to constrain for simplex
+	    constrain_ints_(Vs,Max,S1,S),
 	    (map_simplex_(ObjF,T/T,Objective/[])
 	     -> true
 	     ;  fail_msg_('Illegal linear objective: ~w',[ObjF])
@@ -479,8 +484,8 @@ remove_names_([V|Vs]) :-
 		 
 attr_unify_hook(var(_),_).     % unification always does nothing and succeeds
 
-constrain_ints_([],S,S).
-constrain_ints_([V|Vs],Sin,Sout) :- 
+constrain_ints_([],_,S,S).
+constrain_ints_([V|Vs],Max,Sin,Sout) :- 
 	% Note: library(simplex) currently constrains all variables to be non-negative
 	simplex_var_(V,SV),               % corresponding simplex variable name
 	% if not already an interval, make it one with finite non-negative value
@@ -493,10 +498,10 @@ constrain_ints_([V|Vs],Sin,Sout) :-
 	    ({V >= 0} -> L1 = 0 ; fail_msg_('Negative vars not supported by \'simplex\': ~w',[V]))
 	 ;  L1 = L
 	),
-	% explicitly constrain any vars not (0,inf)
+	% explicitly constrain any vars not (0,Max-eps)
 	(L1 > 0   -> constraint([SV] >= L1,S1,S2)   ; S2 = S1),    % L1 not negative
-	(H  < inf -> constraint([SV] =< H,S2,SNxt)  ; SNxt = S2),
-	constrain_ints_(Vs,SNxt,Sout).
+	(H  < Max -> constraint([SV] =< H,S2,SNxt)  ; SNxt = S2),
+	constrain_ints_(Vs,Max,SNxt,Sout).
 
 bind_vars_([],_).
 bind_vars_([V|Vs],S) :-  

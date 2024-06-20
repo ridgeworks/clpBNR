@@ -76,7 +76,8 @@ attr_portray_hook(interval(Type,Val,_Node,_Flags),_Int) :-
 %
 % Support ellipsis format in answers
 %
-user:portray('$clpBNR...'(Out)) :-          % remove quotes on stringified number in ellipsis format
+user:portray(Term) :-          % remove quotes on stringified number in ellipsis format
+	nonvar(Term), Term = '$clpBNR...'(Out),  % avoid unifying with variable(Term) 
 	string(Out),
 	format('~W...',[Out,[quoted(false)]]).  % safe
 
@@ -117,8 +118,7 @@ add_names_([Name = Var|Bindings],Verbose,IntFlag) :-
 :- multifile(term_html:portray//2).
 
 term_html:portray(Term,_) -->   % avoid quotes on stringified number in ellipsis format
-	{ nonvar(Term),
-	  Term = '$clpBNR...'(Out),
+	{ nonvar(Term), Term = '$clpBNR...'(Out),  % avoid unifying with variable(Term)
 	  string(Out)
 	},
 	html(span(class('pl-float'), [Out, '...'])).
@@ -500,49 +500,86 @@ global_minimize(Exp,Z,P) :-
 global_optimum_(Exp,Z,P,BindVars) :-
 	term_variables(Exp,Xs),                           % vars to search on
 	{Z==Exp},                                         % Steps 1. - 4.
-	box_([Z|Xs],[(Zl,Zh)|XVs]),                       % construct initial box
+	copy_box_([Z|Xs],[(Zl,Zh)|XVs]),                  % construct initial box
 	iterate_MS(Z,Xs,P,Zl-(Zh,XVs),_ZTree,BindVars).   % and start iteration
 
+% construct box from interval bounds
+copy_box_([],[]).
+copy_box_([X|Xs],[R|Rs]) :-
+	getValue(X,R),
+	copy_box_(Xs,Rs).
+
 iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
-	continue_MS(Zl,Zh,P,Xs,XVs,False),                % Step 12., check termination condition
+	continue_MS(Zl,Zh,P,Xs,XVs,Discard),              % Step 12., check termination condition
 	widest_MS(Xs,XVs,Xf,XfMid), !,                    % Step 5., get midpoint of widest variable
-	eval_MS(False,Z,Xs,XVs,Xf=< ::(XfMid,XfMid),V1),  % Step 6., 7. & 8. for V1
-	tree_insert(ZTree,V1,ZTree1),                     % Step 10. for V1
-	eval_MS(False,Z,Xs,XVs,Xf>= ::(XfMid,XfMid),V2),  % Step 6., 7. & 8. for V2
-	tree_insert(ZTree1,V2,ZTree2),                    % Step 10. for V2
+	(Discard == true 
+	 -> ZTree2 = ZTree                                % false positive, ignore this box
+	 ;  partition_box_(low,Xs,XVs,Xf,XfMid,XVsLow),   % else partition into boxes V1 and V2
+	    (eval_MS(Z,Xs,XVsLow,V1)                      % Step 6., 7. & 8. for V1	
+	     -> tree_insert(ZTree,V1,ZTree1)              % Step 10. for V1
+	     ;  ZTree1 = ZTree% %, MinZh1 = 1.0Inf
+	    ),
+	    partition_box_(hi,Xs,XVs,Xf,XfMid,XVsHi),
+	    (eval_MS(Z,Xs,XVsHi,V2)                       % Step 6., 7. & 8. for V2	
+	     -> tree_insert(ZTree1,V2,ZTree2)             % Step 10. for V2
+	     ;  ZTree2 = ZTree1% %, MinZh2 = 1.0Inf
+	    )
+	),
 	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
 	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
 iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-    % termination criteria (Step 12.) met
-	Z::real(Zl,Zh),
-	(BindVars -> optimize_vars_(Xs,XVs) ; true).      % optional minimizer narrowing
+	(BindVars == true 
+	 -> build_box_MS(Xs,XVs,T/T)                      % optional minimizer narrowing
+	  ; constrain_(Z == ::(Zl,Zh))                    % just minimum value
+	).
 
-optimize_vars_([],[]).
-optimize_vars_([X|Xs],[(Xl,Xh)|XVs]) :-
-	X::real(Xl,Xh),
-	optimize_vars_(Xs,XVs).
-
-continue_MS(Zl,Zh,P,_,_,_) :-                    % w(Y) termination criteria
+continue_MS(Zl,Zh,P,Xs,XVs,Discard) :-           % w(Y) termination criteria
 	Err is 10.0**(-P),
-	\+chk_small(Zl,Zh,Err),                      % fail continue_MS if narrow enough
-	!.
-continue_MS(_,_,P,Xs,XVs,_) :-                   % test for false positive
-	build_box_MS(Xs,XVs,T/T),
-	SErr is 10.0**(-min(6,P+2)), % ?? heuristic
-	simplesolveall_(Xs,SErr),                    % validate solution
-	!, fail.                                     % no narrowing escapes
-continue_MS(_Zl,_Zh,_,_,_XVs,false).             % continue with false positive
+	(chk_small(Zl,Zh,Err)                        % Z is narrow enough?
+	 -> (build_box_MS(Xs,XVs,T/T),               % qualifying solution
+	     SErr is 10.0**(-min(6,P+2)), % ?? heuristic
+	     simplesolveall_(Xs,SErr)                % if valid solution. do not continue
+	     -> fail                                 
+	     ;  Discard = true                       % not a valid solution so discard
+	    )
+	 ;  Discard = false                          % not small so continue
+	).
+
+% Find widest interval and a point to split it into two partitions.
+% The split point is nominally the midpoint to roughly equalize the size of 
+% the partitions. However, splitting at a minimizer can result in more partitions
+% containing the minimizer, so a small randomization about the midpoint is used. 
+widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
+	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
+	
+widest1_MS([],[],(L,H),Xf,Xf,XfMid) :- !,
+	XfSplit is L+(H-L)*(0.45+0.1*random_float), % instead split on 0.45 to 0.55 of range
+	(XfSplit == 1.5NaN                           % infinite bounds can result in nan
+	 -> midpoint_(L,H,Mid), XfMid is float(Mid)  % arbitrary point, so avoid rational arithmetic
+	;  XfMid = XfSplit
+	),
+	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
+widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
+	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
+	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
+widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
+	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
+
+partition_box_(P,[X|_Xs],[XV|XVs],Xf,XfMid,[XVP|XVs]) :- X == Xf, !,  % partition on Xf
+	XV = (L,H),
+	(P == low -> XVP = (L,XfMid) ; XVP = (XfMid,H)).
+partition_box_(P,[_X|Xs],[XV|XVs],Xf,XfMid,[XV|XVsP]) :-
+	partition_box_(P,Xs,XVs,Xf,XfMid,XVsP).
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
-eval_MS(False,_,_,_,_,[]) :- False == false, !.  % if false positive return "fail" result
-eval_MS(_,Z,Xs,XVs,XConstraint,_FV) :-           % Step 7., calculate F(V) and save
+eval_MS(Z,Xs,XVs,_FV) :-                         % Step 7., calculate F(V) and save
 	nb_setval('clpBNR:eval_MS',[]),                      % [] means failure to evaluate
-	buildConstraint_(XConstraint,T/T,Agenda),
-	build_box_MS(Xs,XVs,Agenda),
-	box_([Z|Xs],[(Zl,Zh)|NXVs]),                 % copy Z and Xs solution bounds
-	nb_setval('clpBNR:eval_MS',Zl-(Zh,NXVs)),            % save solution in format for Z tree
+	build_box_MS(Xs,XVs,T/T),
+	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds	
+	nb_setval('clpBNR:eval_MS',NewBox),          % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
-eval_MS(_,_,_,_,_,FV) :-
-	nb_getval('clpBNR:eval_MS',FV).                      % retrieve solution ([] on failure)
+eval_MS(_,_,_,Zl-(Zh,NXVs)) :-
+	nb_getval('clpBNR:eval_MS',[(Zl,Zh)|NXVs]).  % retrieve solution (fails if [])
 
 sandbox:safe_global_variable('clpBNR:eval_MS').
 
@@ -575,27 +612,9 @@ select_min(n(L,R,Min),Min,R) :- var(L), !,
 select_min(n(L,R,KData),Min,n(NewL,R,KData)) :-
 	select_min(L,Min,NewL).
 
-% construct box from interval bounds
-box_([],[]).
-box_([X|Xs],[R|Rs]) :-
-	getValue(X,R),
-	box_(Xs,Rs).
-
-% find widest interval and its midpoint
-widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
-	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
-	
-widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
-	midpoint_(L,H,XfMid), !,              % must be "splittable" so
-	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
-widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
-	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
-	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
-widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
-	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
-
 % Midpoint test, Step 11+:
 % Discard all pairs (Z,z) from the list that satisfy F(C)<z where c = mid Y.
+% Midpoint test invalid if soulution constrained
 %midpoint_MS(L,H,M) :-  % L and H finite, non-zero ==> geometric/arithmetic mean
 %	M is min(sqrt(abs(L)),abs(L)/2)*sign(L)+min(sqrt(abs(H)),abs(H)/2)*sign(H).
 

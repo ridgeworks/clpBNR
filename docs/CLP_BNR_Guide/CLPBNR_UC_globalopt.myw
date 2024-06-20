@@ -15,20 +15,22 @@ eg
 	Z:: 6.00000... .
 The global optimization perdicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). Note that while a minimum value is generated (`Z:: 6.00000...`), `X` has not narrowed at all. However, `X` is now constrained by `Z`, i.e., `{X*(X*(X-6)+9)+6==Z}`. In general, there may be many values of `X` (a *minimimizer*) where the minimum value occurs. (In this example there is a global minimum at two places, only one of which is a local minimum). To find the minimizer(s), use `solve/1`:
 eg
-	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
-	X::real(0, 2.38418636043686e-7),
+?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
+	X::real(0, 3.3284492065257124e-7),
 	Z:: 6.00000... ;
-	X:: 2.999154...,
-	Z:: 6.00000... ;
+	X:: 2.999000...,
+	Z:: 6.000002... ;
 	X:: 3.00...,
 	Z:: 6.00000... ;
-	X:: 3.000845...,
-	Z:: 6.00000... ;
+	X:: 3.0009993...,
+	Z:: 6.000002... ;
+	X:: 3.0009996...,
+	Z:: 6.000002... ;
 	false.
 As with finding roots, `solve` may return several superfluous solutions due to floating point inaccuracies, but `absolve/1` may be effective at eliminating at least some of them, as in this case:
 eg
 	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X), absolve(X).
-	X::real(0, 2.38418636043686e-7),
+	X::real(0, 3.3284045913301613e-7),
 	Z:: 6.00000... ;
 	X:: 3.00...,
 	Z:: 6.00000... ;
@@ -36,7 +38,7 @@ eg
 This example has two global minima, `0.0` and `3.0` - only the latter is also a local minimum. Also note that while `Z` has 6 digit precision, `X` has considerable less (the imprecision of `Z` is amplified in generating `X`). To get more precise answers, the precision of the `global_minimum` calculation must be increased:
 eg
 	?- X::real(0,4.0),global_minimum(X*(X*(X-6)+9)+6,Z,8),solve(X),absolve(X).
-	X::real(0, 1.8626453489169047e-9),
+	X::real(0, 3.331827561994949e-9),
 	Z:: 6.0000000... ;
 	X:: 3.000...,
 	Z:: 6.0000000... ;
@@ -48,15 +50,15 @@ For many problems, the only requirement is to find *any* solution; in fact this 
 When this is all that's required, the alternative `global_minimize` and `global_maximize` will narrow the variables to the single solution generated when the min/max value for the objective is calculated, so that no separate solve step is required. 
 eg
 	?- X::real(0,4.0), global_minimize(X*(X*(X-6)+9)+6,Z).
-	X:: 3.000000...,
+	X:: 2.999983...,
 	Z:: 6.00000... .
 These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
 eg
 	?- [X1,X2,X3]::real, global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
 	X1:: 2.500...,
-	X2:: 3.000...,
+	X2:: 3.00...,
 	X3:: 0.400...,
-	Z::real(-1.8040366808093224e-7, 0).
+	Z::real(-9.704008702902562e-7, 0).
 
 	?- [X1,X2]::integer(-100,100), global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
 	X1 = 2,
@@ -81,9 +83,9 @@ eg
 	Y:: -0.70...,
 	Z:: -1.41421... .
 	
-	﻿?- {X**2+Y**2==1}, global_minimize(X+Y,Z).
-	X:: -0.707107...,
-	Y:: -0.707106...,
+	?- {X**2+Y**2==1}, global_minimize(X+Y,Z).
+	X:: -0.707098...,
+	Y:: -0.707115...,
 	Z:: -1.41421... .
 	
 	?- Xs=[X1,X2,X3], Xs::integer, {X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z), solve(Xs).
@@ -260,15 +262,15 @@ eg
 	global_maximum(OF,Profit,3),
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(13735.04638671875, 40000),
-	RegFor::real(10000, 45019.938151041664),
+	RegDom::real(13734.489083147197, 40000),
+	RegFor::real(10000, 45020.68122247041),
 	PremDom::real(0, 16666.666666666668),
 	PremFor::real(0, 20000),
-	Profit::real(124940.185546875, 125059.814453125),
-	Regular::real(23735.04638671875, 85019.93815104167),
+	Profit::real(124937.95633258879, 125062.04366741124),
+	Regular::real(23734.489083147197, 85020.68122247042),
 	Premium::real(0, 36666.666666666664),
-	Domestic::real(13735.04638671875, 56666.666666666664),
-	Foreign::real(10000, 65019.938151041664).
+	Domestic::real(13734.489083147197, 56666.666666666664),
+	Foreign::real(10000, 65020.68122247041).
 The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated. Since any set of minimizers will suffice for this problem (there may only be one), `global_maximize` may be good enough:
 eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -280,15 +282,15 @@ eg
 	global_maximize(OF,Profit,3), 
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(37730.712890625, 37739.2578125),
-	RegFor::real(12260.7421875, 12269.287109375),
-	PremDom::real(2260.7421875, 2269.287109375),
-	PremFor::real(2730.712890625, 2739.2578125),
-	Profit::real(124940.185546875, 125059.814453125),
-	Regular::real(49991.455078125, 50008.544921875),
-	Premium::real(4991.455078125, 5008.544921875),
-	Domestic::real(39991.455078125, 40008.544921875),
-	Foreign::real(14991.455078125, 15008.544921875).
+	RegDom::real(39806.18095690551, 39815.092087048564),
+	RegFor::real(10184.907912951436, 10193.819043094485),
+	PremDom::real(184.90791295143936, 193.81904309448873),
+	PremFor::real(4806.180956905511, 4815.092087048561),
+	Profit::real(124937.62208899866, 125062.37791100137),
+	Regular::real(49991.08886985695, 50008.91113014305),
+	Premium::real(4991.088869856951, 5008.911130143049),
+	Domestic::real(39991.08886985695, 40008.91113014305),
+	Foreign::real(14991.088869856947, 15008.911130143046).
 `solve` isn't particularly effective for this problem because it can't find a non-solution value to split a domain (all variables are "imprecise"). `splitsolve` isn't as demanding so it provides useful results. But the less demanding strategy also results in many sub-solutions derived from the maximum profit value - perhaps that's good enough:
 eg
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -300,15 +302,15 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(37700.08389719467, 40000),
-	RegFor::real(10000, 12299.916102805328),
-	PremDom::real(0, 2299.915704881891),
-	PremFor::real(2727.272593380415, 5059.814534824517),
-	Regular::real(50000, 52299.91610280533),
-	Premium::real(5000, 7359.730239706409),
-	Profit::real(124940.185546875, 125059.814453125),
-	Domestic::real(37700.08389719467, 42299.915704881896),
-	Foreign::real(12727.272593380414, 17359.730637629847) ;
+	RegDom::real(37698.96006258295, 40000),
+	RegFor::real(10000, 12301.039937417048),
+	PremDom::real(0, 2301.0398444171115),
+	PremFor::real(2727.272558308108, 5062.287703619561),
+	Regular::real(50000, 52301.03993741705),
+	Premium::real(5000, 7363.327548036673),
+	Profit::real(124937.71252531376, 125062.28747468628),
+	Domestic::real(37698.96006258295, 42301.039844417115),
+	Foreign::real(12727.272558308106, 17363.327641036612) ;
 	false.
 	
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -320,46 +322,57 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37716.6...,
+	RegDom:: 37716.52...,
 	RegFor:: 12283.4...,
-	PremDom:: 2275.83...,
-	PremFor:: 2731.00...,
-	Regular::real(50000, 50000.009897958356),
-	Premium:: 5006.8...,
-	Profit:: 124940.2...,
-	Domestic:: 39992.4...,
-	Foreign:: 15014.4... ;
+	PremDom:: 2275.39...,
+	PremFor:: 2730.47...,
+	Regular::real(50000, 50000.00689512635),
+	Premium:: 5005.87...,
+	Profit:: 124937.5...,
+	Domestic:: 39991.9...,
+	Foreign:: 15013.9... ;
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37716.6...,
+	RegDom:: 37716.5...,
 	RegFor:: 12283.4...,
-	PremDom:: 2275.83...,
-	PremFor:: 2731.00...,
-	Regular::real(50000, 50000.00989796513),
-	Premium:: 5006.8...,
-	Profit:: 124940.2...,
-	Domestic:: 39992.4...,
-	Foreign:: 15014.4... .
+	PremDom:: 2275.4...,
+	PremFor:: 2730.48...,
+	Regular::real(50000, 50000.00689512964),
+	Premium:: 5005.8...,
+	Profit:: 124937.6...,
+	Domestic:: 39991.9...,
+	Foreign:: 15013.9... .
 This is reasonably close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximize` at the expense of longer calculation time:
 eg
-	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	{
-	RegDom+RegFor=<100000, RegDom+RegFor>=50000, PremDom+PremFor=<20000, PremDom+PremFor>=5000,
+	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	{Regular==RegDom+RegFor, Regular=<100000, Regular>=50000, Premium==PremDom+PremFor, Premium=<20000, Premium>=5000,
 	RegDom+PremDom=<40000, RegFor+PremFor=<60000,
 	10*RegFor-RegDom>=0, 5*PremFor-6*PremDom>=0, 2*RegDom-8*RegFor=<0, 2*PremDom-8*PremFor=<0
 	},
-	global_maximize(OF,Profit,4),
-	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	global_maximum(OF,Profit,4), splitsolve(Prod),
+	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
+	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(39999.237060546875, 40000),
-	RegFor::real(10000, 10000.762939453125),
-	PremDom::real(0, 0.762939453125),
-	PremFor::real(4999.237060546875, 5000),
-	Profit::real(124994.65942382812, 125005.34057617188),
-	Regular::real(49999.237060546875, 50000.762939453125),
-	Premium::real(4999.237060546875, 5000.762939453125),
-	Domestic::real(39999.237060546875, 40000.762939453125),
-	Foreign::real(14999.237060546875, 15000.762939453125).
+	RegDom:: 37726.3...,
+	RegFor:: 12273.6...,
+	PremDom:: 2272.83...,
+	PremFor:: 2727.40...,
+	Regular::real(50000, 50000.00925833844),
+	Premium:: 5000.2...,
+	Profit:: 124993.7...,
+	Domestic:: 39999.1...,
+	Foreign:: 15001.1... ;
+	Prod = [RegDom, RegFor, PremDom, PremFor],
+	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
+	RegDom:: 37726.3...,
+	RegFor:: 12273.6...,
+	PremDom:: 2272.8...,
+	PremFor:: 2727.40...,
+	Regular::real(50000, 50000.00925834438),
+	Premium:: 5000.2...,
+	Profit:: 124993.8...,
+	Domestic:: 39999.1...,
+	Foreign:: 15001.1... .
 But this is a fair amount of additional work for not much gain (for this particular problem). A different approach to generating better results in less time is discussed below.
 
 ##### Optimizing Linear Systems
@@ -743,22 +756,22 @@ The accompanying `clpBNR_toolkit` module exports a couple of predicates to apply
 A simple example of unconstrained optimization with and without local optima constraints:
 eg
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
-	 X:: 7.8...,
-	 Z:: 61.6850... .
-	 
-	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),solve(X).
-	X:: 7.849654...,
-	Z:: 61.68501... ;
 	X:: 7.8...,
-	Z:: 61.6850... ;
-	X:: 7.8583098...,
-	Z:: 61.685009... ;
+	Z:: 61.685... .
+	
+	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),solve(X).
+	X:: 7.8...,
+	Z:: 61.685... ;
+	X:: 7.859532...,
+	Z:: 61.68500... ;
+	X:: 7.859541...,
+	Z:: 61.68500... ;
 	false.
 	
-	﻿?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
+	?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
 	OF = X*(5*pi-X),
 	X:: 7.85398163397448...,
-	Z:: 61.685027506808... .
+	Z:: 61.6850275068085... .
 Note that the additional constraints produce a much sharper answer in much less time (orders of magnitude for this simple example). And the search finds the single solution without requiring the use of solve to find the minimizer.
 
 Other examples:
@@ -807,7 +820,7 @@ eg
 	local_minima(OF), global_minimize(OF,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	X:: 311.096...,
-	Y:: 369.331...,
+	Y:: 369.332...,
 	Pipe:: 910.543... .
 
 
@@ -822,8 +835,8 @@ eg
 	local_minima(OF), {OF==Z}, global_minimize(Z,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	Z = Pipe,
-	X::real(255.67478448957934, 472.3010561622925),
-	Y::real(189.84791399187418, 400),
+	X::real(255.6329326895691, 472.3332749930583),
+	Y::real(189.77692517145653, 400),
 	Pipe:: 691.798... .
 Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependency problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to further constrain `X` and `Y`, it will fail:
 eg
