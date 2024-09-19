@@ -303,21 +303,20 @@ eg
 	﻿?- set_prolog_flag(clpBNR_verbose,false).
 	true.
 	
-	﻿?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
-	X:: 0.0000000000000000...,
+	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
+	X = 0.0,
 	Y:: 10.01000000000000...,
-	S::real(-5.005000000000002, 5.005000000000002),
+	S::real(-5.005000000000001, 5.005000000000001),
 	Z::real(-0.5, 0.5).
 	
 	?- set_prolog_flag(clpBNR_verbose,true).
 	true.
 	
 	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
-	X::real(-5.0e-324, 5.0e-324),
+	X = 0.0,
 	Y::real(10.009999999999998, 10.010000000000002),
-	(S::real(-5.005000000000002, 5.005000000000002), {S==_A+X}),
-	Z::real(-1r2, 1r2),
-	(_A::real(-5.005000000000001, 5.005000000000001), {_A==Y*Z}).
+	(S::real(-5.005000000000001, 5.005000000000001), {S==Y*Z}),
+	Z::real(-1r2, 1r2).
 aside>
 	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) users.
 
@@ -337,13 +336,10 @@ eg
 	Y:: 0.428571428571428... .
 Another way of generating infinities is through arithmetic operations whose result is defined to be infinity:
 eg
-	﻿?- {Pinf==1/0, Ninf== -1/0, Reals==1/0.0}.
+	?- {Pinf==1/0, Ninf==1/ -0.0}.
 	Pinf = 1.0Inf,
-	Ninf = -1.0Inf,
-	Reals::real(-1.0Inf, 1.0Inf).
-Note that while dividing by the integer `0` produces a point value (either `1.0Inf` or `-1.0Inf`), dividing by `0.0` yields an interval over all reals. That's due to the fact that `0.0`, like any other floating point literals, is represented a small interval containing the literal value. In this case it contains both positive and negative real values, hence the bounds are negative and positive infinity.
-
-Another way of producing infinite bounds is by overflowing the supported 64-bit floating point range:
+	Ninf = -1.0Inf.
+Infinite bounds can also be produced by overflowing the supported 64-bit floating point range:
 eg
 	﻿?- {R1 == MF+1e3, R2 == MF*2}, current_prolog_flag(float_max,MF).
 	MF = 1.7976931348623157e+308,
@@ -554,13 +550,13 @@ This is a simple quadratic with a single root at `X=1`:
 As the interval `X` narrows towards the solution, the amount of narrowing achieved with each step decreases, so it can take a long time to reach the precision limit of the floating point representation. In this case, the throttling mechanism was enabled after reaching approximately 3 digits of precision. This can be seen using the `clpStatistic/1` predicate:
 eg
 	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
-	﻿T = 0.046844999999962056,
+	T = 0.021614000000000466,
 	I = 3001/3000,
 	X:: 1.00... .
 Propagation was terminated in `0.0455` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
 eg
 	?- set_prolog_flag(clpBNR_iteration_limit,30000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
-	﻿T = 0.4550299999999652,
+	T = 0.20668500000000023,
 	I = 30001/30000,
 	X:: 1.000... .
 A tenfold increase in the limit achieved another digit of precision but takes about ten times longer. This will not always be the case, but illustrates the general effect of changing the value of this flag. It's there if you need it, but in most cases just leaving the flag set to the default value should suffice.
@@ -568,7 +564,7 @@ A tenfold increase in the limit achieved another digit of precision but takes ab
 Aside: `clpStatistics/0`, which resets the statistics values, and `clpStatistic/1` and `clpStatistics/1` support operational measurements of CLP(BNR) applications. A further example illustrating all the available measurements:
 eg
 	?- X::real,clpStatistics,{X**2-2*X+1==0},clpStatistics(SS).
-	﻿SS = [userTime(0.04785000000003947), gcTime(0.003), globalStack(397792/524256), trailStack(112184/133096), localStack(2432/118648), inferences(178222), narrowingOps(3001), narrowingFails(0), node_count(5), max_iterations(3001/3000)],
+	SS = [userTime(0.02199300000000015), gcTime(0.001), globalStack(121984/131040), trailStack(11984/133096), localStack(2152/118648), inferences(108464), narrowingOps(3001), narrowingFails(0), node_count(3), max_iterations(3001/3000)],
 	X:: 1.00... .
 `clpBNR` specific measurements include:
 *..
@@ -596,11 +592,11 @@ eg
 	X = Y,
 	Y::real(-1.0e+16, 1.0e+16).
 	
-	?- X::real(-1e5,1e5), {X==Y+1,Y==X}.
-	X = Y,
-	Y::real(-70000.00000000001, 100000.00000000001).
-	
 	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
+	X = Y,
+	Y::real(-7000.0, 10000.0).
+	
+	?- X::real(-1e3,1e3), {X==Y+1,Y==X}.
 	false.
 In the first two cases, the addition of `1` is too small to affect the bounds of the result, i.e., no narrowing occurs. And when it is significant enough, throttling may inhibit narrowing enough to prevent failure (case 3). In the last case, the initial interval is narrow enough that failure occurs.
 
@@ -621,7 +617,7 @@ The alternative to this behaviour is the appearance of non-termination; it will 
 Another interesting example of an inconsistent constraint:
 eg
 	?- X::integer, {X>abs(X)}.
-	X::integer(5000, 72057594037917936).
+	X::integer(500, 72057594037917936).
 As seen above, throttling can be mitigating by defining tighter constraints (initial range) or something like `solve` can be used after the fact, but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
 	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).

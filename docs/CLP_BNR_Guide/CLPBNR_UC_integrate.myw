@@ -374,25 +374,23 @@ eg
 	integrateV([d(Vx)=0, d(Vy)= -G, d(X)=Vx, d(Y)=Vy], T, (0,[Vx0,Vy0,0,0]), (2,[Vxf,Vyf,Xf,Yf]), [real,real,real,real]),
 	{Vf is sqrt(Vxf**2+Vyf**2)}.
 	G = 32,
-	Vx0 = 80.00000000000001,
+	Vx0 = Vxf, Vxf = 80.00000000000001,
 	Vy0 = 138.56406460551017,
-	Vxf:: 80.0000000000000...,
 	Vyf:: 74.5640646055101...,
-	Xf:: 160.00000000000...,
+	Xf:: 160.000000000000...,
 	Yf:: 213.12812921102...,
-	Vf:: 109.360869283737... .
+	Vf:: 109.3608692837374... .
 	
 	﻿?- G=32, Vx0 is 160*cos(pi/3), Vy0 is 160*sin(pi/3),
 	integrateV([d(Vx)=0, d(Vy)= -G, d(X)=Vx, d(Y)=Vy], T, (0,[Vx0,Vy0,0,0]), (4,[Vxf,Vyf,Xf,Yf]), [real,real,real,real]),
 	{Vf is sqrt(Vxf**2+Vyf**2)}.
 	G = 32,
-	Vx0 = 80.00000000000001,
+	Vx0 = Vxf, Vxf = 80.00000000000001,
 	Vy0 = 138.56406460551017,
-	Vxf:: 80.0000000000000...,
 	Vyf:: 10.5640646055101...,
 	Xf:: 320.00000000000...,
 	Yf:: 298.25625842204...,
-	Vf:: 80.694482221459... .
+	Vf:: 80.6944822214592... .
 Note that the order of the independent values in `Initial` and `Final` are determined by the order of the differential equations, i.e., `[Vx,Vy,X,Y]`. After 4 sec., the shell is travelling a litte over 80 ft./sec. and is almost 300 ft. high and 320 ft. down range.
 
 This example uses multiple differential equations to model `X` and `Y` directions but also hints at how to model higher order equations (`d(Vx)` is the second derivative of `X`).

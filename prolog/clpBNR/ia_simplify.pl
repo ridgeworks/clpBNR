@@ -42,14 +42,17 @@ distribute_(C,B,Exp) :-
 	simplify(DExp,Exp).
 
 % utility for (in)equality reduction 
-normalize_(A,B,Op,Exp) :-         % LHS and RHS are expressions with shared vars
+simplify_eq_(Diff,B,Op,Exp) :-  compound(Diff), Diff = A1-A2, % LHS is difference and RHS =:=0
+	number(B), B =:= 0, !,
+	simplify_eq_(A1,A2,Op,Exp).
+simplify_eq_(A,B,Op,Exp) :-         % LHS and RHS are expressions with shared vars
 	num_exp_vars_(A,AVs),         % only consider vars in arithmetic Ops
 	num_exp_vars_(B,BVs),
 	shared_vars_in_(AVs,BVs), !,  % so far just a test, no unification of non-local vars
 	simplify(A-B,ES),             % normalize with non-zero value on RHS
 	num_separate_(ES,LHS,RHS),
 	(RHS =:= 0, LHS = EA-EB -> Exp =.. [Op,EA,EB] ; Exp=..[Op,LHS,RHS]).
-normalize_(A,B,Op,Exp) :-         % everything else, leave LHS and RHS alone
+simplify_eq_(A,B,Op,Exp) :-         % everything else, leave LHS and RHS alone
 	simplify(A,AS),
 	num_separate_(AS,LHS,AN),
 	simplify(B,BS),
@@ -115,19 +118,19 @@ simplify(A*B,Exp) :-
 
 % simplify equalities and inequalities
 simplify(A==B,Exp) :-
-	normalize_(A,B,==,Exp), !.
+	simplify_eq_(A,B,==,Exp), !.
 
 simplify(A=<B,Exp) :-
-	normalize_(A,B,=<,Exp), !.
+	simplify_eq_(A,B,=<,Exp), !.
 
 simplify(A>=B,Exp) :-
-	normalize_(A,B,>=,Exp), !.
+	simplify_eq_(A,B,>=,Exp), !.
 
 simplify(A<B,Exp) :-
-	normalize_(A,B,<,Exp), !.
+	simplify_eq_(A,B,<,Exp), !.
 
 simplify(A>B,Exp) :-
-	normalize_(A,B,>,Exp), !.
+	simplify_eq_(A,B,>,Exp), !.
 /*
 % simplify "cascaded" divisions A/B/C = (A/B)/C = A*C/B
 simplify(A/B,Exp) :- 
@@ -152,7 +155,7 @@ collect_exp_(A, List, Head/NewT) :-
 	List=Head/[term(A,1)|NewT].  % separate to keep head unification cheap
 	
 collect_exp_(C, List, Head/NewT) :-
-	rational(C), !,
+	preciseNumber(C), !,               % precise numeric value
 	List=Head/[C|NewT].
 
 collect_exp_(A, List, Head/NewT) :-    % floats as terms, can collect but not do arithmetic
@@ -208,7 +211,7 @@ collect_exp_items(Es,NEs) :-
 collect_exp_items_([],[]).
 collect_exp_items_([U],[U]) :- !.
 collect_exp_items_([U,V|Es],EsNxt) :-
-	rational(U), rational(V), !,  % constant values must be precise to add
+	number(U), number(V), !,                % add precise constant values
 	S is U+V, 
 	collect_exp_items_([S|Es],EsNxt).
 collect_exp_items_([term(V,N1),term(U,N2)|Es],EsNxt) :-
@@ -230,9 +233,9 @@ reduce_exp_items_([E],Exp) :-               % terminating case, 1 item left
 	 ;  Exp = E                             % already reduced to var, constant or expression
 	).
 
-build_exp_(Z,Exp2,_Op1,Op2,NExp2) :- Z==0, 
+build_exp_(Z,Exp2,_Op1,Op2,NExp2) :- number(Z), Z =:= 0,
 	(Op2 == '-' -> build_Nexp_(Exp2,NExp2) ;  NExp2 = Exp2).
-build_exp_(Exp1,Z,Op1,_Op2,NExp1) :- Z==0,  
+build_exp_(Exp1,Z,Op1,_Op2,NExp1) :- number(Z), Z =:= 0,  
 	(Op1 == '-' -> build_Nexp_(Exp1,NExp1) ; NExp1 = Exp1).
 build_exp_(Exp1,Exp2,+,+,Exp1+Exp2).
 build_exp_(Exp1,Exp2,+,-,Exp1-Exp2).
@@ -387,13 +390,18 @@ reduce_term_items_([T1,T2|Ts],Exp) :-
 	!,
 	reduce_term_items_([ExpN|Ts],Exp).
 
+% optimize some cases involving ±1
+build_term_(C, E, /, Exp) :- nonvar(E), E=A**B, one_term_(C,A**NB,Exp), rational(B), NB is -B.
+build_term_(E, C, _, Exp) :- nonvar(E), E=C1/B, one_term_(C1,C/B,Exp).
+build_term_(C, E, *, Exp) :- one_term_(C, E, Exp).
+build_term_(E, C, _, Exp) :- one_term_(C, E, Exp). 
+build_term_(E1,E2,Op,Exp) :- Exp =.. [Op,E1,E2].
 
-build_term_(E,    C,   Op, Exp)   :- var(E), Exp =.. [Op,E,C].
-build_term_(1,    Exp, /,  A**NB) :- nonvar(Exp), Exp=A**B, rational(B), NB is -B .
-build_term_(1,    Exp, *,  Exp).
-build_term_(1,    Exp, /,  1/Exp).
-build_term_(One/B,C,   *,  C/B)   :- One==1.
-build_term_(E1,   E2,  Op, Exp)   :- Exp =.. [Op,E1,E2].
+one_term_(One, Exp0, Exp) :-
+	number(One), C is float(One),
+	( C =  1.0 -> Exp =  Exp0
+	;(C = -1.0 -> Exp = -Exp0)
+	).
 
 reduce_term_item_(V,          V, *)     :- var(V),!.  % already reduced to var
 reduce_term_item_(elem(_, 0), 1, *).

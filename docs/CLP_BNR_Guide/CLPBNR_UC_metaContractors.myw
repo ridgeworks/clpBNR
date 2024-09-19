@@ -392,24 +392,21 @@ The Prolog definition of the Ebers and Moll transistor example:
 		(1-X1*X2)*X4*(exp(X6*(G1K-G2K-G3K*X7*1e-3+G4K*X9*1e-3))-1)-G5K*X1+G4K == 0
 		) :-
 		arg(K,G1s,G1K), arg(K,G2s,G2K), arg(K,G3s,G3K), arg(K,G4s,G4K), arg(K,G5s,G5K).
-Due to slow convergence, just applying the contraints and using `solve` is fairly ineffective; the builtin throttling mechanism, even with a fairly high `clpBNR_iteration_limit`, prematurely terminates many of the sub-branches without failing so pruning is minimal. Using the Taylor contractor is a significant improvement but can still take many hours before producing a moderately acceptable result (~4 digits of precision in agreement with the published answer).
- 
-Through experimentation, it was discovered that it's better to split all variables at each iteration step rather than just splitting the largest interval, leading to:
+Due to slow convergence, just applying the contraints and using `solve` is fairly ineffective; the builtin throttling mechanism, even with a fairly high `clpBNR_iteration_limit`, prematurely terminates many of the sub-branches without failing so pruning is minimal. Using the Taylor contractor is a significant improvement but can still take many hours before producing a moderately acceptable result (~4 digits of precision in agreement with the published answer):
 eg
-	﻿?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),taylor_merged_contractor({Es},T),
-	iterate_until(20,small(Vs),(T,maplist(mid_split,Vs))).
+	?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),taylor_merged_contractor({Es},T),cf_solve(T). 
 	Vs = [X1, X2, X3, X4, X5, X6, X7, X8, X9],
-	Es = [(1-X1*X2)*X3*(exp(X5*(0.982-20.2153*X7*0.001-211.4823*X8*0.001))-1)-211.4823+191.267*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.869-22.9274*X7*0.001-134.3844*X8*0.001))-1)-134.3844+111.461*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.752-10.0677*X7*0.001-111.8468*X8*0.001))-1)-111.8468+101.779*X2==0,  (1-X1*X2)*X3*(exp(X5*(0.485-5.2095*X7*0.001-28.5132*X8*0.001))-1)-28.5132+23.3037*X2==0,  (1-X1*X2)*X4*(exp(X6*(0.982-1.455-20.2153*X7*0.001+191.267*X9*0.001))-1)-211.4823*X1+191.267==0,  (1-X1*X2)*X4*(exp(X6*(0.869-0.703-22.9274*X7*0.001+111.461*X9*0.001))-1)-134.3844*X1+111.461==0,  (1-X1*X2)*X4*(exp(X6*(0.752-1.254-10.0677*X7*0.001+101.779*X9*0.001))-1)-111.8468*X1+101.779==0,  (1-X1*X2)*X4*(exp(X6*(0.485-0.369-5.2095*X7*0.001+23.3037*X9*0.001))-1)-28.5132*X1+23.3037==0, X1*X3-X2*X4==0],
-	T = cf_contractor([X9, X6, X4, X8, X7, X5, X3, X2, X1], [_A, _B, _C, _D, _E, _F, _G, _H, _I]),
+	Es = [(1-X1*X2)*X3*(exp(X5*(... - ... - ... * ...))-1)-211.4823+191.267*X2==0, (1-X1*X2)*X3*(exp(X5*(... - ...))-1)-134.3844+111.461*X2==0, (1- ... * ...)*X3*(exp(... * ...)-1)-111.8468+101.779*X2==0, (... - ...)*X3*(exp(...)-1)-28.5132+23.3037*X2==0, ... * ... * (... - ...)-211.4823*X1+191.267==0, ... * ... - ... * ... + 111.461==0, ... - ... + 101.779==0, ... + ... == 0, ... == ...],
+	T = cf_contractor([X9, X6, X4, X8, X7, X5, X3, X2|...], [_A, _B, _C, _D, _E, _F, _G, _H|...]),
 	X1:: 0.8999987...,
-	X2:: 0.450032...,
-	X3:: 1.000169...,
-	X4:: 2.00019...,
-	X5:: 7.99964...,
-	X6:: 8.00055...,
-	X7:: 5.00083...,
-	X8:: 0.99987...,
-	X9:: 1.99956...,
+	X2:: 0.45005...,
+	X3:: 1.00024...,
+	X4:: 2.00024...,
+	X5:: 7.99948...,
+	X6:: 8.00056...,
+	X7:: 5.00078...,
+	X8:: 0.99986...,
+	X9:: 1.99954...,
 	_I::real(-1.0Inf, 1.0Inf),
 	_H::real(-1.0Inf, 1.0Inf),
 	_G::real(-1.0Inf, 1.0Inf),

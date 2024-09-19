@@ -573,9 +573,9 @@ partition_box_(P,[_X|Xs],[XV|XVs],Xf,XfMid,[XV|XVsP]) :-
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(Z,Xs,XVs,_FV) :-                         % Step 7., calculate F(V) and save
-	nb_setval('clpBNR:eval_MS',[]),                      % [] means failure to evaluate
+	nb_setval('clpBNR:eval_MS',[]),              % [] means failure to evaluate
 	build_box_MS(Xs,XVs,T/T),
-	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds	
+	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds
 	nb_setval('clpBNR:eval_MS',NewBox),          % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,_,_,Zl-(Zh,NXVs)) :-

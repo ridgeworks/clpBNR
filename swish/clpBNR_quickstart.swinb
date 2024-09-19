@@ -149,6 +149,7 @@ clpStatistics, [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}, clpStatistics(SS).
 Other notebooks pertaining to CLP(BNR):
 - [Real Computer Arithmetic - Why Intervals?](https://swish.swi-prolog.org/p/Real%20Computer%20Arithmetic%20-%20Why%20Intervals.swinb)
 - [Declarative Programming for Mathematics](https://swish.swi-prolog.org/p/DeclarativeMathematics.swinb)
+- [Debugging `clpBNR` Programs](https://swish.swi-prolog.org/p/clpBNR_debug.swinb)
 </div>
 
 </div>

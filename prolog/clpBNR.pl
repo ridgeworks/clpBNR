@@ -111,7 +111,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.11.8").
+version("0.11.9").
 
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
@@ -384,13 +384,15 @@ integerBnd(1.0Inf).
 integerBnd(-1.0Inf).
 integerBnd(B) :- integer(B).
 
-% precise bounds values
+% precise bounds values - Note: assumes external commit so cuts not req'd in first two clauses
 preciseBnd(1.0Inf).
 preciseBnd(-1.0Inf).
 preciseBnd(1.5NaN) :- !, fail.
-preciseBnd(B) :-  
+preciseBnd(B) :-  preciseNumber(B). 
+
+preciseNumber(B) :-
 	rational(B) -> true 
-	; 0 is cmpr(B,rationalize(B)). % rational(B)=:=rationalize(B), fails if float not precise
+	; number(B), 0 is cmpr(B,rationalize(B)). % rational(B)=:=rationalize(B), fails if float not precise
 
 /** 
 nb_setbounds(?X:interval,+Bs:number_list) is semidet
@@ -693,10 +695,11 @@ R::Dom :-                                 % single var
 	    int_decl_(Type,Val,R)
 	).
 
-intervals_([],_Def).
-intervals_([Int|Ints],Def) :-
-	Int::Def, !,
-	intervals_(Ints,Def).
+intervals_([],_Dom).
+intervals_([Int|Ints],Dom) :-
+	copy_term(Dom,CDom),              % need a fresh copy of domain for each interval
+	Int::CDom, !,
+	intervals_(Ints,Dom).
 
 int_decl_(boolean,_,R) :- !,          % boolean is integer; 0=false, 1=true, ignore any bounds.
 	int_decl_(integer,(0,1),R).
@@ -944,30 +947,27 @@ buildConstraint_(C,_Agenda,_NewAgenda) :-
 % build a node from an expression
 %
 build_(Int, Int, VarType, Agenda, NewAgenda) :-
-	interval(Int), !,                                   % existing interval object
-	applyType_(VarType, Int, Agenda, NewAgenda).        % coerces exsiting intervals to required type
+	interval_object(Int,Type,_,_), !,
+	(Type \== VarType                                   % type narrowing?
+	 -> applyType_(VarType, Int, Agenda, NewAgenda)     % coerces exsiting intervals to required type
+	 ;  NewAgenda = Agenda 
+	).
 build_(Var, Var, VarType, Agenda, Agenda) :-            % implicit interval creation.
 	var(Var), !,
 	new_interval_(Var,VarType).
-build_(Num, Int, VarType, Agenda, Agenda) :-            % floating point constant, may not be precise
-	float(Num), !,
-	(
-	float_class(Num,infinite)
-	 -> Int=Num                                         % infinities are point values
-	 ;	int_decl_(VarType,(Num,Num),Int)                % may be fuzzed, so not a point
-	).
 build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal (without fuzzing)
 	number(L), number(H), !,
 	C is cmpr(L,H),  % compare bounds
 	(C == 0
 	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
 	 ;	C == -1,                                        % necessary condition: L < H
-	    once(VarType = real ; true),                    % if undefined Type, use 'real'
+	    (VarType = real -> true ; true),                % if undefined Type, use 'real' (efficient ignore/1)
 	    put_attr(Int, clpBNR, interval(VarType, (L,H), _NL, []))  % create clpBNR attribute
 	).
-build_(Num, Int, VarType, Agenda, Agenda) :-            % pre-compile constants pi and e
-	(Num == pi ; Num == e), !,
-	int_decl_(VarType,(Num,Num),Int).  
+build_(Num, Int, VarType, Agenda, Agenda) :-            % atomic value representing a numeric
+	atomic(Num), !,                                     % includes inf, nan, pi, e
+	% imprecise numbers will be fuzzed
+	(preciseBnd(Num) -> Int = Num ;  int_decl_(VarType,(Num,Num),Int)).
 build_(Exp, Num, _, Agenda, Agenda) :-                  % pre-compile any ground precise Exp
 	ground(Exp),
 	safe_(Exp),                                         % safe to evaluate using is/2
@@ -1005,20 +1005,19 @@ call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
 sandbox:safe_meta(clpBNR:call_user_primitive(_Prim, _P, _InArgs, _OutArgs), []).
 
 % only called when argument is ground
-safe_(E) :- atomic(E), !.  % all atomics, including [] - allows possibility of user defined arithmetic types
-safe_([A|As]) :- !,
-	safe_(A),
-	safe_(As).
-safe_(_ xor _) :- !,                                    % clpBNR xor incompatible with `is` xor
+safe_(_ xor _) :- !,                              % clpBNR xor incompatible with `is` xor
 	fail.
-safe_(integer(_)) :- !,                                 % clpBNR integer incompatible with `is` integer
-	fail.
-safe_(_/Z) :- 0.0 is abs(Z), !,                         % division by 0.0 (or -0.0) requires fuzzed 0.0
+safe_(integer(_)) :- !,                           % clpBNR integer incompatible with `is` integer
 	fail.
 safe_(F) :- 
-	current_arithmetic_function(F),                     % evaluable by is/2
+	current_arithmetic_function(F),               % evaluable by is/2
 	F =.. [_Op|Args],
-	safe_(Args).
+	safe_args_(Args).
+
+safe_args_([]).
+safe_args_([A|Args]) :-
+	(atomic(A) -> true ; safe_(A)),
+	safe_args_(Args).
 
 %  a constraint must evaluate to a boolean 
 constraint_(C) :- nonvar(C), C =..[Op|_], fmap_(Op,_,_,_,[boolean|_]), !.
@@ -1087,7 +1086,8 @@ remap_(Op,$(Z,X),Z==C) :-
 %
 % First clause is an optimization for E1 == E2
 %	In that case just unify E1 and E2; heavy lifting done by attr_unify_hook.
-newNode_(eq, [Z,X,Y], Agenda, Agenda) :- Z==1, !, X=Y.
+newNode_(eq, [Z,X,Y], Agenda, Agenda) :- Z==1, !,  % no node required
+	(number(X), number(Y) -> 0 is cmpr(X,Y) ; X=Y).
 newNode_(Op, Objs, Agenda, NewAgenda) :-
 	Args =.. [$|Objs],  % store arguments as $/N where N=1..3
 	NewNode = node(Op, _P, 0, Args),  % L=0
@@ -1234,13 +1234,11 @@ trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
 % Any changes in interval values should come through here.
 % Note: This captures all updated state for undoing on backtracking
 %
-updateValue_(Old, Old, _, _, Agenda, Agenda) :- !.                  % no change in value (constant?)
-
-updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-          % set interval value to New
-	(OpsLeft>0 -> true ; propagate_if_(Old, New)), !,  % if OpsLeft >0 or narrowing sufficent
+updateValue_(Old, New, Int, OpsLeft, Agenda, NewAgenda) :-  % set interval value to New
+	Old \== New,                                 % if value changes
+	(OpsLeft>0 ; propagate_if_(Old, New)), !,    % if OpsLeft >0 or narrowing sufficent
 	putValue_(New, Int, Nodelist),               % update value (may fail)
 	linkNodeList_(Nodelist, Agenda, NewAgenda).  % then propagate change
-
 updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with Agenda
 
 % propgate if sufficient narrowing (> 10%)

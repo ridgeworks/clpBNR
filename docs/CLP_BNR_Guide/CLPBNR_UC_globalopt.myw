@@ -15,7 +15,7 @@ eg
 	Z:: 6.00000... .
 The global optimization perdicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). Note that while a minimum value is generated (`Z:: 6.00000...`), `X` has not narrowed at all. However, `X` is now constrained by `Z`, i.e., `{X*(X*(X-6)+9)+6==Z}`. In general, there may be many values of `X` (a *minimimizer*) where the minimum value occurs. (In this example there is a global minimum at two places, only one of which is a local minimum). To find the minimizer(s), use `solve/1`:
 eg
-?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
+	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
 	X::real(0, 3.3284492065257124e-7),
 	Z:: 6.00000... ;
 	X:: 2.999000...,
@@ -762,9 +762,7 @@ eg
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z),solve(X).
 	X:: 7.8...,
 	Z:: 61.685... ;
-	X:: 7.859532...,
-	Z:: 61.68500... ;
-	X:: 7.859541...,
+	X:: 7.859534...,
 	Z:: 61.68500... ;
 	false.
 	
@@ -820,8 +818,8 @@ eg
 	local_minima(OF), global_minimize(OF,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	X:: 311.096...,
-	Y:: 369.332...,
-	Pipe:: 910.543... .
+	Y:: 369.331...,
+	Pipe:: 910.54... .
 
 
 ##### Caveats
@@ -835,9 +833,9 @@ eg
 	local_minima(OF), {OF==Z}, global_minimize(Z,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	Z = Pipe,
-	X::real(255.6329326895691, 472.3332749930583),
-	Y::real(189.77692517145653, 400),
-	Pipe:: 691.798... .
+	X::real(252.05094291873826, 477.3055624803503),
+	Y::real(187.11279407425894, 400),
+	Pipe:: 691.019... .
 Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependency problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to further constrain `X` and `Y`, it will fail:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),

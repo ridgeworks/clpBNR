@@ -365,8 +365,8 @@ odivCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
 
 odivCase(n,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	sign(Yl)-sign(Xh) > 0  % X < 0 or Y > 0
-	 -> NZl is maxr(Zl,roundtoward(-Xl / -max(0.0,Yl),to_negative)),
-	    NZh is minr(Zh,roundtoward(-Xh / -Yh,to_positive)),
+	 -> NZl is maxr(Zl,roundtoward(-Xl / -max(0.0,Yl),to_negative)),  % if Yx=0, preserve sign
+	    NZh is minr(Zh,roundtoward(-Xh / -max(0.0,Yh),to_positive)),
 	    non_empty(NZl,NZh)
 	 ;  NZl = Zl, NZh = Zh.
 odivCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)) :-
@@ -404,32 +404,28 @@ odivCase(s,s,       _,       _,       Z,         Z).  % both contain 0, no narro
 % Z==min(X,Y)    Z==max(X,Y)
 
 narrowing_op(min, _, $((Zl,Zh),(Xl,Xh),(Yl,Yh)), New) :-
-	Z1l is maxr(Zl,minr(Xl,Yl)),   % Z1 := Z ^ min(X,Y),
+	Z1l is maxr(Zl,minr(Xl,Yl)),  % Z1 := Z ^ min(X,Y),
 	Z1h is minr(Zh,minr(Xh,Yh)),
-	(   Yh < Xl -> Case = 1        % narrow Y
-	; ( Xh < Yl -> Case = 2        % narrow X
-	;   Case = 3                   % narrow both                  
-	  )
-	),
-	minimax(Case, (Zl,1.0Inf), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
+	minimax((Zl,1.0Inf), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
 
 narrowing_op(max, _, $((Zl,Zh),(Xl,Xh),(Yl,Yh)), New) :-
-	Z1l is maxr(Zl,maxr(Xl,Yl)),   % Z1 := Z ^ max(X,Y),
+	Z1l is maxr(Zl,maxr(Xl,Yl)),  % Z1 := Z ^ max(X,Y),
 	Z1h is minr(Zh,maxr(Xh,Yh)),
-	(   Xh < Yl -> Case = 1        % narrow Y
-	; ( Yh < Xl -> Case = 2        % narrow X
-	;   Case = 3                   % narrow both                  
-	  )
-	),
-	minimax(Case, (-1.0Inf,Zh), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
-	
-minimax(1, Zpartial, Z, X, Y, $(Z, X, NewY)) :-     % Case 1, narrow Y
-	^(Y,Zpartial,NewY).                    % NewY := Y ^ Zpartial.
-minimax(2, Zpartial, Z, X, Y, $(Z, NewX, Y)) :-     % Case 2, narrow X
-	^(X,Zpartial,NewX).                    % NewX := X ^ Zpartial,
-minimax(3, Zpartial, Z, X, Y, $(Z, NewX, NewY)) :-  % Case 3, overlap
-	^(X,Zpartial,NewX),                    % NewX := X ^ Zpartial,
-	^(Y,Zpartial,NewY).                    % NewY := Y ^ Zpartial.
+	minimax((-1.0Inf,Zh), (Z1l,Z1h),(Xl,Xh),(Yl,Yh), New).
+
+minimax(_, Z1,X,Y, NewXYZ) :-                  % Case 1, X not in Z1
+	\+(^(Z1,X,_)), !,                          % _ := Z1 \^ X,
+	NewXYZ = $(New, X, New),
+	^(Y,Z1,New).                               % New := Y ^ Z1.
+
+minimax(_, Z1,X,Y, NewXYZ) :-                  % Case 2, Y not in Z1
+	\+(^(Z1,Y,_)), !,                          % _ := Z1 \^ Y,
+	NewXYZ = $(New, New, Y),
+	^(X,Z1,New).                               % New := X ^ Z1.
+
+minimax(Zpartial, Z1,X,Y, $(Z1, NewX, NewY)) :- % Case 3, overlap
+	^(X,Zpartial,NewX),                        % NewX := X ^ Zpartial,
+	^(Y,Zpartial,NewY).                        % NewY := Y ^ Zpartial.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

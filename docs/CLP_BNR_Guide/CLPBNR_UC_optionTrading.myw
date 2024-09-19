@@ -144,31 +144,31 @@ where {`S`} is the current stock price, {`B1`} and {`B2`} are the breakpoints eq
 A simple query which evaluates the sale of a call option that expires *in-the-money*, i.e., the strike price is less than the stock price:
 eg
 	?- CALL=5, K=50, R=5.0, S=60,
-		payoff(call, sell, S,CALL,_,R,K,_,PExp),
-		{PayOff==PExp}.
+	   payoff(call, sell, S,CALL,_,R,K,_,PExp),
+	   {PayOff==PExp}.
 	CALL = 5,
 	K = 50,
 	R = 5.0,
 	S = 60,
 	PExp = 1*(5*(1+5.0/100)*1+0*1+0*(60-0)+ -1*(60-50)),
-	PayOff:: -4.75000000000000... .
+	PayOff = -4.75.
 
 To ask what the underlying stock price should be at expiration in order for the payoff of selling a call option to exceed $5:
 eg
-	?- CALL=5, K=50, R=5.0, {PayOff>=5}, 
-		payoff(call, sell, S, CALL, _, R, K, _, PExp), {PayOff==PExp}.
+	?- CALL=5, K=50, R=5.0, {PayOff>=5},
+	   payoff(call, sell, S, CALL, _, R, K, _, PExp), {PayOff==PExp}.
 	CALL = 5,
 	K = 50,
 	R = 5.0,
+	PayOff = 5.25,
 	PExp = 1*(5*(1+5.0/100)*1+0*0+0*(S-0)+ -1*0),
-	PayOff:: 5.25000000000000...,
 	S::real(0, 49.99999999999999) ;
 	CALL = 5,
 	K = 50,
 	R = 5.0,
 	PExp = 1*(5*(1+5.0/100)*1+0*1+0*(S-0)+ -1*(S-50)),
-	PayOff::real(5, 5.250000000000007),
-	S::real(50, 50.25000000000001).
+	PayOff::real(5, 5.25),
+	S::real(50, 50.25).
 In this case there are two values of `S` that meet the criteria: `S::real(0, 49.99999999999999)` and `S::real(50, 50.25000000000001)`, produced on backtracking. Unlike CLP({`frR`}) which provides answers in symbolic form, e.g., `PayOff = 55.25 - S`, CLP(BNR) normally provides answers expressed as intervals. (A rough symbolic version could be derived from verbose answer format using flag `clpBNR_verbose`.)
 
 Now consider a combination strategy. A *straddle* is composed of the purchase price of a call and a put option. The following query determines the stock price at expiration for the payoff to exceed $3 with a strike value of $50:
