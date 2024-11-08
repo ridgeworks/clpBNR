@@ -27,7 +27,7 @@ Blocks of AsciiMath can be defined using a `math>` block with indented content, 
 	[AsciiMath] <- link https://asciimath.org/
 	[CanIUse] <- link https://caniuse.com/?search=mathml
 	[MyWord] <- link https://github.com/ridgeworks/MyWord
-	@import pkgs/demo.mmk pkgs/asciimath.mmk MyWordDocStyle.mmk
+	@import CLP_BNR_Guide/pkgs/demo.mmk CLP_BNR_Guide/pkgs/asciimath.mmk CLP_BNR_Guide/MyWordDocStyle.mmk
 	// An inline notation 
 	'` .. `' <- <math display=inline> asciimath
 	// math blocks
