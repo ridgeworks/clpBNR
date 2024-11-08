@@ -568,11 +568,11 @@ pt_powrCase(1,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, de
 
 % Y is an interval
 powr_intY_(p, Z,X,Y, NewZ,NewX,NewY) :-              % positive X, interval Y 
-	powr_prim_(Z,X,Y,NewZ), non_empty(NewZ),         % NewZ := X**Y
+	powr_prim_(Z,X,Y,NewZ),                          % NewZ := X**Y
 	universal_interval(UI),
 	intCase(Cy,Y),
-	odivCase(p,Cy,(1,1),Y,UI,Yi),                    % Yi := UI ^ 1/Y
-	powr_prim_(X,NewZ,Yi,NewX), non_empty(NewX),     % NewX := NewZ**(1/Y)
+	odivCase(p,Cy,(1,1),Y,UI,Yi),                    % Yi := UI ^ 1/Y 
+	powr_prim_(X,NewZ,Yi,NewX),                      % NewX := NewZ**(1/Y) (no narrow if 0 in Y)
 	ln(NewZ,Ynum), intCase(Cyn,Ynum),
 	ln(NewX,Yden), intCase(Cyd,Yden),
 	odivCase(Cyn,Cyd,Ynum,Yden,Y,NewY).              % NewY := Y ^ log(NewZ)/log(NewX)
@@ -597,13 +597,14 @@ powr_intY_(s, Z,X,Y, NewZ,NewX,NewY):-                % split X, interval Y
 	union_(NXn,NXp,NX), ^(X,NX,NewX),
 	union_(NYn,NYp,NY), ^(Y,NY,NewY).
 	
-powr_prim_((Zl,Zh), (Xl,Xh), (Yl,Yh), (NZl,NZh)) :-  % X assumed positive
+powr_prim_((Zl,Zh), (Xl,Xh), (Yl,Yh), NewZ) :-        % X assumed positive
 	Zll is roundtoward(Xl**Yl,to_negative),
 	Zlh is roundtoward(Xl**Yh,to_positive),
 	Zhl is roundtoward(Xh**Yl,to_negative),
 	Zhh is roundtoward(Xh**Yh,to_positive),
 	NZl is maxr(Zl,minr(Zll, minr(Zlh, minr(Zhl, Zhh)))), % intersect with min of all
-	NZh is minr(Zh,maxr(Zll, maxr(Zlh, maxr(Zhl, Zhh)))). % intersect with max of all
+	NZh is minr(Zh,maxr(Zll, maxr(Zlh, maxr(Zhl, Zhh)))), % intersect with max of all
+	(non_empty(NZl,NZh) -> NewZ = (NZl,NZh) ; NewZ = (Zl,Zh)).  % on empty, no narrowing 
 
 ln((Xl,Xh), (Zl,Zh)) :-
 	Zl is roundtoward(log(Xl),to_negative),

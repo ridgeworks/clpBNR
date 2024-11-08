@@ -1,0 +1,38 @@
+[MyWordDocStyle]
+### Translate [AsciiMath] content to HTML
+
+This document is a simple tool which takes ([MyWord]) annotated text containing AsciiMath content and renders it using MathML, which is generally supported in most common browsers (see [CanIUse]). The panel on the left side can be edited to the content of your choosing and the rendered HTML will be displayed on the right panel. Use this button:
+
+<copybutton> Copy Html to Clipboard
+ 
+to copy the raw HTML which can then be pasted into into other HTML content (like HTML cells in SWISH notebooks).
+
+demo
+	Suppose '`ax^2+bx+c=0`' and '`a!=0`'. We first divide
+	by '`a`' to get '`x^2+b/ax+c/a=0`'.
+	
+	math>
+		e^x = 1+x+1/(2!)x^2 + 1/(3!)x^3 + cdots
+        
+		|x|= {(x,if x >= 0","),(-x,if x < 0.):}
+/*
+	Another useful feature is to include images like:
+	[SWIPlogo]
+	&
+		[SWIPlogo] <- image https://www.swi-prolog.org/download/logo/swipl-128.png
+Inline AsciiMath is bracketed using `('`)` .. `(`')` as shown in the example text.
+Blocks of AsciiMath can be defined using a `math>` block with indented content, also shown in the example.
+
+&
+	[AsciiMath] <- link https://asciimath.org/
+	[CanIUse] <- link https://caniuse.com/?search=mathml
+	[MyWord] <- link https://github.com/ridgeworks/MyWord
+	@import pkgs/demo.mmk pkgs/asciimath.mmk MyWordDocStyle.mmk
+	// An inline notation 
+	'` .. `' <- <math display=inline> asciimath
+	// math blocks
+	math> .. <- am
+	/* ..  <- invisible
+	invisible :: (content) => ''
+	<copybutton>  .. <- 
+	     <button onclick='navigator.clipboard.writeText(document.body.getElementsByTagName("myword-sink")[0].innerHTML)'>
