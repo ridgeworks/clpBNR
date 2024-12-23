@@ -1,15 +1,10 @@
 ### Appendices
 
-#### Appendix 1 - `integrateV.pl` Source
-aside> ( [/*integrateV.pl*/raw text] )
-@include supplemental/integrateV.pl
-<#TableOfContents>
-
-#### Appendix 2 - `travellingSalesman.pl` Source for all algorithms
+#### Appendix 1 - `travellingSalesman.pl` Source for all algorithms
 aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/travellingSalesman.pl
 
-#### Appendix 3 - Bin Packing Examples
+#### Appendix 2 - Bin Packing Examples
 ##### `camels.pl` ( [/*camels.pl*/raw text] )
 @include supplemental/camels.pl
 
@@ -17,12 +12,11 @@ aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/colouredBins.pl
 <#TableOfContents>
 
-#### Appendix 4 - Scheduling Code
+#### Appendix 3 - Scheduling Code
 ##### `scheduling.pl` ( [/*scheduling.pl*/raw text] )
 @include supplemental/scheduling.pl
 
 &
-	[/*integrateV.pl*/raw text] <- link supplemental/integrateV.pl
 	[/*travellingSalesman.pl*/raw text] <- link supplemental/travellingSalesman.pl
 	[/*camels.pl*/raw text] <- link supplemental/camels.pl
 	[/*colouredBins.pl*/raw text] <- link supplemental/colouredBins.pl

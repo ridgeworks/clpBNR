@@ -2,6 +2,93 @@
 
 It's not always apparent when constraints can be used effectively to solve a problem. This section uses a number of examples which can be used as patterns to evaluate the use of constraints as an effective solution. The techniques described in the section should be applicable to any CLP implementation depending on the domains supported.
 
+#### Modelling with Numerical Constraints
+
+One of the more challenging aspects of programming with CLP's is constructing a numerical model from a problem statement which isn't obviously expressed as such. Consider the following classic Lewis Carrol logic puzzle:
+
+>	Five men with different nationalities live in the first five houses of a street.  They practise five distinct professions, and each of them has a favourite animal and a favourite drink, all of them different.  The five houses are painted in different colours.
+	 
+	* The Englishman lives in a red house.
+	* The Spaniard owns a dog.
+	* The Japanese is a painter.
+	* The Italian drinks tea.
+	* The Norwegian lives in the first house on the left.
+	* The owner of the green house drinks coffee.
+	* The green house is on the right of the white one.
+	* The sculptor breeds snails.
+	* The diplomat lives in the yellow house.
+	* Milk is drunk in the middle house.
+	* The Norwegian's house is next to the blue one.
+	* The violinist drinks fruit juice.
+	* The fox is in a house next to that of the doctor.
+	* The horse is in a house next to that of the diplomat.
+	
+	Who owns a zebra, and who drinks water?
+
+In constructing a model, recognize that there are 5 house numbers, `integer(1,5)`, ordered left to right and 5 characteristics (nationalities, house colour, etc.). Each characteristic will be modelled by a list of 5 variables which are the house number corresponding to that characteristic value while ensuring that values in each list are distinct. So for nationalities:
+.pl
+		Nat = [English, Spaniard, Japanese, Italian, Norwegian],
+		Nat::integer(1..5),
+		distinct(Nat)           % see full example code below
+and so on for each of the characteristics. (Note that a couple of the variables are only mentioned in the final question.) After doing this, there will be 25 named variables (5 lists of 5 variables each) and the problem constraints can now be fairly directly written as `clpBNR` constraints and the variables can be enumerated (labelled). The final step is to output the answer to the specific question stated. The full program code follows:
+.pl
+	zebra :-  % model the problem as 5 lists of house numbers
+		Nat = [English, Spaniard, Japanese, Italian, Norwegian],
+		Nat :: integer(1,5), distinct(Nat),
+		
+		Colour = [Red, Green, White, Yellow, Blue],
+		Colour :: integer(1,5), distinct(Colour),
+		
+		Profession = [Painter, Sculptor, Diplomat, Violinist, Doctor],
+		Profession :: integer(1,5), distinct(Profession),
+		
+		Pet = [Dog, Snails, Fox, Horse, Zebra],
+		Pet :: integer(1,5), distinct(Pet),
+		
+		Drink = [Tea, Coffee, Milk, Juice, Water],
+		Drink :: integer(1,5), distinct(Drink),
+		
+		{  % the actual constraints
+		English == Red,
+		Spaniard == Dog,
+		Japanese == Painter,
+		Italian == Tea,
+		Norwegian == 1,
+		Green == Coffee,
+		Green == White + 1,
+		Sculptor == Snails,
+		Diplomat == Yellow,
+		Milk == 3,
+		abs(Norwegian - Blue) == 1,
+		Violinist == Juice,
+		abs(Fox - Doctor) == 1,
+		abs(Horse - Diplomat) == 1
+		},
+		
+		enumerate([Nat, Colour, Profession, Pet, Drink]),  % now enumerate all variables
+		
+		% map nationalities to names for output
+		NatNames = [English-english, Spaniard-spaniard, Japanese-japanese,
+				Italian-italian, Norwegian-norwegian],
+		memberchk(Zebra-ZebraNat, NatNames),
+		memberchk(Water-WaterNat, NatNames),
+		format("The ~w owns the zebra and the ~w drinks water.\n", [ZebraNat,WaterNat]).
+	
+	distinct([]) .
+	distinct([X|Xs]):- distinct_(Xs,X), distinct(Xs).
+	
+	distinct_([],_).
+	distinct_([X|Xs],Y):- {X<>Y}, distinct_(Xs,Y).
+The query:
+eg
+	?- zebra.
+	The japanese owns the zebra and the norwegian drinks water.
+	true ;
+	false.
+Note that enumeration leaves a choicepoint suggesting there may be more than one solution; on backtracking no more are generated. 
+
+<#TableOfContents>
+
 #### Transitive Closure
 
 "The [transitive closure] of a binary relation {`R`} on a set {`X`} is the smallest relation on {`X`} that contains {`R`} and is transitive." For example if {`X`} is a set of cities and the relation {`R`} between two cities means there is a direct flight between them, the transitive closure is the relation defining two cities which are connected by one or more flights.
@@ -364,7 +451,7 @@ eg
 	false.
 `solve/1` is a general purpose predicate that can be used for both `real` and `integer` (including `boolean`) intervals. (If the number of intervals and their domain sizes  are small, `enumerate/1` may be slightly more efficient.) `solve` is an effective method of searching for point solutions as it avoids splitting intervals on solutions. Splitting on a solution is undesirable in that it can result in multiple answers for the same solution. (Other applications discussed below are better addressed by `splitsolve/1` which does a general bifurcating search.) 
 
-The implementation of `<>` in CLP(BNR) is not particularly effective since a domain cannot be a set of disjoint ranges as in some other finite domain constraint systems. Problems that fit into this problem space and where efficiency is a concern, would be better solved by a different CLP package.
+The implementation of '`<>`' in CLP(BNR) is not particularly effective since a domain cannot be a set of disjoint ranges as in some other finite domain constraint systems. Problems that fit into this problem space and where efficiency is a concern, would be better solved by a different CLP package.
 
 <#TableOfContents>
 
@@ -406,10 +493,10 @@ eg
 	M = [6,2,1,0,0,0,1,0,0,0] ;
 	false.
 
-	﻿?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.2259300000000053), gcTime(0.001), globalStack(381568/1048544), trailStack(50960/264168), localStack(1992/118648), inferences(1069324), narrowingOps(33577), narrowingFails(73), node_count(190), max_iterations(484/3000)],
+	SS = [userTime(0.13800300000000004), gcTime(0.0), globalStack(54440/524256), trailStack(664/264168), localStack(2152/118648), inferences(978515), narrowingOps(33577), narrowingFails(73), node_count(190), max_iterations(484/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -430,10 +517,10 @@ In thinking about the problem, you may have discovered that the sum of the the s
 		magic_(Ks, 0, Ks).
 Now:
 eg
-	﻿?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.07968600000000947), gcTime(0.0), globalStack(171784/524256), trailStack(18480/133096), localStack(1992/118648), inferences(382052), narrowingOps(10272), narrowingFails(41), node_count(199), max_iterations(630/3000)],
+	SS = [userTime(0.049680999999999975), gcTime(0.001), globalStack(57504/524256), trailStack(1752/264168), localStack(2152/118648), inferences(344821), narrowingOps(10272), narrowingFails(41), node_count(199), max_iterations(630/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -460,10 +547,10 @@ One can take this even further by noting that `N` also equals the sum of `M*Mn`:
 		sumProd_(Ks,N1,S).
 leading to further factor of more than 2:
 eg
-	﻿?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
+	?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.03300500000000284), gcTime(0.0), globalStack(41072/524256), trailStack(848/264168), localStack(1992/118648), inferences(149291), narrowingOps(3082), narrowingFails(41), node_count(159), max_iterations(247/3000)],
+	SS = [userTime(0.019751000000000074), gcTime(0.0), globalStack(221824/524256), trailStack(29112/264168), localStack(2152/118648), inferences(131353), narrowingOps(3082), narrowingFails(41), node_count(159), max_iterations(247/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 5),

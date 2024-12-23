@@ -9,6 +9,7 @@ CLP(BNR) is a dialect of constraint logic programming over the continuous domain
 <div class="nb-cell program" data-background="true" name="p1">
 :- use_module(library(clpBNR)).
 :- use_module(library(clpBNR_toolkit)). % optional
+:- use_module(library(clpBNR_search)).  % optional
 </div>
 
 <div class="nb-cell markdown" name="md2">
@@ -117,6 +118,8 @@ Constraints are not confined to be linear; another example:
 This shows that if the problem is sufficiently constrained, `solve/1` isn't even required. And there's nothing magical about `solve/1`; it just systematically applies more constraints until the sub-problem is sufficiently constrained that constraint propagation narrows the intervals to an acceptable precise value. Custom labelling predicates suited to the problem at hand are relatively easy to implement.
 
 This is just a brief introduction to `clpBNR`. Additional information and many examples (finding roots and global optima, using numerical integration to solve differential equations, optimization techniques, etc.) can be found in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
+
+The `clpBNR` pack also includes optional modules `clpBNR_toolkit` and `clpBNR_search`. The toolkit contains a number of predicates to assist in particular problem ares, e.g., gloabl optimization of linear systems, boundary value problems using ordinary differential equations, etc. `clpBNR_search` is a `clpBNR` based version of [Eclipse](https://eclipseclp.org/)'s search libraries (`generic_search`, `fd_search`, ..). Detailed documention of these optional modules can also be found in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
 
 A few final hints:
 * In general, `clpBNR` doesn't generate any errors but just silently failing isn't very helpful during development. To alleviate this problem, the debug topic `clpBNR` can be used to effect "noisy" failures as well as to provide some basic constraint propagation trace information. (Debug mode also enables other other development features like low level tracing and interval watchpoints.) Default is:

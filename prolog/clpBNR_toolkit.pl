@@ -1,6 +1,3 @@
-%
-% Toolkit of useful utilities for CLP(BNR)
-%
 /*	The MIT License (MIT)
  *
  *	Copyright (c) 2022-2024 Rick Workman
@@ -33,6 +30,9 @@
 	cf_contractor/2,            % execute cf_contractor
 	cf_solve/1, cf_solve/2,     % a solve predicate for centre form contractors
 
+	integrate/3, integrate/4,   % simple numerical integration
+	boundary_values/2, boundary_values/3, boundary_values/4,  % solve boundary value problems
+
 	lin_minimum/3,              % find minimum of linear problem using library(simplex)
 	lin_maximum/3,              % find maximum of linear problem using library(simplex)
 	lin_minimize/3,             % lin_minimum/3 plus bind vars to solution minimizers
@@ -46,7 +46,7 @@
 	
 /** <module> clpBNR_toolkit: Toolkit of various utilities used for solving problems with clpBNR
 
-CLP(BNR) (=|library(clpBNR)|=)is a CLP over the domain of real numbers extended with ±∞. This module contains a number of useful utilities for specific problem domains like the  optimization of linear systems, enforcing local optima conditions, and constructing centre form contractors to improve performance (e.g., Taylor extensions of constraints). For more detailed discussion, see [A Guide to CLP(BNR)](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html) (HTML version included with this pack in directory =|docs/|=).
+CLP(BNR) (=|library(clpBNR)|=) is a CLP over the domain of real numbers extended with ±∞. This module contains a number of useful utilities for specific problem domains like the  optimization of linear systems, enforcing local optima conditions, and constructing centre form contractors to improve performance (e.g., Taylor extensions of constraints). For more detailed discussion, see [A Guide to CLP(BNR)](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html) (HTML version included with this pack in directory =|docs/|=).
 
 Documentation for exported predicates follows. The "custom" types include:
 *  _interval_  : a variable with a =clpBNR= attribute
@@ -54,8 +54,12 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_list|_  : a list of _|*|_
 */
 :- use_module(library(apply),[maplist/3]).
+:- use_module(library(apply_macros)).  % compiler support for `maplist`, helps a bit
 :- use_module(library(clpBNR)).
 :- use_module(library(simplex)).
+
+% sandboxing for SWISH
+:- multifile(sandbox:safe_primitive/1).
 
 % messages for noisy failure
 fail_msg_(FString,Args) :-
@@ -180,6 +184,8 @@ set_domain(X,D) :-
 
 /**
 cf_solve(+Contractor) is nondet
+
+Equivalent to =|cf_solve/2|= using default precision.
 */
 /**
 cf_solve(+Contractor, +Precision:integer) is nondet
@@ -361,6 +367,233 @@ cf_add([X|Xs],[A|As],XsIn,AsIn,XsOut,AsOut) :-
 	cf_add(Xs,As,[X|XsIn],[A|AsIn],XsOut,AsOut).
 
 var_existing([Xex|Xs],[Aex|As], X,A) :- Xex==X -> Aex=A ; var_existing(Xs,As,X,A).
+
+/**
+integrate(+F,-X:interval,-R) is semidet
+
+Equivalent to =|integrate/4|= with default precision.
+*/
+/**
+integrate(+F,-X:interval,-R,+P:integer) is semidet
+
+Succeeds if R is the numerical integration of F over the range of interval X.  F must be continuously differentiable over this range or it fails.
+
+The number of integration steps (= 2**P) is determined by the precision parameter P (default is value of environment flag clpBNR_default_precision). Example of use with increasing precision values:
+==
+?- X::real(0.0,1.0), F=X**2, between(2,10,P),integrate(F,X,RV,P), range(RV,R), format('~w:~w\n',[P,R]), fail.
+2:[0.328125,0.359375]
+3:[0.33203125,0.33984375]
+4:[0.3330078125,0.3349609375]
+5:[0.333251953125,0.333740234375]
+6:[0.33331298828125,0.33343505859375]
+7:[0.3333282470703125,0.3333587646484375]
+8:[0.3333320617675781,0.3333396911621094]
+9:[0.33333301544189453,0.33333492279052734]
+10:[0.33333325386047363,0.33333373069763184]
+false.
+==
+*/
+
+% integrate(F,X,R) where X is an interval over which to integrate and F = f(X)
+% Note that integrate(F,X,R) is equivalent to boundary_values(X,[dV(_,F,0,R])
+integrate(F,X,R) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	integrate(F,X,R,P,_).
+integrate(F,X,R,P) :-
+	integrate(F,X,R,P,_).
+integrate(F,X,R,P,Steps) :-                    % internal arity 5 for development
+	compound(F),                               % F must be an expression in X
+    interval(X),                               % X must be an interval 
+    integer(P), P>0,                           % P must be positive integer
+	!,                                         % args OK, commit 
+	boundary_values(X,[dV(_,F,0,R)],P,Steps). % use integration in `boundary_values`
+integrate(F,X,R,P,_Steps) :-
+	fail_msg_('Invalid argument(s): ~w',[integrate(F,X,R,P)]).
+
+/**
+boundary_values(-X:interval, +Dvars:list) is semidet
+
+Equivalent to  =|boundary_values/4|= with default precision and discarding steps list.
+*/
+/**
+boundary_values(-X:interval, +Dvars:list, +P:integer) is semidet
+
+Equivalent to =|boundary_values/4|= discarding steps list.
+*/
+/**
+boundary_values(-X:interval, +Dvars:list, +P:integer, -Steps:list) is semidet
+
+Succeeds if a solution can be found to the boundary value problem specified by the independent variable X and the list of dependent variables defined by Dvars. Each dependent variable definition is a compound term of the form `dV(Y, Fxy, Yi, Yf)`. The initial and final values of the independent variable for the purposes of the boundary value problem are specified by the lower and upper values of the domain of X. The arguments of for `dvar/4`
+are:
+* `Y` : the dependent variable for this definition
+* `Fxy` : an expression defining the derivative of Y with respect to `X`
+* `Yi` : the value of `Y` when `X` takes the value of its lower bound
+* `Yf` : the value of `Y` when `X` takes the value of its upper bound
+The intent of this predicate is to find values for any of the unspecified boundary values (i.e., any `Yi`,`Yf`). An unbound `Yi` and `Yf` can be any evaluable arithmetic expression. The actual dependent and independent variables (`X` and `Y`'s respectively) are unchanged.
+
+The optional third argument `P` defines a precision value, a positive integer (default = environment flag `clpBNR_default_precision`), which controls the the numerical integration; larger `P` means smaller step size.
+
+The arity 4 version has an additional (final) argument which is unified with a list of the step values generated by the integration; each value is a tuple of the form `(X,Ys)`.
+
+This predicate fails if any of the arguments are invalid (generates an error message if `clpBNR` debug topic is enabled) or if a solution to the boundary value problem cannot be found.  Examples for X in the range 0..1 and derivative of `Y = -2*X*Y`:
+==
+?- X::real(0,1), boundary_values(X,[dV(Y, -2*X*Y,1,Yf)]).
+X::real(0, 1),
+Yf:: 0.368... .
+
+?- X::real(0,1),boundary_values(X,[dV(Y, -2*X*Y,1,Yf)],9).
+X::real(0, 1),
+Yf:: 0.36788... .
+
+?- X::real(0,1), boundary_values(X,[dV(Y, -2*X*Y,Yi,1/e)]).
+X::real(0, 1),
+Yi:: 1.00... .
+
+?- debug(clpBNR).
+true.
+
+?- X=42, boundary_values(X,[dV(Y, -2*X*Y,Yi,1/e)]).
+% Invalid argument(s): boundary_values(42,[dV(_10836,-2*42*_10836,_10850,1/e)],6)
+false.
+==
+As with any application requiring numerical integration, care must be taken to avoid instability problems (more discussion in [A Guide to CLP(BNR)](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
+*/
+boundary_values(X,YDefs) :-
+	current_prolog_flag(clpBNR_default_precision,P),
+	boundary_values_(X,YDefs,P,_).
+	
+boundary_values(X,YDefs,P) :-
+	boundary_values_(X,YDefs,P,_).
+
+boundary_values(X,YDefs,P,Steps) :-
+	boundary_values_(X,YDefs,P,Steps/_).
+
+boundary_values_(X,YDefs,P,Out/[(Xf,Yfs)]) :-
+    integer(P), P>0,                             % P must be positive integer
+    domain(X,Xdom), Xdom =.. [_Type,Xi,Xf],      % X must be an interval 
+	eval_dvars(YDefs,Ys,Yis,Yfs,Ydoms),          % too many args for maplist	
+	maplist(fXY_lambda(X,Ys),YDefs,Fxys),        % list of partial derivative lambda args
+	(maplist(total_derivative_(Fxys),Fxys,DFxys) % list of connective derivative lambda args
+	 -> true
+	 ;  DFxys = none                             % F non-differentiable(?), use euler step
+	),
+	!,                                           % args all good, commit
+    integrate_(P,Fxys,DFxys,(Xi,Yis),(Xf,Yfs),Ydoms,Out/[(Xf,Yfs)]).
+boundary_values_(X,YDefs,P,_) :-
+	fail_msg_('Invalid argument(s): ~w',[boundary_values(X,YDefs,P)]).
+
+eval_dvars([],[],[],[],[]).
+eval_dvars([dV(Y, _PD, Lexp, Uexp)|YDefs],[Y|Ys],[Yi|Yis],[Yf|Yfs],[Ydom|Ydoms]) :-
+	(domain(Y,Ydom) -> true ; Ydom = real),  % Ydom defaults to real 
+	(var(Lexp) -> Yi=Lexp, Yi::Ydom ; Yi is Lexp),
+	(var(Uexp) -> Yf=Uexp, Yf::Ydom ; Yf is Uexp),
+	eval_dvars(YDefs,Ys,Yis,Yfs,Ydoms).
+
+% construct Lambda args for Fxy
+fXY_lambda(X,Ys,dV(_Y,Fxy,_,_),FxyArgs) :- 
+	lambda_for_(Fxy,X,Ys,FxyArgs).
+		
+% construct Lambda args for derivative function of Fxy from Lambda of Fxy
+
+total_derivative_(Fxys,_Free/Ps,DxyArgs) :- !,  % ignore free variables
+	total_derivative_(Fxys,Ps,DxyArgs).
+total_derivative_(Fxys,[X,Ys,Fxy],DxyArgs) :-
+	partial_derivative(Fxy,X,DFDX),          % clpBNR built-in
+	sumYpartials(Fxys,Ys,Fxy,0,DYsum),
+	simplify_sum_(DFDX, DYsum, DExp), !,
+	lambda_for_(DExp,X,Ys,DxyArgs).
+	
+sumYpartials([],[],_Fxy,Acc,Acc).
+sumYpartials([_Free/FxyI|FxyIs],YIs,Fxy,Acc,Sum) :- !,
+	sumYpartials([FxyI|FxyIs],YIs,Fxy,Acc,Sum).
+sumYpartials([[_X,_Ys,FxyI]|FxyIs],[YI|YIs],Fxy,Acc,Sum) :-
+	partial_derivative(Fxy,YI,DFDYI),
+	(number(DFDYI), DFDYI =:= 0 -> NxtAcc = Acc ; simplify_sum_(Acc,FxyI*DFDYI,NxtAcc)),
+	!,
+	sumYpartials(FxyIs,YIs,Fxy,NxtAcc,Sum).
+	
+simplify_sum_(X,Y,Y) :- number(X),X=:=0.
+simplify_sum_(X,Y,X) :- number(Y),Y=:=0.
+simplify_sum_(X,Y,X+Y).
+
+% construct args for Lambda expression
+lambda_for_(Fxy,X,Ys,Args) :-
+	Lambda_parms = [X,Ys,Fxy],
+	term_variables(Fxy,FVs),
+	exclude(var_member_([X|Ys]),FVs,EVs),    % EVs = free variables
+	(comma_op_(EVs,EV) -> Args = {EV}/Lambda_parms ; Args = Lambda_parms).
+
+var_member_([L|Ls],E) :- L==E -> true ; var_member_(Ls,E).
+
+comma_op_([X],X).  % assumes use in if-then
+comma_op_([X|Xs],(X,Y)) :- comma_op_(Xs,Y).	
+
+% integration loop
+integrate_(0, Fxys, Dxys, Initial, Final, Ydomains, [Initial|Ps]/Ps) :- !,
+	% select integration step
+	( Dxys == none
+	 -> step_euler(Fxys, Initial, Final, Ydomains)
+	 ;  step_trap(Fxys, Dxys, Initial, Final, Ydomains)
+	).
+integrate_(P, Fxys, Dxys, Initial, Final, Ydomains, L/E) :-
+    % create interpolation point and integrate two halves
+    interpolate_(Initial, Final, Ydomains, Middle),
+    Pn is P - 1,
+    integrate_(Pn, Fxys, Dxys, Initial, Middle, Ydomains, L/M),
+    integrate_(Pn, Fxys, Dxys, Middle,  Final,  Ydomains, M/E).
+
+interpolate_((X0,_Y0s), (X1,_Y1s), Ydomains, (XM,YMs)) :-
+    XM is (X0 + X1)/2,            % XM is midpoint of (X0,X1)
+	maplist(::,YMs,Ydomains).     % corresponding YMs
+
+step_euler(Fxys, (X0,Y0), (X1,Y1), Ydoms) :-
+    X01:: real(X0,X1),            % range of X in step
+    maplist(lambda_constrain_(X01,Y01),Fxys,Fs),   % approx f' over X0 
+    Dx is X1 - X0,                % assumed (X1>X0)
+    DX :: real(0,Dx),             % range for estimate
+	euler_constraints(Y0,Y1,Y01,Ydoms,Dx,DX,Fs,In/In,Cs/[]),  % flatten with diff list
+	{Cs}.
+	
+step_trap(Fxys, Dxys, (X0,Y0), (X1,Y1), Ydoms) :-
+    X01:: real(X0,X1),            % range of X in step
+    maplist(lambda_constrain_(X0,Y0),Fxys,F0s),    % F0s = slopes at X0
+    maplist(lambda_constrain_(X1,Y1),Fxys,F1s),    % F1s = slopes at X1 
+    maplist(lambda_constrain_(X01,Y01),Dxys,Ds),   % approx f' over X0 
+    Dx is X1 - X0,                % assumed (X1>X0)
+    DX :: real(0,Dx),             % range for estimate
+	trap_constraints(Y0,Y1,Y01,Ydoms,Dx,DX,F0s,F1s,Ds,In/In,Cs/[]),  % flatten with diff list
+	{Cs}.  %%, absolve(Y1,2).
+
+lambda_constrain_(X,Ys,Args,F) :-  % reorder args for yall: >>
+	yall: >>(Args,true,X,Ys,F).    % avoid meta-call (basically just makes copy)
+%  known safe since lambda Goal=true
+sandbox:safe_primitive(clpBNR_toolkit:lambda_constrain_(_X,_Ys,_Args,_F)). 
+
+/* see Carleton notes:
+https://www.softwarepreservation.org/projects/prolog/bnr/doc/Older-Introduction_to_CLP%28BNR%29-1995.pdf/view
+*/
+euler_constraints([],[],[],[],_Dx,_DX,[],In,In).
+euler_constraints([Y0|Y0s],[Y1|Y1s],[Y01|Y01s],[Ydom|Ydoms],Dx,DX,[F|Fs],
+	In/[FM <= F,                      % FM = slope inclusion 
+	    Y01 - Y0 is DX*FM,
+	    Y1  - Y0 is Dx*FM
+	   |Cs],
+	Out) :-
+	Y01:: Ydom,
+	euler_constraints(Y0s,Y1s,Y01s,Ydoms,Dx,DX,Fs,In/Cs,Out).
+
+trap_constraints([],[],[],[],_Dx,_DX,[],[],[],In,In).
+trap_constraints([Y0|Y0s],[Y1|Y1s],[Y01|Y01s],[Ydom|Ydoms],Dx,DX,[F0|F0s],[F1|F1s],[D|Ds],
+	% use `is` to circumvent `simplify`
+	In/[FM <= (F0+F1)/2,              % FM = average slope using step endpoints (one-way)
+	    % Note that the following must not be symbolically simplified to eliminate D
+	    8*DR is D - D,                % 4*deltaR == (D-D)/2 (for error term)
+	    Y01 - Y0 is DX*(FM + DR*DX),
+	    Y1  - Y0 is Dx*(FM + DR*Dx)
+	   |Cs],
+	Out) :-
+	Y01:: Ydom, DR::real,
+	trap_constraints(Y0s,Y1s,Y01s,Ydoms,Dx,DX,F0s,F1s,Ds,In/Cs,Out).
 
 /**
 lin_minimum(+ObjF,Constraints:{},?Min:numeric) is semidet

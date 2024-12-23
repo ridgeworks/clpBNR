@@ -2,37 +2,37 @@
 
 Finding the roots of a univariate polynomial equation is the same as asking what is the value of `X` given the constraint `{P(X)==0}`. (Some of this section was covered earlier in "Constraints on Real Intervals".) A simple quadratic with two real roots (1 and 3):
 eg
-	﻿?- X::real,{X**2-4*X+3 == 0}.
+	﻿?- X::real, {X**2-4*X+3 == 0}.
 	X::real(0.9999999999999998, 3.0000000000000018).
 The interval result must include both roots. To produce a single value, the problem must be further constrained:
 eg
-	?- X::real(2,_),{X**2-4*X+3 == 0}.
+	?- X::real(2,_), {X**2-4*X+3 == 0}.
 	﻿X:: 3.00000000000000... .
 or to find both:
 eg
-	?- X::real,{X**2-4*X+3 == 0},({X=<2};{X>=2}).
+	?- X::real, {X**2-4*X+3 == 0}, ({X=<2};{X>=2}).
 	﻿X:: 1.000000000000000... ;
 	X:: 3.00000000000000... .
 Since we're looking for point solutions, `solve/1` is better than guessing at additional constraints to isolate roots:
 eg
-	?- X::real,{X**2-4*X+3 ==0},solve(X).
+	?- X::real, {X**2-4*X+3 ==0}, solve(X).
 	﻿X:: 1.000000000000000... ;
 	X:: 3.00000000000000... .
 	
 Formulas exist for solving equations of low degree, so this may hardly seem to be worth the trouble, but this same technique works for pretty much any polynomial:
 eg
-	?- X::real,{17*X**256+35*X**17-99*X == 0},solve(X).
+	?- X::real, {17*X**256+35*X**17-99*X == 0}, solve(X).
 	X:: 0.0000000000000000... ;
 	X:: 1.005027892894011... .
 
-	?- X::real,{35*X**256-14*X**17+X == 0},solve(X).
+	?- X::real, {35*X**256-14*X**17+X == 0}, solve(X).
 	﻿X:: -0.847943660827315... ;
 	X:: 0.﻿0000000000000000... ;
 	X:: 0.847943660827315... ;
 	X:: 0.995842494200498... .
 A fourth degree polynomial equation with two real roots:
 eg
-	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
+	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
 	﻿X:: 1.000000... ;
 	X:: 1.0000000... ;
 	X:: 3.000000... ;
@@ -43,37 +43,36 @@ eg
 	﻿?- set_prolog_flag(clpBNR_default_precision,7).
 	true.
 	
-	?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X).
+	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
 	﻿X:: 1.00000000... ;
 	X:: 3.0000000... ;
 	false.
 The flip side says that the precision limit can cause the iteration to terminate without disproving that a solution exists, which is the case for the second and fourth solution.
 
-The CLP(BNR) predicate `absolve` can be used to alleviate this problem (at a cost in performance). It "nibbles" away at the boundaries of an interval that fail to contain a solution and often removes these "false positives":
+The CLP(BNR) deterministic predicate `absolve` can be used to alleviate this problem (at a cost in performance). It "nibbles" away at the boundaries of an interval that fail to contain a solution and often removes these "false positives":
 eg
-	﻿?- X::real,{X**4-4*X**3+4*X**2-4*X+3 == 0},solve(X),absolve(X).
+	﻿?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X), absolve(X).
 	﻿X:: 1.00000000... ;
 	X:: 3.00000000... ;
 	false.
-But it is data dependent; sometimes both mechanisms together are insufficient, as in this polynomial equation with roots at 0, 3, 4, and 5:
+But it is data dependent; sometimes both mechanisms are needed, as in this polynomial equation with roots at 0, 3, 4, and 5:
 eg
-	﻿?- set_prolog_flag(clpBNR_default_precision,7),X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),absolve(X).
-	X:: 0.﻿0000000000000000... ;
+	?- X::real, {X**4-12*X**3+47*X**2-60*X==0}, solve(X,7), absolve(X,9).
+	X:: 0.0000000000000000... ;
 	X:: 3.00000000... ;
-	X:: 4.0000000... ;
 	X:: 4.00000000... ;
 	X:: 5.00000000... ;
 	false.
 The underlying cause of the generation of redundant positives is the multiple occurrence of `X` in the constraint set (the *dependency* problem discussed previously) which limits the narrowing possible via fixed point iteration. In addition, the shape of the polynomial in the vicinity of the X axis may mean a small `X` interval corresponds to a larger interval value of the polynomial, in fact, large enough to include 0. And to make matters worse, it can take a considerable amount of work to generate these redundant positives.
 
-The inability to isolate roots, often accompanied by longer execution times, may indicate that constraint propagation isn't particularly efficient. In such cases, it can be advantageous to explore alternate representations of the constraint. In this particular case (finding roots of polynomials) a common representation is the Horner form (see [Horner's Method]), as it usually not only sharpens the results but takes less time:
+The inability to isolate roots, often accompanied by longer execution times, may indicate that constraint propagation isn't particularly efficient. In such cases, it can be advantageous to explore alternative representations of the constraint. In this particular case (finding roots of polynomials) a common representation is the Horner form (see [Horner's Method]), as it usually not only sharpens the results but takes less time:
 eg
-	?- X::real,{3+X*(-4+X*(4+X*(-4+X)))==0},solve(X).
+	?- X::real, {3+X*(-4+X*(4+X*(-4+X)))==0}, solve(X).
 	X:: 1.0000000... ;
 	X:: 3.00000000000000... ;
 	false.
 	
-	?- X::real,{X*(-60+X*(47+X*(-12+X)))==0},solve(X).
+	?- X::real, {X*(-60+X*(47+X*(-12+X)))==0}, solve(X).
 	X = 0.0 ;
 	X:: 3.000000... ;
 	X:: 4.00000000000... ;
@@ -81,91 +80,44 @@ eg
 	false.
 One observation is that the Horner form requires fewer operator instances (e.g., 3 less in the case of `X**4-4*X**3+4*X**2-4*X+3`) which generally means the number of nodes executed in the fixed point iteration loop is small, leading to improved performance. As a general rule re-writing constraints to use fewer operations leads to better performance and narrower results.
 
-The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parabola. `solve` (and `absolve`) can spend a lot of time in the vicinity of the solution (in this case, {`x=1`}) trying to disprove solutions in small intervals of `X`:
-eg
-	?- X::real,{X**2-2*X+1==0}.
+The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parabola, so it takes a reasonably large change in `X` to get appreciably closer to a RHS value of 0. Just using constraint propagation produces a reasonable approximation, dependant on throttling (see flag `clpBNR_iteration_limit`):
+ eg
+	?- X::real, {X**2-2*X+1==0}, writeln(X).
+	_168{real(0.997359377688694,1.002708358193705)}
 	X:: 1.00... .
+But what if more precision is required? You could increase the throttling limit but it takes about ten times the default (i.e., 3000 to 30000) to achieve an extra digit of precsion and it may have a detrimental impact on the propagation of other constraints.
 
-	?- X::real,{X**2-2*X+1==0},solve(X),absolve(X).
-	X:: 0.999993780... ;
-	X:: 0.99999635... ;
-	X:: 0.999997703... ;
-	X:: 0.9999979329... ;
-	X:: 0.999997983... ;
-	X:: 0.999998411... ;
-	X:: 0.9999985... ;
-	        .
-	        .
-	        .
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.9999999... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.0000003... ;
-	        .
-	        .
-	        .
-	X:: 1.000001... ;
-	X:: 1.000001... ;
-	X:: 1.0000017... ;
-	X:: 1.0000018... ;
-	X:: 1.0000023318... ;
-	X:: 1.000003381... ;
-	X:: 1.000004781... ;
-	false.
-Just entering the equation without using `solve` (first query) quickly generates a low precision answer (~3-4 digits) before hitting the "work" limit (Prolog flag `clpBNR_iteration_limit`). But using `solve` to achieve greater precision takes an excessively long time while, even using `absolve`, generating many, many false positives. So, for this particular case, the general fixed point iteration and `solve` technique are not very effective.
+You could try using `solve` to discard portions of the interval, but here again you run into precision limits. This curtails splitting `X` when the sub-intervals are smaller than the limit and, in this particular case, that happens before the propagation (which could prune the sub-interval in question) fails. So on backtracking this results in the generation of hundreds of non-solutions in addition to the real solution (smallest interval containing 1). (Try it!)
 
-The Horner from doesn't even narrow for the base case, but does improve the performance when used with `solve` and `absolve`.
+So for this problem, `absolve` is one of the most efficient ways to narrow {`x`} without requiring any changes to default throttling. A higher precision value can also be used to effect more narrowing.
 eg
-	?- X::real,{1+X*(-2+X) == 0}.
-	X::real(-1.0e+16, 1.0e+16).
+	% default precision for absolve is flag `clpBNR_default_precision` + 2 = 8
+	?- X::real, {X**2-2*X+1==0}, absolve(X), writeln(X).
+	_178{real(0.9998273237777738,1.000211980803252)}
+	X:: 1.000... .
 	
-	?- X::real,{1+X*(-2+X) == 0},solve(X),absolve(X).
-	X:: 0.999998968... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.9999993... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.9999996... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 0.999999... ;
-	X:: 1.0000000... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.0000003... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.0000007... ;
-	X:: 1.000000... ;
-	X:: 1.000000... ;
-	X:: 1.00000098... ;
-	X:: 1.00000124... ;
-	false.
-And, in this particular case, it can actually help to reduce the required precision:
+	?- X::real, {X**2-2*X+1==0}, absolve(X,13), writeln(X).
+	_180{real(0.9999672180005927,1.000039249404795)}
+	X:: 1.0000... .
+But `absolve` by itself is deterministic and doesn't separate roots (not required for this pathological case with only one root). In general the best approach may be to use `solve` with a relatively low precision to separate the roots and `absolve` to subsequently refine the individual solutions. 
 eg
-	?- set_prolog_flag(clpBNR_default_precision,4), X::real,{1+X*(-2+X) == 0},solve(X),absolve(X). 
-	X:: 0.99998... ;
-	X:: 0.99999... ;
-	X:: 0.99999... ;
-	X:: 1.00000... ;
-	X:: 1.00000... ;
-	X:: 1.00001... ;
-	X:: 1.000017... ;
+	?- X::real, {X**2-2*X+1==0}, solve(X,3), absolve(X), writeln(X).
+	_190{real(0.9999755884293553,1.0000246969493995)}
+	X:: 1.0000... ;
+	false.
+As before, expressing the constraint in an equivalent but different form can be useful, e.g., the Horner form for more precision (but note the additional "non-solution"):
+eg
+	?- X::real, {1+X*(-2+X) == 0}, solve(X,3), absolve(X), writeln(X).
+	_184{real(0.9999877319556869,1.0000002209746888)}
+	X:: 1.0000... ;
+	_180{real(1.0000002241604191,1.0000117130335848)}
+	X:: 1.0000... ;
 	false.
 Of course had the constraint been entered in a factored form (eliminating the dependency issue),  it takes just a few operations to converge (no solve necessary), but then you already knew the answer:
 eg
 	?- {(X-1)**2==0}.
 	X = 1.
-By applying these general mechanisms, a satisfactory solution can usually be found but as is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints. This will be explored further in [Using Metalevel Contractors].
+By applying these general mechanisms, a satisfactory solution can usually be found but different use cases may require different strategies. As is often the case in using constraints, performance can often be improved (space and/or time) by adding constraints to enhance pruning. This will be explored further in [Using Metalevel Contractors]. 
 
 <#TableOfContents>
 

@@ -7,6 +7,7 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		op(700, xfx, ::),
 		(::)/2,                % declare interval
 		{}/1,                  % define constraint
+		add_constraint/1,      % more primitive define single constraint, bypass simplify 
 		interval/1,            % filter for clpBNR constrained var
 		interval_degree/2,     % number of constraints on clpBNR constrained var
 		list/1,                % O(1) list filter (also for compatibility)

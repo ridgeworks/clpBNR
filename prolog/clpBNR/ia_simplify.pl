@@ -42,9 +42,9 @@ distribute_(C,B,Exp) :-
 	simplify(DExp,Exp).
 
 % utility for (in)equality reduction 
-simplify_eq_(Diff,B,Op,Exp) :-  compound(Diff), Diff = A1-A2, % LHS is difference and RHS =:=0
+/*simplify_eq_(Diff,B,Op,Exp) :-  compound(Diff), Diff = A1-A2, % LHS is difference and RHS =:=0
 	number(B), B =:= 0, !,
-	simplify_eq_(A1,A2,Op,Exp).
+	simplify_eq_(A1,A2,Op,Exp). */
 simplify_eq_(A,B,Op,Exp) :-         % LHS and RHS are expressions with shared vars
 	num_exp_vars_(A,AVs),         % only consider vars in arithmetic Ops
 	num_exp_vars_(B,BVs),
@@ -131,6 +131,8 @@ simplify(A<B,Exp) :-
 
 simplify(A>B,Exp) :-
 	simplify_eq_(A,B,>,Exp), !.
+
+simplify(A is B,A is B) :- !.  % Don't bother simplifying `is`
 /*
 % simplify "cascaded" divisions A/B/C = (A/B)/C = A*C/B
 simplify(A/B,Exp) :- 

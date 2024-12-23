@@ -192,7 +192,7 @@ eg
 	?- [X,Y]::real(0,1), {tan(X)==Y, X**2+Y**2==1}.
 	﻿X:: 0.64988894666569...,
 	Y:: 0.76002918167775... .
-The answers for both examples have very narrow ranges but point solutions are impossible due to the limited precision of the underlying floating point arithmetic.
+The answers for both examples have very narrow ranges but point solutions (if they even exist) are impossible due to the limited precision of the underlying floating point arithmetic.
 
 Now consider the following example of two non-linear equations: {`x^2+y^2=2`} and {`y-x^2=0`} (a circle and a parabola):
 [circle-parabola]
@@ -273,7 +273,7 @@ For quadratics like this example, one can do additional preprocessing to find th
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 10,139,786 inferences, 2.385 CPU in 2.397 seconds (100% CPU, 4250937 Lips)
+	% 8,985,449 inferences, 1.470 CPU in 1.472 seconds (100% CPU, 6112334 Lips)
 	X::real(-1, 1),
 	Y::real(-0.25000033051854986, 2).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
@@ -553,7 +553,7 @@ eg
 	T = 0.021614000000000466,
 	I = 3001/3000,
 	X:: 1.00... .
-Propagation was terminated in `0.0455` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
+Propagation was terminated in `0.0216` seconds after `3,001` primitive operations (limit is `3,000`). A higher threshold is can be set:
 eg
 	?- set_prolog_flag(clpBNR_iteration_limit,30000),X::real,clpStatistics,{X**2-2*X+1==0},clpStatistic(userTime(T)),clpStatistic(max_iterations(I)).
 	T = 0.20668500000000023,
@@ -602,7 +602,7 @@ In the first two cases, the addition of `1` is too small to affect the bounds of
 
 These examples demonstrate that a positive answer does not necessarily guarantee a solution (the mutual constraints are inconsistent) and why it's useful, and sometimes necessary, to constrain the variable domains as much as possible without over-constraining the solution.
 
-Another example using integers and `<` (remember `<` is unsound over reals):
+Another example using integers and '`<`' (remember '`<`' is unsound over reals):
 eg
 	﻿?- [X,Y]::integer, {X<Y, Y<X}.
 	X::integer(-72057594037897936, 72057594037897936),

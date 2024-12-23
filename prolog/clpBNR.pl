@@ -29,6 +29,7 @@
 	op(700, xfx, ::),
 	(::)/2,                % declare interval
 	{}/1,                  % define constraint
+	add_constraint/1,      % more primitive define single constraint, bypass simplify 
 	interval/1,            % filter for clpBNR constrained var
 	interval_degree/2,     % number of constraints on clpBNR constrained var
 	list/1,                % O(1) list filter (also for compatibility)
@@ -111,7 +112,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.11.10").
+version("0.12.0").
 
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
@@ -170,21 +171,21 @@ g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
 g_incb(G)      :- nb_getval(G,N), N1 is N+1, b_setval(G,N1).    % undone on backtrack
 g_read(G,V)    :- nb_getval(G,V).
 
-sandbox:safe_global_variable('clpBNR:thread_init_done').
-sandbox:safe_global_variable('clpBNR:userTime').
-sandbox:safe_global_variable('clpBNR:inferences').
-sandbox:safe_global_variable('clpBNR:gc_time').
+sandbox:safe_global_variable('$clpBNR:thread_init_done').
+sandbox:safe_global_variable('$clpBNR:userTime').
+sandbox:safe_global_variable('$clpBNR:inferences').
+sandbox:safe_global_variable('$clpBNR:gc_time').
 
 %  
 % Global var statistics are per thread and therefore must be "lazily" initialized
 % Also ensures that thread copies of flags are properly set.
-% This exception handler will be invoked the first time 'clpBNR:thread_init_done' is read
+% This exception handler will be invoked the first time '$clpBNR:thread_init_done' is read
 % Public predicates ::, {}, clpStatistics/1 and range read this global before proceeding. 
 %
-user:exception(undefined_global_variable,'clpBNR:thread_init_done',retry) :- !,
+user:exception(undefined_global_variable,'$clpBNR:thread_init_done',retry) :- !,
 	set_prolog_flags,     % initialize/check environment flags  
 	clpStatistics,        % defines remaining globals 
-	g_assign('clpBNR:thread_init_done',1).
+	g_assign('$clpBNR:thread_init_done',1).
 
 %
 % Define custom clpBNR flags when module loaded
@@ -280,16 +281,16 @@ X::real(-1.509169756145379, 4.18727500493995).
 
 clpStatistics :-
 	% garbage_collect,  % ? do gc before time snapshots
-	statistics(cputime,T), g_assign('clpBNR:userTime',T),   % thread based
-	statistics(inferences,I), g_assign('clpBNR:inferences',I),
-	statistics(garbage_collection,[_,_,G,_]), g_assign('clpBNR:gc_time',G),
+	statistics(cputime,T), g_assign('$clpBNR:userTime',T),   % thread based
+	statistics(inferences,I), g_assign('$clpBNR:inferences',I),
+	statistics(garbage_collection,[_,_,G,_]), g_assign('$clpBNR:gc_time',G),
 	fail.  % backtrack to reset other statistics.
 
-clpStatistic(_) :- g_read('clpBNR:thread_init_done',0).  % ensures per-thread initialization then fails
+clpStatistic(_) :- g_read('$clpBNR:thread_init_done',0).  % ensures per-thread initialization then fails
 
-clpStatistic(userTime(T)) :- statistics(cputime,T1), g_read('clpBNR:userTime',T0), T is T1-T0.
+clpStatistic(userTime(T)) :- statistics(cputime,T1), g_read('$clpBNR:userTime',T0), T is T1-T0.
 
-clpStatistic(gcTime(G)) :- statistics(garbage_collection,[_,_,G1,_]), g_read('clpBNR:gc_time',G0), G is (G1-G0)/1000.0.
+clpStatistic(gcTime(G)) :- statistics(garbage_collection,[_,_,G1,_]), g_read('$clpBNR:gc_time',G0), G is (G1-G0)/1000.0.
 
 clpStatistic(globalStack(U/T)) :- statistics(globalused,U), statistics(global,T).
 
@@ -297,7 +298,7 @@ clpStatistic(trailStack(U/T)) :- statistics(trailused,U), statistics(trail,T).
 
 clpStatistic(localStack(U/T)) :- statistics(localused,U), statistics(local,T).
 
-clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('clpBNR:inferences',I0), I is I1-I0.
+clpStatistic(inferences(I)) :- statistics(inferences,I1), g_read('$clpBNR:inferences',I0), I is I1-I0.
 
 /** 
 list(?X:list) is semidet
@@ -339,12 +340,13 @@ Y::real(-1.0Inf, 1.0Inf).
 N = 0.
 ==
  */
-interval_degree(X, N) :- 
-	interval_object(X, _, _, Nodelist)
-	-> len_nodelist(Nodelist,0,N)          % current number of elements in (indefinite) Nodelist
-	;  number(X), N = 0.                   % number -> no constraints ; fail
+interval_degree(X, N) :-
+	number(X)
+	-> N = 0
+	;  interval_object(X, _, _, Nodelist), % fail if not a number or interval
+	   len_nodelist(Nodelist,0,N).         % current number of elements in (indefinite) Nodelist
 
-len_nodelist([T],N,N) :- var(T), !.        % end of indefinite list
+len_nodelist(T,N,N) :- var(T), !.          % end of indefinite list
 len_nodelist([_|T],Nin,N) :- 
 	Nout is Nin+1,
 	len_nodelist(T,Nout,N).
@@ -371,6 +373,12 @@ set_interval_flags_(Int, Flags) :-  % flags assumed to be ground so no copy requ
 universal_interval((-1.0Inf,1.0Inf)).
 
 empty_interval((1.0Inf,-1.0Inf)).
+
+new_universal_interval(boolean,Int) :- !,
+	put_attr(Int, clpBNR, interval(integer, (0,1), _NL, [])).
+new_universal_interval(Type,Int) :-
+	universal_interval(UI),
+	put_attr(Int, clpBNR, interval(Type, UI, _NL, [])).
 
 % Finite intervals - 64 bit IEEE reals, 
 finite_interval(real,    (-1.0e+16,1.0e+16)).
@@ -686,7 +694,7 @@ Rs::Dom :- list(Rs),!,                    % list of vars
 	intervals_(Rs,Dom).
 
 R::Dom :-                                 % single var
-	g_read('clpBNR:thread_init_done',_),  % ensures per-thread initialization 
+	g_read('$clpBNR:thread_init_done',_),  % ensures per-thread initialization 
 	(var(Dom)                             % domain undefined
 	 -> (var(R) -> int_decl_(real,_,R) ; true),  % default or domain query (if interval(R) else fail)
 	    domain(R,Dom)                     % extract domain
@@ -766,7 +774,7 @@ applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	    Val = (L,H),
 	    lower_bound_val_(NewType,L,IL),
 	    upper_bound_val_(NewType,H,IH),
-	    (IL=IH
+	    (IL == IH
 	     -> Int=IL  % narrowed to point
 	     ; 	(put_attr(Int,clpBNR,interval(integer,(IL,IH),NodeList,Flags)),  % set Type (only case allowed)
 		     linkNodeList_(NodeList, Agenda, NewAgenda)
@@ -807,9 +815,9 @@ attr_unify_hook(interval(Type1,V1,Nodelist1,Flags1), Int) :-   % unifying two in
 	).
 
 attr_unify_hook(interval(Type,Val,_Nodelist,_Flags), V) :-   % new value out of range
-	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
+	g_inc('$clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR),             % fail immediately unless debugging
-	debug_clpBNR_('Failed to unify ~w::(~w) with ~w',[Type,Val,V]),
+	debug_clpBNR_('Failed to unify ~w(~w) with ~w',[Type,Val,V]),
 	fail.
 
 % awkward monitor case because original interval gone
@@ -899,20 +907,37 @@ B::boolean.
 Note that any variable in a constraint expression with no domain will be assigned the most general value consistent with the operator types, e.g., =|real(-1.0Inf,1.0Inf)|=, =boolean=, etc.
  */
 {Cons} :-
-	g_read('clpBNR:thread_init_done',_),      % ensures per-thread initialization
-	term_variables(Cons, CVars),
+	g_read('$clpBNR:thread_init_done',_),     % ensures per-thread initialization
+	term_variables(Cons, CVars),              % predeclare variables to maintain ordering
 	declare_vars_(CVars),                     % convert any plain vars to intervals
 	addConstraints_(Cons,T/T,Agenda),         % add constraints
 	stable_(Agenda).                          % then execute Agenda
 
+/** 
+add_constraint(+Constraint) is semidet
+
+Succeeds if Constraint is a supported constraint defined by `{}/1`. (Conjunction of contraints is supported using `,` operator).
+
+`add_constraint/1` is a primitive version of `{}/1`, without expression simplification, reducing overhead in some scenarios.
+*/
+add_constraint(Con) :-
+	g_read('$clpBNR:thread_init_done',_),     % ensures per-thread initialization
+	term_variables(Con, CVars),               % predeclare variables to maintain ordering
+	declare_vars_(CVars),
+	constraint_(Con),    % a constraint is a boolean expression that evaluates to true
+	buildConstraint_(Con,T/T,Agenda),
+	stable_(Agenda).
+
+% **Obsolete**, use public `add_constraint`
+% low overhead version for internal use (also used by arithmetic_types pack)
+constrain_(C) :- 
+	add_constraint(C).
+
 declare_vars_([]).
 declare_vars_([CV|CVars]) :-
-	(interval(CV) -> true ; new_interval_(CV,real)),
+	% if not already an interval, constrain to real(-inf,inf)
+	(interval(CV) -> true ; new_universal_interval(real,CV)),
 	declare_vars_(CVars).
-
-new_interval_(V,Type) :-
-	universal_interval(UI),
-	int_decl_(Type,UI,V).
 
 addConstraints_([],Agenda,Agenda) :- !.
 addConstraints_([C|Cs],Agenda,NewAgenda) :-
@@ -925,14 +950,9 @@ addConstraints_((C,Cs),Agenda,NewAgenda) :-  % Note: comma as operator
 	addConstraints_(Cs,NextAgenda,NewAgenda).
 addConstraints_(C,Agenda,NewAgenda) :-
 	constraint_(C),    % a constraint is a boolean expression that evaluates to true
-	simplify(C,CS),    % optional
+	simplify(C,CS),    % possible rewrite
 	buildConstraint_(CS, Agenda, NewAgenda).
 
-% low overhead version for internal use (also used by arithmetic_types pack)
-constrain_(C) :- 
-	buildConstraint_(C,T/T,Agenda),
-	stable_(Agenda).
-	
 buildConstraint_(C,Agenda,NewAgenda) :-
 	debug_clpBNR_('Add ~p',{C}),
 	% need to catch errors from ground expression evaluation
@@ -946,15 +966,16 @@ buildConstraint_(C,_Agenda,_NewAgenda) :-
 %
 % build a node from an expression
 %
-build_(Int, Int, VarType, Agenda, NewAgenda) :-
-	interval_object(Int,Type,_,_), !,
-	(Type \== VarType                                   % type narrowing?
-	 -> applyType_(VarType, Int, Agenda, NewAgenda)     % coerces exsiting intervals to required type
-	 ;  NewAgenda = Agenda 
-	).
-build_(Var, Var, VarType, Agenda, Agenda) :-            % implicit interval creation.
+build_(Var, Var, VarType, Agenda, NewAgenda) :-         % already an interval or new variable
 	var(Var), !,
-	new_interval_(Var,VarType).
+	(interval_object(Var,Type,_,_)                      % already an interval?
+	 -> (Type \== VarType                               % type narrowing?
+	     -> applyType_(VarType, Var, Agenda, NewAgenda) % coerces exisiting intervals to required type
+	     ;  NewAgenda = Agenda                          % nothing to do   
+	    )
+	 ;  new_universal_interval(VarType,Var),            % implicit interval creation
+	    NewAgenda = Agenda                              % nothing to schedule
+	).
 build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal (without fuzzing)
 	number(L), number(H), !,
 	C is cmpr(L,H),  % compare bounds
@@ -1093,22 +1114,26 @@ newNode_(Op, Objs, Agenda, NewAgenda) :-
 	NewNode = node(Op, _P, 0, Args),  % L=0
 	addNode_(Objs,NewNode),
 	% increment count of added nodes, will be decremented on backtracking/failure
-	g_incb('clpBNR:node_count'),
+	g_incb('$clpBNR:node_count'),
 	linkNode_(Agenda, NewNode, NewAgenda).
 
 addNode_([],_Node).
 addNode_([Arg|Args],Node) :-
-	(interval_object(Arg, _Type, _Val, Nodelist) -> newmember(Nodelist, Node) ; true),
+	(number(Arg) 
+	 -> true                                          % if Arg a number, nothing to do
+	 ;  interval_object(Arg, _Type, _Val, Nodelist),  % else add Node to Arg's Nodelist
+	    newmember(Nodelist, Node)
+	),
 	addNode_(Args,Node).
 
-sandbox:safe_global_variable('clpBNR:node_count').
+sandbox:safe_global_variable('$clpBNR:node_count').
 
 clpStatistics :-
-	g_assign('clpBNR:node_count',0),  % reset/initialize node count to 0
+	g_assign('$clpBNR:node_count',0),  % reset/initialize node count to 0
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(node_count(C)) :-
-	g_read('clpBNR:node_count',C).
+	g_read('$clpBNR:node_count',C).
 
 % extend list with N
 newmember([X|Xs],N) :- 
@@ -1127,8 +1152,8 @@ stable_(Agenda) :-
 	!.  % achieved stable state with empty Agenda -> commit.
 
 stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
-	g_read('clpBNR:iterations',Cur),        % maintain "low" water mark (can be negative)
-	(OpsLeft<Cur -> g_assign('clpBNR:iterations',OpsLeft) ; true),
+	g_read('$clpBNR:iterations',Cur),        % maintain "low" water mark (can be negative)
+	(OpsLeft<Cur -> g_assign('$clpBNR:iterations',OpsLeft) ; true),
 	(OpsLeft<0 -> E is -OpsLeft, debug_clpBNR_('Iteration throttle limit exceeded by ~w ops.',E) ; true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
@@ -1140,15 +1165,15 @@ stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	stableLoop_(NewAgenda,RemainingOps).
 
 % support for max_iterations statistic
-sandbox:safe_global_variable('clpBNR:iterations').
+sandbox:safe_global_variable('$clpBNR:iterations').
 
 clpStatistics :-
 	current_prolog_flag(clpBNR_iteration_limit,L), 
-	g_assign('clpBNR:iterations',L),  % set "low" water mark to upper limit
+	g_assign('$clpBNR:iterations',L),  % set "low" water mark to upper limit
 	fail.  % backtrack to reset other statistics.
 
 clpStatistic(max_iterations(O/L)) :-
-	g_read('clpBNR:iterations',Ops),
+	g_read('$clpBNR:iterations',Ops),
 	current_prolog_flag(clpBNR_iteration_limit,L),
 	O is L-Ops.  % convert "low" water mark to high water mark
 
@@ -1217,14 +1242,14 @@ consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values,
 % remove any persistent nodes from Arg
 %	called whenever a persistent node is encountered in FP iteration
 %
-trim_op_(Arg) :- 
-	( get_attr(Arg, clpBNR, Def)     % an interval ?
-	 -> arg(3,Def,NList),  %%Def = interval(_, _, NList, _),
-		trim_persistent_(NList,TrimList),
-		% if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
-		(var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList))  % write trimmed node list
-	 ; true  % assumed to be a number, nothing to trim
-	).
+trim_op_(Arg) :-
+	number(Arg)
+	 -> true                         % if a number, nothing to trim
+	 ;  get_attr(Arg, clpBNR, Def),  % an interval
+	    arg(3,Def,NList),            % Def = interval(_, _, NList, _),
+	    trim_persistent_(NList,TrimList),
+	    % if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
+	    (var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList)).  % write trimmed node list
 
 trim_persistent_(T,T) :- var(T), !.    % end of indefinite node list
 trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
@@ -1244,14 +1269,12 @@ updateValue_(_, _, _, _, Agenda, Agenda).        % otherwise just continue with 
 % propgate if sufficient narrowing (> 10%)
 propagate_if_((OL,OH), (NL,NH)) :- (NH-NL)/(OH-OL) < 0.9.  % any overflow in calculation will propagate
 
+linkNodeList_(X,      List, List) :- var(X), !.  % end of indefinite list
 linkNodeList_([X|Xs], List, NewList) :-
-	(var(X)
-	 -> List = NewList                               % end of indefinite list
-	 ;  (arg(3,X,Linked), Linked == 1                % test linked flag (only SWIP VM codes)
-	     -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
-	     ;  linkNode_(List, X, NextList),            % not linked add it to list
-	        linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
-	    )
+	(arg(3,X,Linked), Linked == 1                % test linked flag (only SWIP VM codes)
+	 -> linkNodeList_(Xs, List, NewList)         % add rest of the node list
+	 ;  linkNode_(List, X, NextList),            % not linked add it to list
+	    linkNodeList_(Xs, NextList, NewList)     % add rest of the node list
 	).
 
 linkNode_(List/[X|NextTail], X, List/NextTail) :-    % add to list
@@ -1364,10 +1387,12 @@ init_clpBNR :-
 :- if(false).  % test code used to test sandbox worthiness of hooks
 check_hooks_safety :-   % Note: calls must have no side effects
 	ignore(attr_portray_hook([],_)),                                            % fails
-	ignore(user:exception(undefined_global_variable,'clpBNR:thread_init_done',[])),  % fails
+	ignore(user:exception(undefined_global_variable,'$clpBNR:thread_init_done',[])),  % fails
 %	ignore(term_html:portray('$clpBNR...'(_),_,_,_)),                           % fails
 	ignore(user:portray('$clpBNR...'(_))).                                      % fails
 :- endif.
+
+:- version(clpBNR(versionInfo)).      % add message to system version
 
 :- multifile prolog:message//1.
 

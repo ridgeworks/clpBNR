@@ -207,11 +207,11 @@ eg
 		{PayOff == V1+V2+V3+V4},
 		format("PayOff::~p,\tStock::~p\n",[PayOff,S]),
 		fail.
-		PayOff::_1146{real(5.699999999999998,5.700000000000002)},	Stock::_386{real(0,19.999999999999996)}
-		PayOff::_1124{real(-14.299999999999997,5.700000000000003)},	Stock::_370{real(20,39.99999999999999)}
-		PayOff::_1014{real(-14.300000000000002,-14.299999999999997)},	Stock::_366{real(40,59.99999999999999)}
-		PayOff::_904{real(-14.300000000000011,5.699999999999989)},	Stock::_362{real(60,79.99999999999999)}
-		PayOff::_774{real(5.699999999999999,5.700000000000001)},	Stock::_362{real(80,1.0e+16)}
+		PayOff::_1708{real(5.699999999999999,5.7)},	Stock::_676{real(0,19.999999999999996)}
+		PayOff::_1666{real(-14.299999999999997,5.700000000000003)},	Stock::_670{real(20,39.99999999999999)}
+		PayOff::_1564{real(-14.3,-14.299999999999999)},	Stock::_670{real(40,59.99999999999999)}
+		PayOff::_1462{real(-14.300000000000011,5.699999999999989)},	Stock::_670{real(60,79.99999999999999)}
+		PayOff::_1338{real(5.699999999999999,5.700000000000001)},	Stock::_670{real(80,1.0e+16)}
 		false.
 There are 5 answers corresponding to the full range of stock values: `0-20, 20-40, ... 80+`. As before, it's fairly simple to add additional constraints to only consider pre-defined payoff ranges.
 

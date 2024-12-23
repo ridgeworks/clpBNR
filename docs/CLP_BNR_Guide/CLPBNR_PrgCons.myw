@@ -172,12 +172,13 @@ eg
 	?- sum(L,S).
 	L = [],
 	S = 0 ;
-	L = [_],
-	S::real(-1.0Inf, 1.0Inf) ;
-	L = [_, _],
-	S::real(-1.0Inf, 1.0Inf) ;
-	L = [_, _, _],
-	S::real(-1.0Inf, 1.0Inf) .
+	L = [_A],
+	S::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf) ;
+	L = [_A, _B],
+	S::real(-1.0Inf, 1.0Inf),
+	_A::real(-1.0Inf, 1.0Inf),
+	_B::real(-1.0Inf, 1.0Inf) .
 As with other predicates of this nature, e.g., `list_length/2`, the potential for non-termination exists and must be managed.
 eg
 	﻿?- length(L,3), L::integer(0,10), sum(L,S).
@@ -188,7 +189,7 @@ eg
 	S::real(0, 30).
 Because CLP(BNR) only constrains numbers, order is important, i.e., the list length must be defined before `sum/2` is executed. The order can be changed provided the potential non-determinism is managed, e.g., by using cut (`!`):
 eg
-	﻿?- sum(L,S), length(L,3), L::integer(0,10).
+	﻿?- sum(L,S), length(L,3), L::integer(0,10), !.
 	L = [_A, _B, _C],
 	S::real(0, 30),
 	_A::integer(0, 10),
@@ -232,7 +233,7 @@ A possible downside, from a pure logic programming perspective, is that the expr
 This pattern of working symbolically and only afterwards converting to constraints enables the same predicate to be used with different arithmetic systems, e.g., CLP(FD). It can be helpful during development because the expressions may be more readable before the logic variables are constrained.
 
 Counting booleans{#id cardinality} is an important use of integer constraints and since `boolean` variables are implemented as numeric intervals (`integer(0,1)`), `sym_sum/2` can be used to define a cardinality predicate which constrains the members of a list of boolean variables:
-eg
+.pl
 	cardinality(Blist, L, H) :- sym_sum(Blist, Sum), C::integer(L,H), {C is Sum}.
 For a list of booleans, `Bs`, of length `N`:
 eg
@@ -290,10 +291,7 @@ Hopefully these simple examples demonstrate that constraints and logic programmi
 
 #### Constraints and Prolog Negation
 
-The negation-by-failure construct of Prolog (`\+` or `not`) works with constraints according to the normal rules:
-eg
-	\+ {C}
-succeeds only if the constraint C fails, i.e., `C` is provably inconsistent with the constraints already in the system. For example, if, having already declared variables `X` and `Y` and established constraints involving them, we ask:
+The negation-by-failure construct of Prolog (`\+` or `not`) works with constraints according to the normal rules so "`\+ {C}`" succeeds only if the constraint C fails, i.e., `C` is provably inconsistent with the constraints already in the system. For example, if, having already declared variables `X` and `Y` and established constraints involving them, we ask:
 eg
 	... \+ {X>=Y}
 and it succeeds, it indicates that `X` cannot possibly be larger or equal to `Y`. Furthermore, there is a proof of this fact, which was discovered by carrying out the proof. Note also that negations of constraint goals are persistent, e.g., if `X` can not be larger (or equal) to `Y`, no additional constraints are going to change that.
@@ -302,7 +300,7 @@ Recall that `{X<Y}` are incomplete over real intervals (as is `>` and `<>`) and 
 
 The double negation:
 eg
-	not(not({C}))
+	\+(\+{C})
 indicates that the constraint `C` is possibly consistent, but does not actually impose the constraint. Success here does not actually guarantee consistency, because the underlying mechanism is incomplete, as discussed previously.
 
 <#TableOfContents>

@@ -1,6 +1,6 @@
 #### Scheduling Problems
 
-Scheduling and related resource allocation problems are common problems which are also technically hard (NP hard or NP complete). It's also an area for which the application of CLP techniques has proved beneficial. The focus here will be on complete or optimal solutions of relatively small problems rather than heuristics which aim to provide "good enough" results. (Consolidated code for examples in this section can be found in [Appendix 4]).
+Scheduling and related resource allocation problems are common problems which are also technically hard (NP hard or NP complete). It's also an area for which the application of CLP techniques has proved beneficial. The focus here will be on complete or optimal solutions of relatively small problems rather than heuristics which aim to provide "good enough" results. (Consolidated code for examples in this section can be found in [Appendix 3]).
 
 ##### Critical Path Scheduling
 
@@ -364,4 +364,4 @@ The job shop scheduling problem has been the subject of much research and the in
 	[Global Optimzation] <- link #toc4Global_Optimization
 	[Google Job Shop Problem] <- link https://developers.google.com/optimization/scheduling/job_shop
 	[JSS test data] <- link https://github.com/tamy0612/JSPLIB
-	[Appendix 4] <- link #toc4Appendix_4_-_Scheduling_Code
+	[Appendix 3] <- link #toc4Appendix_3_-_Scheduling_Code

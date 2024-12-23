@@ -2,11 +2,11 @@
 
 In theory, systems of linear equations are just constraints which should be amenable to the standard CLP techniques already described. In the real world, just as in solving for the roots of polynomials, things are not quite so simple. Consider the following two examples of simple linear systems in two variables:
 eg
-	?- [X,Y]::real,{X+2*Y==1,X-Y==1}.
+	?- [X,Y]::real, {X+2*Y==1,X-Y==1}.
 	X:: 1.000000000000000...,
 	Y::real(-1.1102230246251565e-16,5.551115123125783e-17).
 
-	?- [X,Y]::real,{X+Y==1,X-Y==1}.
+	?- [X,Y]::real, {X+Y==1,X-Y==1}.
 	﻿X::real(-1.0e+16,1.0e+16),
 	Y::real(-1.0e+16,1.0e+16).
 In the first example, the fixed point iteration immediately converged to an approximate solution (`X=1, Y=0`), while in the second (almost identical) example, the fixed point iteration did not converge at all. To help explain this observation, here are the graphs of the two systems:
@@ -15,7 +15,7 @@ The red and blue lines are the equations and the solid black lines represent fix
 
 Fortunately `solve/1` can be used overcome this deficiency:
 eg
-	?- [X,Y]::real,{X+Y==1,X-Y==1},solve(X).
+	?- [X,Y]::real, {X+Y==1,X-Y==1}, solve(X).
 	﻿X:: 1.00000000...,
 	Y::real(-8.257253769627937e-10,8.257253769627937e-10).
 and, in this case, it works equally well if you solve for `X` or `Y` or both. However this may not always be the case. While the solution found should always be the same, the time taken to find it may vary widely (sometimes an order of magnitude or more). The following "real-world" examples were taken from [SYSTEMS OF LINEAR EQUATIONS AND MATRICES].
@@ -49,12 +49,12 @@ So Ace Novelty should make 36 type-A souvenirs, 48 type-B souvenirs, and 60 type
 ##### Capital Expenditure Planning
 >	"*The management of Hartman Rent-A-Car has allocated $1.5 million to buy a fleet of new automobiles consisting of compact, intermediate-size, and full-size cars. Compacts cost $12,000 each, intermediate-size cars cost $18,000 each, and full-size cars cost $24,000 each. If Hartman purchases twice as many compacts as intermediate-size cars and the total number of cars to be purchased is 100, determine how many cars of each type will be purchased. (Assume that the entire budget will be used.)*"
 eg
-	﻿?- [C,I,F]::integer(0,_),{C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I}.
+	﻿?- [C,I,F]::integer(0,_), {C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I}.
 	﻿C::integer(0,100),
 	I::integer(0,50),
 	F::integer(0,62).
 
-	﻿?- [C,I,F]::integer(0,_),{C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I},solve(C).
+	﻿?- [C,I,F]::integer(0,_), {C+I+F==100,12000*C+18000*I+24000*F==1500000,C==2*I}, solve(C).
 	C = 60,
 	I = 30,
 	F = 10 ;
@@ -92,7 +92,7 @@ However consider {`I_s`}. From the equations, it is not obvious that it cannot b
 		]).
 Again, no narrowing occurs in the initial fixed point iteration, but it's not obvious which variables to use with `solve`. As `solve` takes a list of variables (breadth first across all intervals named) there's no reason not to use the entire set of interval values:
 eg
-	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs).
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs).
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is::real(-9.99999999999999e+15, 1.0e+16),
@@ -105,7 +105,7 @@ eg
 	I8::real(-6.25e+15, 6.25e+15),
 	I9::real(-8.888888888888889e+15, 8.888888888888889e+15).
 	
-	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),solve(Vs).
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), solve(Vs).
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
 	I1 = 10,
 	Is:: 10.8282986...,
@@ -120,23 +120,23 @@ eg
 	false.
 Using `solve` finds the solution in a few seconds, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
 eg
-	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),time(solve(Vs)).
-	% 8,291,579 inferences, 1.610 CPU in 1.614 seconds (100% CPU, 5150897 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), time(solve(Vs)).
+	% 8,887,111 inferences, 1.550 CPU in 1.554 seconds (100% CPU, 5731804 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
 	I1 = 10,
-	Is:: 10.8282985...,
+	Is:: 10.8282986...,
 	I2:: 0.5690898...,
 	I3:: -0.3118300...,
-	I4:: 0.532060...,
+	I4:: 0.5320600...,
 	I5:: 0.2572598...,
 	I6:: 0.2962385...,
-	I7:: 0.8282985...,
+	I7:: 0.8282986...,
 	I8:: 0.2592087...,
 	I9:: 0.0389787... .
 	
-	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9],simpleCircuit(Vs),{Is>=0},time(solve(Vs)).
-	% 1,921,027 inferences, 0.408 CPU in 0.409 seconds (100% CPU, 4711471 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), {Is>=0}, time(solve(Vs)).
+	% 2,258,071 inferences, 0.437 CPU in 0.438 seconds (100% CPU, 5169742 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
 	I1 = 10,
 	Is:: 10.828298...,
 	I2:: 0.5690898...,
@@ -152,11 +152,11 @@ This example demonstrates the importance of ensuring that all known constraints 
 ##### Under and Overdetermined Systems
 The examples above are nicely behaved but what happens if the system of equations is under or overdetermined? In case of the latter, incompatible additional constraints should result in failure:
 eg
-	?- [X,Y]::real,{X+2*Y==4,X-2*Y==0,4*X+3*Y==12}.
+	?- [X,Y]::real, {X+2*Y==4,X-2*Y==0,4*X+3*Y==12}.
 	false.
 In the under-determined case, little or no narrowing occurs regardless of how hard `solve` tries to find a solution:
 eg
-	?- [X,Y,Z,W]::real,{X+2*Y-3*Z+W== -2, 3*X-Y-2*Z-4*W==1, 2*X+3*Y-5*Z+W== -3}, solve([X,Y,Z,W]).
+	?- [X,Y,Z,W]::real, {X+2*Y-3*Z+W== -2, 3*X-Y-2*Z-4*W==1, 2*X+3*Y-5*Z+W== -3}, solve([X,Y,Z,W]).
 	﻿X::real(-1.0e+16, 1.0e+16),
 	W::real(-1.0e+16, 1.0e+16),
 	Y::real(-1.0e+16, 1.0e+16),
@@ -276,7 +276,7 @@ eg
 	Am = #(#(1, 0, 0, 0, 0, 0, 0, 0, 0, 0), #(1, 0, 0, 0, 0, 0, 1, 0, 0, -1), #(0, 1, 1, 0, -1, 0, 0, 0, 0, 0), #(0, 0, -1, -1, 0, 0, 0, 1, -1, 0), #(0, 0, 0, 1, 0, 1, -1, 0, 0, 0), #(0, 0, 0, 0, 1, -1, 0, 0, 1, 0), #(0, 2, -3, 0, 0, 0, 0, -8, 0, 0), #(0, 0, 3, 0, 5, 0, 0, 0, -9, 0), #(0, 0, 0, -4, 0, 6, 0, 0, 9, 0), #(-1, 0, 0, 4, 0, 0, 7, 8, 0, 0)),
 	Bs = #(#(10.0), #(0), #(0), #(0), #(0), #(0), #(0), #(0), #(0), #(0)),
 	Xs = #(#(10.0), #(0.5690898460339116), #(-0.3118300526213214), #(0.5320600272851296), #(0.25725979341259014), #(0.2962385499902553), #(0.8282985772753849), #(0.25920873124147337), #(0.038978756577665176), #(10.828298577275387)).
-Where applicable, using standard numerical methods, with or without constraints, is usually a more optimal approach than a general purpose search technique like `solve/1`, yielding more precise results in less time. On the other hand, if the problem consists of mixed linear and non-linear equations or fails to meet the necessary requirements, e.g., coefficient matrix isn't square, "constrain and search" may offer a feasible alternative.
+Where applicable, using standard numerical methods, with or without constraints, is usually a more optimal approach than a general purpose search technique like `solve/1`, yielding more precise results in less time. On the other hand, if the problem consists of mixed linear and non-linear equations or fails to meet the necessary requirements, e.g., the coefficient matrix isn't square, "constrain and search" may offer a feasible alternative.
 
 <#TableOfContents>
 

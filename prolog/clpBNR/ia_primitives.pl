@@ -27,27 +27,27 @@
 % evalNode(+primitive_name, ?persistence_flag, +$(inputs..), -$(outputs..))
 %
 evalNode(Op, P, Is, R) :-
-	g_inc('clpBNR:evalNode'),  % count of primitive calls
+	g_inc('$clpBNR:evalNode'),  % count of primitive calls
 	narrowing_op(Op, P, Is, R),
 	!.
 evalNode(_Op, _, _, _):-
-	g_inc('clpBNR:evalNodeFail'),  % count of primitive call failures
+	g_inc('$clpBNR:evalNodeFail'),  % count of primitive call failures
 	debugging(clpBNR),             % fail immediately unless debug=true
 	current_node_(C),
 	debug_clpBNR_("** fail ** ~w.",C),
 	fail.
 
-sandbox:safe_global_variable('clpBNR:evalNode').
-sandbox:safe_global_variable('clpBNR:evalNodeFail').
+sandbox:safe_global_variable('$clpBNR:evalNode').
+sandbox:safe_global_variable('$clpBNR:evalNodeFail').
 
 clpStatistics :-
-	g_assign('clpBNR:evalNode',0),
-	g_assign('clpBNR:evalNodeFail',0),
+	g_assign('$clpBNR:evalNode',0),
+	g_assign('$clpBNR:evalNodeFail',0),
 	fail.  % backtrack to reset other statistics.
 
-clpStatistic(narrowingOps(C)) :- g_read('clpBNR:evalNode',C).
+clpStatistic(narrowingOps(C)) :- g_read('$clpBNR:evalNode',C).
 
-clpStatistic(narrowingFails(C)) :- g_read('clpBNR:evalNodeFail',C).
+clpStatistic(narrowingFails(C)) :- g_read('$clpBNR:evalNodeFail',C).
 
 %
 % non-empty interval test
@@ -198,6 +198,7 @@ narrowing_op(le, P, $(Z, X, Y), Out) :-
 	     ;  (Z = (1,1)                                 % if {X =< Y}, can narrow X and Y
 	         -> NXh is minr(Xh,Yh),                    % NewX := (Xl,NXh) 
 	            NYl is maxr(Xl,Yl),                    % NewY := (NYl,Yh)
+	            (non_empty(NXh,NYl) -> P=p ; true),    % now persistant?
 	            Out = $(Z,(Xl,NXh),(NYl,Yh))
 	         ;  ^(Z,(0,1),NewZ),                       % Z false or indeterminate
 	            Out = $(NewZ,X,Y)
@@ -282,7 +283,7 @@ narrowing_op(mul, _, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	intCase(Cyp,Yp),
 	odivCase(CNz,Cyp,NewZ,Yp,X,NewX),                 % NewX := X ^ (Z/Yp),
 	% if X narrowed it may be necessary to recalculate Y due to non-optimal ordering.
-	(Y = Yp, \+(X = NewX)                   % if Y didn't narrow and X did
+	(Y == Yp, X \== NewX                              % if Y didn't narrow and X did
 	 -> intCase(CNx,NewX),
 	    odivCase(CNz,CNx,NewZ,NewX,Y,NewY)            % re calculate: NewY := Y ^ NewZ/NewX
 	 ;  NewY = Yp

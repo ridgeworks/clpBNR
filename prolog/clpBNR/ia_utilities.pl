@@ -350,7 +350,7 @@ chk_small(L,H,Err) :-                     % from CLIP?
 	 -> true
 	 ;  ErrH is Err*sqrt((L**2+H**2)/2),  % guaranteed to be a float
 	    W < ErrH,                         % relative error test                 
-	    ErrH \= 1.0Inf                    % overflow check
+	    ErrH \== 1.0Inf                   % overflow check
 	).
 
 /** 
@@ -418,10 +418,10 @@ Z:: -1.203... .
 %
 global_maximum(Exp,Z) :-
 	global_minimum(-Exp,NZ),
-	constrain_(Z== -NZ).
+	add_constraint(Z== -NZ).
 global_maximum(Exp,Z,P) :-
 	global_minimum(-Exp,NZ,P),
-	constrain_(Z== -NZ).
+	add_constraint(Z== -NZ).
 
 global_minimum(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -484,10 +484,10 @@ Z:: -1.203... .
 % Copy of global_maximum & global_minimum with BindVars=true
 global_maximize(Exp,Z) :-
 	global_minimize(-Exp,NZ),
-	constrain_(Z== -NZ).
+	add_constraint(Z== -NZ).
 global_maximize(Exp,Z,P) :-
 	global_minimize(-Exp,NZ,P),
-	constrain_(Z== -NZ).
+	add_constraint(Z== -NZ).
 
 global_minimize(Exp,Z) :-
 	current_prolog_flag(clpBNR_default_precision,P),
@@ -530,7 +530,7 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-    % termination criteria (Step 12.) met
 	(BindVars == true 
 	 -> build_box_MS(Xs,XVs,T/T)                      % optional minimizer narrowing
-	  ; constrain_(Z == ::(Zl,Zh))                    % just minimum value
+	 ;  add_constraint(Z == ::(Zl,Zh))                % just minimum value
 	).
 
 continue_MS(Zl,Zh,P,Xs,XVs,Discard) :-           % w(Y) termination criteria
@@ -553,11 +553,7 @@ widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
 	
 widest1_MS([],[],(L,H),Xf,Xf,XfMid) :- !,
-	XfSplit is L+(H-L)*(0.45+0.1*random_float), % instead split on 0.45 to 0.55 of range
-	(XfSplit == 1.5NaN                           % infinite bounds can result in nan
-	 -> midpoint_(L,H,Mid), XfMid is float(Mid)  % arbitrary point, so avoid rational arithmetic
-	;  XfMid = XfSplit
-	),
+	midpoint_(L,H,Mid), XfMid is float(Mid),  %% same as 11.7 + float conversion for efficiency
 	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
 widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
 	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
@@ -573,15 +569,15 @@ partition_box_(P,[_X|Xs],[XV|XVs],Xf,XfMid,[XV|XVsP]) :-
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(Z,Xs,XVs,_FV) :-                         % Step 7., calculate F(V) and save
-	nb_setval('clpBNR:eval_MS',[]),              % [] means failure to evaluate
+	nb_setval('$clpBNR:eval_MS',[]),              % [] means failure to evaluate
 	build_box_MS(Xs,XVs,T/T),
 	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds
-	nb_setval('clpBNR:eval_MS',NewBox),          % save solution in format for Z tree
+	nb_setval('$clpBNR:eval_MS',NewBox),          % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,_,_,Zl-(Zh,NXVs)) :-
-	nb_getval('clpBNR:eval_MS',[(Zl,Zh)|NXVs]).  % retrieve solution (fails if [])
+	nb_getval('$clpBNR:eval_MS',[(Zl,Zh)|NXVs]).  % retrieve solution (fails if [])
 
-sandbox:safe_global_variable('clpBNR:eval_MS').
+sandbox:safe_global_variable('$clpBNR:eval_MS').
 
 build_box_MS([],[],Agenda) :-
 	stable_(Agenda).
@@ -680,10 +676,10 @@ xpsolve_each_([X|Xs],[U|Us],Err) :-
 xpsolve_each_([_X|Xs],Us,Err) :-
 	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
 
-xpsolve_choice(split(X,SPt)) :- constrain_(X =< SPt).  % avoid meta call
-xpsolve_choice(split(X,SPt)) :- constrain_(SPt =< X).
-xpsolve_choice(split_integer(X,SPt)) :- constrain_(X =< SPt).
-xpsolve_choice(split_integer(X,SPt)) :- constrain_(SPt < X).
+xpsolve_choice(split(X,SPt)) :- add_constraint(X =< SPt).  % avoid meta call
+xpsolve_choice(split(X,SPt)) :- add_constraint(SPt =< X).
+xpsolve_choice(split_integer(X,SPt)) :- add_constraint(X =< SPt).
+xpsolve_choice(split_integer(X,SPt)) :- add_constraint(SPt < X).
 xpsolve_choice(enumerate(X)) :- enumerate(X).
 
 %
@@ -863,16 +859,17 @@ Same as =|absolve/1|= with precision defined by Precision.
 
 absolve( X ):-
 	current_prolog_flag(clpBNR_default_precision,P),
-	absolve(X,P),!.
+	Limit is P+2,
+	absolve(X,Limit),!.
 
 absolve(X, _ ):- number(X), !.
-absolve(X, Limit ):- interval_object(X, Type, Val, _), !,  % interval
+absolve(X, Limit ):- interval_object(X, Type, Val, _), !,  % interval (a var)
 	delta_(Type,Val,Delta),
 	% if bound is already a solution avoid the work
-	(not(not(lower_bound(X))) -> true ; absolve_l(X,Type,Delta,1,Limit)),
-	(not(not(upper_bound(X))) -> true ; absolve_r(X,Type,Delta,1,Limit)).
+	(\+(lower_bound(X)) -> absolve_l(X,Type,Delta,1,Limit) ; true),
+	(\+(upper_bound(X)) -> absolve_r(X,Type,Delta,1,Limit) ; true).
 
-absolve([],_).		% extends to lists
+absolve([],_).        % extends to lists
 absolve([X|Xs],Lim):- absolve(X,Lim),!, absolve(Xs,Lim).
 
 delta_(integer,(L,U),D) :- D is U div 2 - L div 2.
@@ -883,8 +880,8 @@ absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
 	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
 	Split is LB1 + DL1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not(constrain_(X=< ::(Split,Split))),!,
-	constrain_(X>= ::(Split,Split)),          % so X must be >
+	\+(add_constraint(X=< ::(Split,Split))),!,
+	add_constraint(X>= ::(Split,Split)),      % so X must be >
 	absolve_l(X,Type, DL1, NL1, Limit).
 absolve_l(_,_,_,_,_).                         % final result
          
@@ -893,8 +890,8 @@ absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
 	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
 	Split is UB1 - DU1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	not(constrain_(X>= ::(Split,Split))),!,
-	constrain_(X=< ::(Split,Split)),          % so X must be <
+	\+(add_constraint(X>= ::(Split,Split))),!,
+	add_constraint(X=< ::(Split,Split)),      % so X must be <
 	absolve_r(X,Type, DU1, NU1,Limit).
 absolve_r(_,_,_,_,_).                         % final result
 
@@ -926,11 +923,6 @@ false.
 ==
 This predicate can be used in generating additional constraints, e.g., local optima with a gradient of 0, or in constructing meta-contractors like the Taylor series contractor described in the [User Guide](https://ridgeworks.github.io/clpBNR/CLP_BNR_Guide/CLP_BNR_Guide.html).
 */
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%					partial_derivative(E, X, D)
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 %  Perform symbolic differentiation followed by simplify/2:  D = dE/dX
 %
@@ -941,8 +933,6 @@ This predicate can be used in generating additional constraints, e.g., local opt
 partial_derivative(F,X,DFX) :-
 	pd(F,X,DD),
 	simplify(DD,DFX).
-	%	simplify(DD,DX),
-	%	simplify(DX,DFX).  % post re-simplify for insurance??
 
 pd(F,X,DD) :-
 	( var(F)
@@ -981,13 +971,18 @@ pd_f(U/V,X,DX) :-                  % DX = (V*DU-U*DV)/(V**2)
 	pd_pow(V,2,DXD),
 	pd_div(DXN,DXD,DX).
 
-pd_f(U**N,X,DX) :-                 % DX = (N*U**(N-1))*DU
+pd_f(U**N,X,DX) :-                 % DX = (N*U**(N-1))*DU for real(N)
+	number(N), !,
 	pd(U,X,DU),
 	pd_sub(N,1,N1),  %N1 is N-1,
 	pd_pow(U,N1,UN1),
 	pd_mul(N,UN1,DX1),
 	pd_mul(DX1,DU,DX).
 
+pd_f(A**U,X,exp(V)*DV) :-          % DX = exp(V)*DV, V = U*log(A)
+	V = U*log(A),
+	pd_f(V,X,DV).
+	
 pd_f(log(U),X,DX) :-               % DX = DU/U
 	pd(U,X,DU),
 	pd_div(DU,U,DX).
@@ -1040,42 +1035,49 @@ pd_f(atan(U),X,DX) :-              % DX = DU/(1+U**2)
 
 % optimizations
 % also facilitates compiled arithmetic, avoids using catch/3 for instantiation errors
-pd_minus(DU,DX)  :- ground(DU) -> DX is -DU  ; DX = -DU.
+pd_identity(DU,DX) :- ground(DU) -> DX is DU  ; DX = DU.  % conditional evaluation
 
-pd_add(DU,DV,DV) :- DU==0, !.
-pd_add(DU,DV,DU) :- DV==0, !.
-pd_add(DU,DV,DX) :- ground((DU,DV)) -> DX is DU+DV ; DX = DU+DV.
+pd_minus(-DU,DX)  :- !, pd_identity(DU,DX).  %% double negative
+pd_minus(DU,DX)   :- ground(DU) -> DX is -DU  ; DX = -DU.
 
-pd_sub(DU,DV,DX) :- DU==0, !, pd_minus(DV,DX).
-pd_sub(DU,DV,DU) :- DV==0, !.
-pd_sub(DU,DV,DX) :- ground((DU,DV)) -> DX is DU-DV ; DX = DU-DV.
+pd_add(DU,DV,DV)  :- DU==0, !.
+pd_add(DU,DV,DU)  :- DV==0, !.
+pd_add(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU+DV ; DX = DU+DV.
 
-pd_mul(DU,DV,0)  :- DU==0, !.
-pd_mul(DU,DV,0)  :- DV==0, !.
-pd_mul(DU,DV,DV) :- DU==1, !.
-pd_mul(DU,DV,DU) :- DV==1, !.
-pd_mul(DU,DV,DX) :- DU== -1, !, pd_minus(DV,DX).
-pd_mul(DU,DV,DX) :- DV== -1, !, pd_minus(DU,DX).
-pd_mul(DU,DV,DX) :- ground((DU,DV)) -> DX is DU*DV ; DX = DU*DV.
+pd_sub(DU,DV,DX)  :- DU==0, !, pd_minus(DV,DX).
+pd_sub(DU,DV,DU)  :- DV==0, !.
+pd_sub(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU-DV ; DX = DU-DV.
 
-pd_div(DU,DV,0)  :- DU==0, !.
-pd_div(DU,DV,0)  :- DV==0, !, fail.
-pd_div(DU,DV,DU) :- DV==1, !.
-pd_div(DU,DV,DU) :- DV== -1, !, pd_minus(DU,DX).
-pd_div(DU,DV,DX) :- ground((DU,DV)) -> DX is DU/DV ; DX = DU/DV.
+pd_mul(DU,DV,0)   :- DU==0, !.
+pd_mul(DU,DV,0)   :- DV==0, !.
+pd_mul(DU,DV,DV)  :- DU==1, !.
+pd_mul(DU,DV,DU)  :- DV==1, !.
+pd_mul(DU,DV,DX)  :- DU== -1, !, pd_minus(DV,DX).
+pd_mul(DU,DV,DX)  :- DV== -1, !, pd_minus(DU,DX).
+pd_mul(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU*DV ; DX = DU*DV.
 
-pd_pow(DU,DV,0)  :- DU==0, !.
-pd_pow(DU,DV,1)  :- DV==0, !.
-pd_pow(DU,DV,1)  :- DU==1, !.
-pd_pow(DU,DV,DU) :- DV==1, !.
-pd_pow(DU,DV,DX) :- ground((DU,DV)) -> DX is DU**DV ; DX = DU**DV.
+pd_div( sin(X),DV,DX) :- DV==  cos(X), !, (ground(X) -> DX is  tan(X) ; DX =  tan(X)).
+pd_div( sin(X),DV,DX) :- DV== -cos(X), !, (ground(X) -> DX is -tan(X) ; DX = -tan(X)).
+pd_div(-sin(X),DV,DX) :- pd_div(sin(X),DV,DU), !, pd_minus(DU,DX).
+pd_div(DU,DV,0)   :- DU==0, !.
+pd_div(DU,DV,0)   :- DV==0, !, fail.
+pd_div(DU,DV,DU)  :- DV==1, !.
+pd_div(DU,DV,DU)  :- DV== -1, !, pd_minus(DU,DX).
+pd_div(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU/DV ; DX = DU/DV.
 
-pd_exp(DU,DX)    :- ground(DU) -> DX is exp(DU)  ; DX = exp(DU).
+pd_pow(DU,DV,0)   :- DU==0, !.
+pd_pow(DU,DV,1)   :- DV==0, !.
+pd_pow(DU,DV,1)   :- DU==1, !.
+pd_pow(DU,DV,DU)  :- DV==1, !.
+pd_pow(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU**DV ; DX = DU**DV.
 
-pd_sqrt(DU,DX)   :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
+pd_exp(log(X),DX) :- !, pd_identity(X,DX).
+pd_exp(DU,DX)     :- ground(DU) -> DX is exp(DU)  ; DX = exp(DU).
 
-pd_sin(DU,DX)    :- ground(DU) -> DX is sin(DU)  ; DX = sin(DU).
+pd_sqrt(DU,DX)    :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
 
-pd_cos(DU,DX)    :- ground(DU) -> DX is cos(DU)  ; DX = cos(DU).
+pd_sin(DU,DX)     :- ground(DU) -> DX is sin(DU)  ; DX = sin(DU).
+
+pd_cos(DU,DX)     :- ground(DU) -> DX is cos(DU)  ; DX = cos(DU).
 
 :- style_check(+singleton).  % exit pd_f

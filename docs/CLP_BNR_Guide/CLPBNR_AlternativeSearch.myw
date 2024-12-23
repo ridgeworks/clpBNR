@@ -1,0 +1,32 @@
+#### Alternative Search Strategies
+
+Finding solutions in CLP(BNR) (as in most CLP implementation) involves two "processes". The first is propagation which ensures that all constraints involving the domain variables (intervals in this case) are consistent. In addition the domains can be narrowed to remove values form the domain which are invalid. Propagation is largely invisible to the user; it just happens as a result of building the model of the problem by specifying the constraints in the language that the CLP implementation understands.
+ 
+ The second process is the search for solutions since propagation is too weak to produce a solution by itself. In other cases, multiple solutions exist so additional work is required to separate them in a non-deterministic fashion. So an additional process of searching for solutions by problem subdivision is required. The idea is that narrowing of domains can be accomplished through subdivision such that some of the "sub-problems" can be proven invalid through propagation, and thus can be eliminated from the solution space.
+ 
+ In a nutshell, searching subdivides the problem into a tree with solutions at the leaf nodes while propagation prunes the tree. The result is a tree where the leaf nodes represent solutions which can be enumerated as the tree is built or aggregated using well known techniques. 
+
+Subdividing finite domains (`integer`s) results in an "enumeration" of the domain elements, i.e., choose on element and, on backtracking, remove the element from the domain and choose a different element until the domain is empty.
+
+Subdividing continuous domains (`real`s) is done by splitting the domain recursively and selecting one of them. If a sub-domain is inconsistent it is removed and then the other sub-domain is checked. Splitting stops when a sub-domain is too narrow according to the criteria defined by [**small/1**] (default controlled via flag `clpBNR_default_precision`). This ensures termination within an acceptable time. Regardless of the termination criteria, nothing guarantees the remaining sub-domain(s) contains a solution. Only the reverse applies, i.e., failure of constraint consistency through propagation proves there are no solutions in that sub-domain.
+
+Within this general framework, there is considerable flexibility on how the search tree is constructed. Given a list of domain variables (intervals in CLP(BNR)) the first type of choice is which variable from the list should be selected, commonly called the **Select** option. A second option, commonly called the **Choice** option defines how to subdivide the selected interval. The third option is the search *Method* which defines how the search tree should be constructed, e.g., whether it is a complete tree or a partial tree limited by depth or number of leaves/nodes.
+ 
+`clpBNR` supports three "built-in" predicates for searching and all build the complete search tree. `solve` and `splitsolve`'s primary focus is `real` intervals (continuous domain). `solve` selects intervals from their order in the input list and splits the interval at points which are not solutions, biased toward the midpoint of the interval. `splitsolve` selects the widest interval on the list always splits at the midpoint. For finite (`integer`) domains, the split point will always be an integer, and if the domain is small enough, enumeration (see next) is used instead of splitting.
+ 
+The `enumerate/1` predicate can only be used with integer domains. Selection is defined by the (flattened) list order and choice is from the smallest value in the domain to the largest. 
+
+(For a more "in-depth" discussion of finite domain searching see the [Eclipse] tutorial [Tree Search Methods].)
+
+While the `clpBNR` built-in set of search predicates may be sufficient for many applications, many finite domain CLP's support many more search options. In particular, [Eclipse] includes several [search libraries] including `[fd_search]`.  Module `clpBNR_search` is an adaptation of that library omitting some features, such as search tree rendering and SBDS library support, but extending it to support `real`s where applicable. This includes a search taxonomy based on search **Method** (including support for complete and partial searching), **Select** criteria, and **Choice** interval subdivision. **Method** and **Select** are independent of the interval type (`real` or `integer`); **Choice** semantics will depend on the type.
+
+Details of the `clpBNR_search` API can be found in the reference section (see [`clpBNR_search` reference]).
+
+<#TableOfContents>
+
+&
+	[Eclipse] <- link https://eclipseclp.org/
+	[Tree Search Methods] <- link https://www.eclipseclp.org/doc/tutorial/tutorial086.html
+	[search libraries] <- link https://eclipseclp.org/doc/libman/libman015.html
+	[fd_search] <- link https://eclipseclp.org/doc/bips/lib/fd_search/search-6.html
+	[`clpBNR_search` reference] <- link #toc3_clpBNR_search__Reference
