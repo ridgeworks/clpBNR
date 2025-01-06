@@ -185,9 +185,10 @@ X4::integer(200, 300).
 Congestion does not occur as long as `X2` remains below 100, since exceeding that will cause congestion at the intersection of 5th Street and 5th Avenue.
 
 ##### Cramer's Rule
+
 Solving systems of linear equations by specifying the equations as constraints and performing a bifurcating search (`solve/1`) is a rather brute force approach when there are several [well known algorithms] for doing the same thing. One such algorithm is [Cramer's rule] which states that if you can represent the system of equations in matrix form {`A*bb"x"=bb"b"`} where {`A`} is an {`n xx n`} matrix of coefficients, and {`bb"b"`} and {`bb"x"`} are {`n`}-dimensional column vectors, then {`bb"x" = A^-1*bb"b"`}.
 
-Using `library(type_ndarray)`in the [`arithmetic_types`] pack for matrix support, the "Production Scheduling" problem described above can be simply solved (without constraints):
+Using `library(type_ndarray)`in the [`arithmetic_types`] pack for matrix support (Note: some examples below reflect changes mad for v0.1.0 of `arithmetic_types`), the "Production Scheduling" problem described above can be simply solved (without constraints):
 eg
 	﻿?- set_prolog_flag(prefer_rationals,true).
 	true.
@@ -206,10 +207,9 @@ eg
 	C = 60.
 The function `ndarray/1` creates an N dimensional array from a nested list representation while the `dot/2` and `inverse/1` functions calculate the dot product and matrix inverse. (Rational number calulations are enabled to avoid floating point rounding errors.) Functions on type `ndarray` are constraint aware, so as long as the array structure has been defined, the order of the goals can be changed enabling the common test and generate pattern:
 eg
-	﻿?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is new(ndarray,[3,1]),
+	?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is new(ndarray,[3,1]),
 	ndarray([[A],[B],[C]]) is dot(inverse(Am),Bs),
-	Bs is transpose(ndarray([180,300,240])).
-	
+	Bs is ndarray([[180],[300],[240]]).
 	Am = #(#(2, 1, 1), #(1, 3, 2), #(2, 1, 2)),
 	Bs = #(#(180), #(300), #(240)),
 	A = 36,
@@ -246,7 +246,7 @@ eg
 Since it's not obvious which equation may be redundant, experimentation can be used to find a non-zero determinant by replacing the first equation by `I1 = 10`. A new predicate to support the matrix form of the circuit definition:
 .pl
 	simpleCircuitDef(Currents,Am,Bs,Xs) :-
-		Xs is transpose(ndarray(Currents)),
+		Xs is ndarray(Currents),
 		Am is ndarray([
 		[ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 		[ 1, 0, 0, 0, 0, 0, 1, 0, 0,-1],
@@ -258,12 +258,11 @@ Since it's not obvious which equation may be redundant, experimentation can be u
 		[ 0, 0, 3, 0, 5, 0, 0, 0,-9, 0],
 		[ 0, 0, 0,-4, 0, 6, 0, 0, 9, 0],
 		[-1, 0, 0, 4, 0, 0, 7, 8, 0, 0]
-		]),	
-		Bs is transpose(ndarray([10.0,0,0,0,0,0,0,0,0,0])).
+		]),
+		Bs is ndarray([[10.0],[0],[0],[0],[0],[0],[0],[0],[0],[0]]).
 Now:
 eg
-	﻿?- simpleCircuitDef([I1,I2,I3,I4,I5,I6,I7,I8,I9,Is],Am,Bs,Xs),Xs is dot(inverse(Am),Bs).
-	I1 = 10.0,
+	?- simpleCircuitDef([[I1],[I2],[I3],[I4],[I5],[I6],[I7],[I8],[I9],[Is]],Am,Bs,Xs),Xs is dot(inverse(Am),Bs).          I1 = 10.0,
 	I2 = 0.5690898460339116,
 	I3 = -0.3118300526213214,
 	I4 = 0.5320600272851296,
