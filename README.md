@@ -123,7 +123,7 @@ Here is the current set of operators and functions supported in this version:
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
 	integer                               %% must be an integer value
-
+	sig                                   %% signum of real, (-1,0,+1)
 
 Further explanation and examples, including a complete reference section, can be found in the [Guide to CLP(BNR)][clpBNR_UG]. Examples include problems in finite domains, and finding roots, global optima, and boundary value solutions to differential equations. Additional background material is available at [BNR Prolog Papers][bnrpp].
 
@@ -154,7 +154,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.12.0
+	Installed version:      0.12.1
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -162,7 +162,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.12.0 ***.
+	% *** clpBNR v0.12.1 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
 Or if the repository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
@@ -217,7 +217,7 @@ The `clpBNR` module declaration is:
 		trace_clpBNR/1         % enable/disable tracing of clpBNR ops
 		]).
 
-Two additional modules are also included with this pack. `library(clpBNR_toolkit)` is a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Also included is module `library(clpBNR_search)` which implements a compatible subset of the [Eclipse][Eclipse_org] search library supporting `clpBNR` finite and continuous domains (`integer`'s and `real`'s).
+Two additional modules are also included with this pack. `library(clpBNR_toolkit)` is a collection of useful utilities for global optimization problems or the use "meta-contractors" to improve performance. Also included is module `library(clpBNR_search)` which implements a compatible subset of the [ECLiPSe][Eclipse_org] search library supporting `clpBNR` finite and continuous domains (`integer`'s and `real`'s).
 
 Reference documentation for both libraries are included in the User Guide ([Guide to CLP(BNR)][clpBNR_UG]).
 

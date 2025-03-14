@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2024 Rick Workman
+ *	Copyright (c) 2019-2025 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -89,7 +89,8 @@ and	or	nand	nor	xor	->	,         %% boolean (`,` synonym for `and`)
 -	~                                 %% unary negate and not
 exp	log                               %% exp/ln
 sin	asin	cos	acos	tan	atan      %% trig functions
-integer                               %% must be an integer value
+integer                               %% must be an integral value, e.g., 1 and 1.0 are both integral
+sig                                   %% signum of real, (-1,0,+1)
 
 */
 
@@ -112,7 +113,10 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.12.0").
+version("0.12.1").
+
+% support various optimizations via goal expansion
+:- discontiguous clpBNR:goal_expansion/2.
 
 % debug feature control and messaging
 :- if(exists_source(swish(lib/swish_debug))).
@@ -877,6 +881,7 @@ Table of supported interval relations:
 | =|exp  log|=                               | exp/ln                                    |
 | =|sin  asin  cos  acos  tan  atan|=        | trig functions                            |
 | =|integer|=                                | must be an integer value                  |
+| =|sig|=                                    | signum of real (-1,0,+1)                  |
 
 `clpBNR` defines the following additional operators for use in constraint expressions:
 
@@ -1025,11 +1030,20 @@ call_user_primitive(Prim, P, InArgs, OutArgs) :-  % wraps unsafe meta call/N
 % really unsafe, but in a pengine a user can't define any predicates in another module, so this is safe
 sandbox:safe_meta(clpBNR:call_user_primitive(_Prim, _P, _InArgs, _OutArgs), []).
 
-% only called when argument is ground
+% only called when argument(s) ground
 safe_(_ xor _) :- !,                              % clpBNR xor incompatible with `is` xor
 	fail.
 safe_(integer(_)) :- !,                           % clpBNR integer incompatible with `is` integer
 	fail.
+safe_(asin(_)) :- !,                              % asin multi-valued, can't use `is`
+	fail.
+safe_(acos(_)) :- !,                              % acos multi-valued, can't use `is`
+	fail.
+safe_(atan(_)) :- !,                              % atan multi-valued, can't use `is`
+	fail.
+safe_(_ ** E) :- !,                               % ** multi-valued for rational even denominator
+	 rational(E,_N,D),
+	 1 is D mod 2.
 safe_(F) :- 
 	current_arithmetic_function(F),               % evaluable by is/2
 	F =.. [_Op|Args],
@@ -1074,6 +1088,7 @@ fmap_(sqrt, sqrt,  ZX,      ZX,      [real,real]).          % pos. root version 
 fmap_(-,    minus, ZX,      ZX,      [real,real]).
 fmap_(~,    not,   ZX,      ZX,      [boolean,boolean]).
 fmap_(integer,int, ZX,      ZX,      [boolean,real]).
+fmap_(sgn,  sgn,   ZX,      ZX,      [integer,real]).       % signum, Z::integer(-1,1)
 fmap_(exp,  exp,   ZX,      ZX,      [real,real]).
 fmap_(log,  exp,   [Z,X],   [X,Z],   [real,real]).
 fmap_(abs,  abs,   ZX,      ZX,      [real,real]).

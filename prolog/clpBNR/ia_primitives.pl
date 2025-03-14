@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2024 Rick Workman
+ *	Copyright (c) 2019-2025 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -32,7 +32,7 @@ evalNode(Op, P, Is, R) :-
 	!.
 evalNode(_Op, _, _, _):-
 	g_inc('$clpBNR:evalNodeFail'),  % count of primitive call failures
-	debugging(clpBNR),             % fail immediately unless debug=true
+	debugging(clpBNR),              % fail immediately unless debug=true
 	current_node_(C),
 	debug_clpBNR_("** fail ** ~w.",C),
 	fail.
@@ -109,7 +109,7 @@ integral_((Xl,Xh),(NXl,NXh)) :-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z == integer(X) % (Z boolean) 
-%  true if X is an integer point, false if it doesn't contain an integer
+%  true if X is an integral point, false if it doesn't contain an integer
 %  else if true, narrows X to integer bounds
 
 narrowing_op(int, P, $(Z,X), $(NewZ,NewX)) :-
@@ -118,20 +118,33 @@ narrowing_op(int, P, $(Z,X), $(NewZ,NewX)) :-
 int_(Z,X,p,NewZ,X) :-                       % persistent cases
 	X = (Xl,Xh),
 	(0 is cmpr(Xl,Xh)                   % point value?
-	 -> (integer(Xl) -> B = 1 ; B = 0)  % yes, true if integer else false
+	 -> (0 is cmpr(Xl,integer(Xl)) -> B = 1 ; B = 0)  % yes, true if integer else false
 	 ;  ceiling(Xl) > floor(Xh),        % no, and X doesn't contain an integer
 	    B = 0 
 	),
 	!,  % succeed, persistent
 	^(Z,(B,B),NewZ).
 	
-int_(Z,X,_P,NewZ,NewX) :-                   % possible narrowing case
-	(Z = (1,1) 
+int_(Z,X,P,NewZ,NewX) :-                % possible narrowing case
+	(Z == (1,1) 
 	 -> integral_(X,NewX),              % Z true, narrow X to integers
+	    (NewX = (N,N) -> P=p ; true),   % persistent if a point
 	    NewZ = Z
 	 ;  NewX = X,                       % Z false or indeterminate, no change to X
 	    ^(Z,(0,1),NewZ)                 % Z boolean
 	).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Z==sgn(X)  % (Z integer(-1,1))
+
+narrowing_op(sgn, P, $(Z,X), $((NZl,NZh),NewX)) :-
+	X = (Xl,Xh),
+	SXl is cmpr(Xl,0), SXh is cmpr(Xh,0),
+	^(Z,(SXl,SXh),(NZl,NZh)),
+	(NZl >= 0 -> ^(X, (0,1.0Inf), X1)   ; X1=X),
+	(NZh =< 0 -> ^(X1,(-1.0Inf,0),NewX) ; NewX = X1),
+	(NZl == NZh -> P=p ; true).  % sgn is a point
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -195,15 +208,20 @@ narrowing_op(le, P, $(Z, X, Y), Out) :-
 	 -> ^(Z,(1,1),NewZ), P = p, Out = $(NewZ,X,Y)      % persistent X =< Y
 	 ;  (-1 is cmpr(Yh,Xl)                             % Yh < Xl
 	     -> ^(Z,(0,0),NewZ), P = p, Out = $(NewZ,X,Y)  % persistent Y < X
-	     ;  (Z = (1,1)                                 % if {X =< Y}, can narrow X and Y
-	         -> NXh is minr(Xh,Yh),                    % NewX := (Xl,NXh) 
-	            NYl is maxr(Xl,Yl),                    % NewY := (NYl,Yh)
-	            (non_empty(NXh,NYl) -> P=p ; true),    % now persistant?
-	            Out = $(Z,(Xl,NXh),(NYl,Yh))
-	         ;  ^(Z,(0,1),NewZ),                       % Z false or indeterminate
-	            Out = $(NewZ,X,Y)
-	        )
+	     ;  le_int_(Z,Xl,Xh,Yl,Yh,P,Out)               % possibly non-persistent narrowing cases
 	    )
+	).
+	
+le_int_((1,1),Xl,Xh,Yl,Yh,P,$((1,1),(Xl,NXh),(NYl,Yh))) :- !,  % common case, narrow X and Y
+	NXh is minr(Xh,Yh),                               % NewX := (Xl,NXh) 
+	NYl is maxr(Xl,Yl),                               % NewY := (NYl,Yh)
+	(non_empty(NXh,NYl) -> P=p ; true).               % now persistant?
+le_int_(Z,Xl,Xh,Yl,Yh,P,$(NewZ,NewX,NewY)) :- !,
+	(Z == (0,0)
+	 -> le_int_((1,1),Yl,Yh,Xl,Xh,P,$(_,NewY,NewX)),  % false so Y =< X (Y < X is unsafe)
+	 	NewZ = Z
+	 ;  NewX = (Xl,Xh), NewY = (Yl,Yh),               % indeterminate, X and Y unchanged
+	   ^(Z,(0,1),NewZ)                                % Z::boolean
 	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -216,17 +234,22 @@ narrowing_op(lt, P, $(Z, X, Y), Out) :-
 	 -> ^(Z,(1,1),NewZ), P = p, Out = $(NewZ,X,Y)      % persistent X < Y
 	 ;  (1 =\= cmpr(Yh,Xl)                             % Yh =< Xl
 	     -> ^(Z,(0,0),NewZ), P = p, Out = $(NewZ,X,Y)  % persistent Y =< X	
-	     ;  (Z = (1,1)                                 % if {X < Y}, can narrow X and Y
-	         -> next_lt_(Yh,-1,YhD),                   % YhD is next downward value from Yh
-	            NXh is minr(Xh,YhD),                   % NewX := (Xl,NXh)
-	            next_lt_(Xl,1,XlU),                    % NXlU is next upward value from NXl
-	            NYl is maxr(XlU,Yl),                   % NewY := (NYl,Yh)
-	            (NXh < NYl -> P=p ; true),             % persistent due to increment?
-	            Out = $(Z,(Xl,NXh),(NYl,Yh))
-	         ;  ^(Z,(0,1),NewZ),                       % Z false or indeterminate
-	            Out = $(NewZ,X,Y)
-	        )
+	     ;  lt_int_(Z,Xl,Xh,Yl,Yh,P,Out)               % possibly non-persistent narrowing cases
 	    )
+	).
+
+lt_int_((1,1),Xl,Xh,Yl,Yh,P,$((1,1),(Xl,NXh),(NYl,Yh))) :- !,  % common case, narrow X and Y
+	next_lt_(Yh,-1,YhD),                              % YhD is next downward value from Yh
+	NXh is minr(Xh,YhD),                              % NewX := (Xl,NXh) 
+	next_lt_(Xl,1,XlU),                               % NXlU is next upward value from NXl
+	NYl is maxr(XlU,Yl),                              % NewY := (NYl,Yh)
+	(non_empty(NXh,NYl) -> P=p ; true).               % now persistent?
+lt_int_(Z,Xl,Xh,Yl,Yh,P,$(NewZ,NewX,NewY)) :- !,
+	(Z == (0,0)
+	 -> lt_int_((1,1),Yl,Yh,Xl,Xh,P,$(_,NewY,NewX)),  % false so Y < X
+	    NewZ = Z
+	 ;  NewX = (Xl,Xh), NewY = (Yl,Yh),               % indeterminate, X and Y unchanged
+	   ^(Z,(0,1),NewZ)                                % Z::boolean
 	).
 
 % Note: can't narrow an infinite bound, minimize change to bound
@@ -288,6 +311,15 @@ narrowing_op(mul, _, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	    odivCase(CNz,CNx,NewZ,NewX,Y,NewY)            % re calculate: NewY := Y ^ NewZ/NewX
 	 ;  NewY = Yp
 	).
+/*  general case, but sub-par performance since some re-calculations unnecessary
+narrowing_op(mul, _, $(Z,X,Y), New) :-
+	...
+	Nxt = $(NewZ,NewX,Yp),
+	($(Z,X,Y) == Nxt                   
+	 -> New = Nxt                       % no change, exit
+	 ;  narrowing_op(mul, _, Nxt, New)  % something narrowed, repeat until no change
+	). 
+*/
 
 %
 % * cases ("Interval Arithmetic: from Principles to Implementation", Fig. 3)
@@ -616,127 +648,182 @@ ln((Xl,Xh), (Zl,Zh)) :-
 % Z== sin(X)
 
 narrowing_op(sin, _, $(Z,X), $(NewZ, NewX)) :-
-	sin_(X,S,Z1), ^(Z,Z1,NewZ),
-	asin_(NewZ,S,X1), ^(X,X1,NewX).
+	sin_(X,S,Z,NewZ),
+	asin_(NewZ,S,X,NewX).
 
-sin_((X,X),S,NZ) :-  % point infinity special case
-	abs(X) =:= 1.0Inf, !,
-	S = (-10,10), NZ = (-1.0,1.0). 
-sin_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
-	Sl is round(Xl/pi),                    % determine monotonic sector of width pi
-	Sh is round(Xh/pi),                    % sector 0 is (-pi/2,pi/2)
-	to_float((Xl,Xh),(FXl,FXh)),           % convert now to float
-	sinCase(FXl,FXh,Sl,Sh,NZl,NZh).
+sin_((Xl,Xh),(Sl,Sh),Z,NZ) :-
+	(Xl == Xh, abs(Xl) =:= 1.0Inf
+	 -> Sl = -10, Sh = 10,                 %  point infinity special case
+	    ^(Z,(-1.0,1.0),NZ)
+	 ;  Sl is floor(roundtoward(Xl/pi+0.5,to_positive)), % determine monotonic sector of width pi
+	    Sh is floor(roundtoward(Xh/pi+0.5,to_negative)), % sector 0 is (-pi/2,pi/2) - see asin(x)
+	    ( Sh-Sl =< 2                       % more than 2 sectors -> no narrowing
+	     -> to_float((Xl,Xh),FX),          % convert now to float
+	        sinCase_(FX,Sl,Sh,Z,(1,-1),NZ),
+	        non_empty(NZ)
+	     ; ^(Z,(-1.0,1.0),NZ) 
+	    )
+	).
 
-sinCase(Xl,Xh,S,S,NZl,NZh) :- !,           % same sector
+sinCase_(X,Sl,Sh,Z,ZIn,NZ) :-
+	(Sl == Sh
+	 -> sinSector_(Sl,X,Z,ZIn,NZ)          % single/last sector 
+	 ;  XSh is pi*(Sl+0.5),                % spanning sectors =<2
+	    X = (Xl,Xh),
+	    sinSector_(Sl,(Xl,XSh),Z,ZIn,ZOut),
+	    SNl is Sl+1,
+	    sinCase_((XSh,Xh),SNl,Sh,Z,ZOut,NZ)
+	).
+
+sinSector_(S,(Xl,Xh),(Zl,Zh),(ZlIn,ZhIn),(ZlOut,ZhOut)) :-
 	( 0 is S mod 2                         % monotonically increasing ?
-	 -> NZl is roundtoward(sin(Xl), to_negative),
-	    NZh is roundtoward(sin(Xh), to_positive)
-	 ;  NZl is roundtoward(sin(Xh), to_negative),
-	    NZh is roundtoward(sin(Xl), to_positive)
+	 -> ZSl is roundtoward(sin(Xl), to_negative),
+	    ZSh is roundtoward(sin(Xh), to_positive)
+	 ;  ZSl is roundtoward(sin(Xh), to_negative),
+	    ZSh is roundtoward(sin(Xl), to_positive)
+	),
+	( ^((Zl,Zh),(ZSl,ZSh),(Z1l,Z1h)) % union with previous Z*In
+	 -> ZlOut is minr(ZlIn,Z1l), ZhOut is maxr(ZhIn,Z1h)
+	 ;  ZlOut = ZlIn,            ZhOut = ZhIn 
 	).
-sinCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sectors 
-	( 0 is Sl mod 2                        % monotonically increasing ?
-	 -> NZl is minr(roundtoward(sin(Xl), to_negative),  % Z contains +1
-	                roundtoward(sin(Xh), to_negative)),
-	    NZh =  1.0          
-	 ; 	NZl = -1.0,                                      % Z contains -1
-	    NZh is maxr(roundtoward(sin(Xl), to_positive),
-	                roundtoward(sin(Xh), to_positive))
+
+asin_(Z,S,X,NX) :- 
+	( Z == (-1.0,1.0)
+	 -> NX = X                             % no narrowing of X possible based on Z
+	 ;  S = (Sl,Sh),
+	    (Sl == Sh
+	     -> asinSector_(Sl,Z,XS),          % same sector
+	        ^(X,XS,NX)
+	     ;  ( Sh-Sl =< 2                   % X spans sectors
+	         -> asinCaseLo_(Sl,Z,X,XSl),
+	            asinCaseHi_(Sh,Z,X,XSh),
+	            ^(X,(XSl,XSh),NX)
+	         ;  NX = X
+	        )
+	    ) 
 	).
-sinCase(_,_,_,_,-1.0,1.0).                  % span multiple sectors
 
-asin_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
-	asinCase(Xl,Xh,Sl,Sh,NZl,NZh).
+asinCaseLo_(S,Z,X,NXl) :-
+	asinSector_(S,Z,XS),
+	( ^(X,XS,(NXl,_))
+	 -> true
+	 ;  X = (_,Xh), Xh >= pi*(S+0.5),      % next sector in range 
+	    S1 is S+1,
+	    asinCaseLo_(S1,Z,X,NXl)
+	).
 
-% Need to maintain adequate width applying offset, otherwise loss of precision
-%	leads to unintentional rounding. This is done by fuzzing offset. 
-asinCase(Xl,Xh,S,S,NZl,NZh) :- !,           % same sector
-	Zl is roundtoward(asin(Xl),to_negative),
-	Zh is roundtoward(asin(Xh),to_positive),
+asinCaseHi_(S,Z,X,NXh) :-
+	asinSector_(S,Z,XS),
+	( ^(X,XS,(_,NXh))
+	 -> true
+	 ;  X = (Xl,_), Xl =< pi*(S-0.5),      % previous sector in range 
+	    S1 is S-1, 
+	    asinCaseHi_(S1,Z,X,NXh)
+	).
+
+asinSector_(S,(Zl,Zh),(XSl,XSh)) :-
 	Offs is S*pi,
-	bounded_number(Offl,Offh,Offs),         % fuzz offset
-	( 0 is S mod 2                          % monotonically increasing ?
-	 -> NZl is roundtoward(Offl+Zl,to_negative),
-	    NZh is roundtoward(Offh+Zh,to_positive)
-	 ;  NZl is roundtoward(Offl-Zh,to_negative),
-	    NZh is roundtoward(Offh-Zl,to_positive)
+    bounded_number(Offl,Offh,Offs),     % fuzz offset
+%%	Offl is nexttoward(S*pi,-inf), Offh is nexttoward(S*pi,inf),  % fuzz offset
+%%	Offl is roundtoward(S*pi,to_negative), Offh is roundtoward(S*pi,to_positive),  % fuzz offset
+	(0 is S mod 2
+	 -> XSl is roundtoward(Offl+asin(Zl),to_negative),  % monotonically increasing
+	    XSh is roundtoward(Offh+asin(Zh),to_positive)
+	 ;  XSl is roundtoward(Offl-asin(Zh),to_negative),  % monotonically decreasing
+	    XSh is roundtoward(Offh-asin(Zl),to_positive)
 	).
-asinCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sector
-	Offl is nexttoward(Sl*pi,-inf), Offh is nexttoward(Sh*pi,inf),  % fuzz offset
-	( 0 is Sl mod 2                         % monotonically increasing ?
-	 -> Z is roundtoward(asin(Xl),to_negative),
-	    NZl is roundtoward(Offl+Z,to_negative),
-	    NZh is roundtoward(Offh-Z,to_positive)
-	 ;  Z is roundtoward(asin(Xh),to_negative),
-	    NZl is roundtoward(Offl-Z,to_negative),
-	    NZh is roundtoward(Offh+Z,to_positive)
-	).
-asinCase(_,_,_,_,-1.0Inf,1.0Inf).           % span multiple sectors
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Z== cos(X)
 
 narrowing_op(cos, _, $(Z,X), $(NewZ, NewX)) :-
-	cos_(X,S,Z1), ^(Z,Z1,NewZ),
-	acos_(NewZ,S,X1), ^(X,X1,NewX).
+	cos_(X,S,Z,NewZ),
+	acos_(NewZ,S,X,NewX).
 
-cos_((X,X),S,NZ) :-  % point infinity special case
-	abs(X) =:= 1.0Inf, !,
-	S = (-10,10), NZ = (-1.0,1.0). 
-cos_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
-	Sl is floor(Xl/pi),
-	Sh is floor(Xh/pi),  % sector 0 is (0,pi)
-	to_float((Xl,Xh),(FXl,FXh)),             % convert now to float
-	cosCase(FXl,FXh,Sl,Sh,NZl,NZh).
-
-cosCase(Xl,Xh,S,S,NZl,NZh) :- !,             % same sector
-	( 1 is S mod 2                           % monotonically increasing ?
-	 -> NZl is roundtoward(cos(Xl), to_negative),
-	    NZh is roundtoward(cos(Xh), to_positive)
-	 ;  NZl is roundtoward(cos(Xh), to_negative),
-	    NZh is roundtoward(cos(Xl), to_positive)
+cos_((Xl,Xh),(Sl,Sh),Z,NZ) :-
+	(Xl == Xh, abs(Xl) =:= 1.0Inf
+	 -> Sl = -10, Sh = 10,                 %  point infinity special case
+	    ^(Z,(-1.0,1.0),NZ)
+	 ;  Sl is floor(roundtoward(Xl/pi,to_positive)),  % determine monotonic sector of width pi
+	    Sh is floor(roundtoward(Xh/pi,to_negative)),  % sector 0 is (0,pi) - see acos(x)
+	    ( Sh-Sl =< 2                           % more than 2 sectors -> no narrowing
+	     -> to_float((Xl,Xh),FX),       % convert now to float
+	        cosCase_(FX,Sl,Sh,Z,(1,-1),NZ),
+	        non_empty(NZ)
+	     ; ^(Z,(-1.0,1.0),NZ)
+	    )
 	).
-cosCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sector
-	( 1 is Sl mod 2                          % monotonically increasing ?
-	 -> NZl is minr(roundtoward(cos(Xl), to_negative),  % Z contains +1
-	                roundtoward(cos(Xh), to_negative)),
-	    NZh =  1.0          
-	 ; 	NZl = -1.0,                                      % Z contains -1
-	    NZh is maxr(roundtoward(cos(Xl), to_positive),
-	                roundtoward(cos(Xh), to_positive))
+
+cosCase_(X,Sl,Sh,Z,ZIn,NZ) :- 
+	( Sl == Sh
+	 -> cosSector_(Sl,X,Z,ZIn,NZ)          % single/last sector 
+	 ;  SNl is Sl+1,                       % spanning sectors =<2
+	    XSh is pi*(Sl+1),
+	    X = (Xl,Xh),
+	    cosSector_(Sl,(Xl,XSh),Z,ZIn,ZOut),
+	    cosCase_((XSh,Xh),SNl,Sh,Z,ZOut,NZ)
 	).
-cosCase(_,_,_,_,-1.0,1.0).                  % span multiple sectors
 
-acos_((Xl,Xh),(Sl,Sh),(NZl,NZh)) :-
-	acosCase(Xl,Xh,Sl,Sh,NZl,NZh).
+cosSector_(S,(Xl,Xh),(Zl,Zh),(ZlIn,ZhIn),(ZlOut,ZhOut)) :-
+	( 1 is S mod 2                         % monotonically increasing ?
+	 -> ZSl is roundtoward(cos(Xl), to_negative),
+	    ZSh is roundtoward(cos(Xh), to_positive)
+	 ;  ZSl is roundtoward(cos(Xh), to_negative),
+	    ZSh is roundtoward(cos(Xl), to_positive)
+	),
+	( ^((Zl,Zh),(ZSl,ZSh),(Z1l,Z1h)) % union with previous Z*In
+	 -> ZlOut is minr(ZlIn,Z1l), ZhOut is maxr(ZhIn,Z1h)
+	 ;  ZlOut = ZlIn,            ZhOut = ZhIn 
+	).
 
-% Need to maintain adequate width applying offset, otherwise loss of precision
-%	leads to unintentional rounding. This is done by fuzzing offset. 
-acosCase(Xl,Xh,S,S,NZl,NZh) :- !,           % same sector
-	Zl is roundtoward(acos(Xh),to_negative),
-	Zh is roundtoward(acos(Xl),to_positive),
-	( 1 is S mod 2                          % monotonically increasing ?
+acos_(Z,S,X,NX) :- 
+	( Z == (-1.0,1.0)
+	 -> NX = X                             % no narrowing of X possible based on Z
+	 ;  S = (Sl,Sh),
+	    (Sl == Sh
+	     -> acosSector_(Sl,Z,XS),          % same sector
+	        ^(X,XS,NX)
+	     ;  ( Sh-Sl =< 2                   % X spans sectors
+	         -> acosCaseLo_(Sl,Z,X,XSl),
+	            acosCaseHi_(Sh,Z,X,XSh),
+	            ^(X,(XSl,XSh),NX)
+	         ;  NX = X
+	        )
+	    ) 
+	).
+
+acosCaseLo_(S,Z,X,NXl) :-
+	acosSector_(S,Z,XS),
+	( ^(X,XS,(NXl,_))
+	 -> true
+	 ;  S1 is S+1,                         % next sector in range 
+	    X = (_,Xh), Xh >= pi*S1,
+	    acosCaseLo_(S1,Z,X,NXl)
+	).
+
+acosCaseHi_(S,Z,X,NXh) :-
+	acosSector_(S,Z,XS),
+	( ^(X,XS,(_,NXh))
+	 -> true
+	 ;  X = (Xl,_), Xl =< pi*S,            % previous sector in range 
+	    S1 is S-1,
+	    acosCaseHi_(S1,Z,X,NXh)
+	).
+
+acosSector_(S,(Zl,Zh),(XSl,XSh)) :-
+	X1l is roundtoward(acos(Zh),to_negative),
+	X1h is roundtoward(acos(Zl),to_positive),
+	(1 is S mod 2
 	 -> Offs is (S+1)*pi,
-	 	bounded_number(Offl,Offh,Offs),     % fuzz offset
-	    NZl is roundtoward(Offl-Zh,to_negative),
-        NZh is roundtoward(Offh-Zl,to_positive)               
+	    bounded_number(Offl,Offh,Offs),     % fuzz offset
+	    XSl is roundtoward(Offl-X1h,to_negative),  % monotonically increasing
+	    XSh is roundtoward(Offh-X1l,to_positive)
 	 ;  Offs is S*pi,
-	 	bounded_number(Offl,Offh,Offs),     % fuzz offset
-	    NZl is roundtoward(Offl+Zl,to_negative),
-	    NZh is roundtoward(Offh+Zh,to_positive)
-  	).
-acosCase(Xl,Xh,Sl,Sh,NZl,NZh) :- Sh-Sl =:= 1, !,  % adjacent sector
-	( 1 is Sl mod 2                         % monotonically increasing ?
-	 -> Z is roundtoward(acos(Xl),to_positive),  % acos is monotone decreasing
-	    Offl is nexttoward((Sl+1)*pi,-inf), NZl is roundtoward(Offl-Z,to_negative),
-	    Offh is nexttoward(Sh*pi,inf) , NZh is roundtoward(Offh+Z,to_positive)
-	 ;  Z is roundtoward(acos(Xh),to_positive),  % acos is monotone decreasing
-	    Offl is nexttoward(Sl*pi,-inf) , NZl is roundtoward(Offl+Z,to_negative),
-	    Offh is nexttoward((Sh+1)*pi,inf), NZh is roundtoward(Offh-Z,to_positive)	
-  	).
-acosCase(_,_,_,_,-1.0Inf,1.0Inf).           % span multiple sectors
+	    bounded_number(Offl,Offh,Offs),     % fuzz offset
+	    XSl is roundtoward(Offl+X1l,to_negative),  % monotonically decreasing
+	    XSh is roundtoward(Offh+X1h,to_positive)
+	).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -752,31 +839,43 @@ narrowing_op(tan, _, $(Z,X), $(NewZ, NewX)) :-
 %	leads to unintentional rounding. This is done by fuzzing offset. 
 tanCase(Z,(X,X),_,_,Z,(X,X)) :-    % point infinity special case
 	abs(X) =:= 1.0Inf, !.
-tanCase((Zl,Zh),(Xl,Xh),S,S,(NZl,NZh),(NXl,NXh)) :-  !,   % same sector
+tanCase((Zl,Zh),(Xl,Xh),S,S,(NZl,NZh),NX) :-  !,          % same sector
 	Z1l is roundtoward(tan(Xl),to_negative),
 	Z1h is roundtoward(tan(Xh),to_positive),
 	( non_empty(Z1l,Z1h)
 	 -> ^((Zl,Zh),(Z1l,Z1h),(NZl,NZh)),                   % good range
-	 	Offs is S*pi,
-	 	bounded_number(Offl,Offh,Offs),                   % fuzz offset
-	    X1l is Offl+roundtoward(atan(NZl),to_negative),
-	    X1h is Offh+roundtoward(atan(NZh),to_positive),
-	    ^((Xl,Xh),(X1l,X1h),(NXl,NXh))
+	    atan_((NZl,NZh),S,X1),
+	    ^((Xl,Xh),X1,NX)
 	 ;  % same sector range check failed, assume rounding crossed singularity
 	    ((Z1l =< Zh ; Z1h >= Zl) -> true),                % disjoint ranges must intersect Z
-	    NZl = Zl, NZh = Zh, NXl = Xl, NXh = Xh            % nothing changes
+	    NZl = Zl, NZh = Zh, NX = (Xl,Xh)                  % nothing changes
 	).
-tanCase(Z,(Xl,Xh),Sl,Sh,(NZl,NZh),(NXl,NXh)) :-  Sh-Sl =:= 1, !, % spans one singularity
-	Sg is pi*(Sl+1r2),               % closest to singularity
+tanCase(Z,(Xl,Xh),Sl,Sh,(NZl,NZh),(NXl,NXh)) :-  Sh-Sl =:= 1,  % spans one singularity
+	Sg is pi*(Sl+0.5),               % closest to singularity (integer Sl and 0.5 is precise float)
 	bounded_number(XSl,XSh,Sg),      % use bounded number to straddle
 	(tanCase(Z,(Xl,XSl),Sl,Sl,(NZ1l,NZ1h),(NXl,NX1h))
 	 -> (tanCase(Z,(XSh,Xh),Sh,Sh,_NZ2,(_,NXh))
-	     -> NZl = -1.0Inf, NZh = 1.0Inf                   % both sectors, includes singularity
+	     -> fail                                          % both sectors, includes singularity
 	     ;  NXh = NX1h, NZl = NZ1l, NZh = NZ1h            % only lo sector
 	    )
 	 ;  tanCase(Z,(XSh,Xh),Sh,Sh,(NZl,NZh),(NXl,NXh))     % only hi sector
-	).
+	),
+	!.
+tanCase(Z,X,Sl,Sh,Z,NX) :-  Sh-Sl =:= 2, %% spans two singularities due to rounding
+	% X is odd multiple of (-pi/2,pi/2)	?
+	X = (Xl,Xh),
+	LB is rational(roundtoward(Xl/pi + 0.5, to_positive)), integer(LB),	
+	UB is rational(roundtoward(Xh/pi + 0.5, to_negative)), integer(UB),
+	!,
+	S is (Sl+Sh)/2,
+	atan_(Z,S,X1), ^(X,X1,NX).
 tanCase(Z,X,Sl,Sh,Z,X).                                   % spans multiple singularities
+
+atan_((Zl,Zh),S,(Xl,Xh)) :-
+	Offs is S*pi,
+	bounded_number(Offl,Offh,Offs),                       % fuzz offset
+	Xl is Offl+roundtoward(atan(Zl),to_negative),
+	Xh is Offh+roundtoward(atan(Zh),to_positive).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2024 Rick Workman
+ *	Copyright (c) 2019-2025 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -94,20 +94,24 @@ user:expand_answer(Bindings,Bindings) :-              % for toplevel answer cont
 
 % annotate interval variables in Bindings
 add_names_([],_,_).
-add_names_([Var|Bindings],Verbose,IntFlag) :- var(Var), !,
-	add_names_(['' = Var|Bindings],Verbose,IntFlag).
 add_names_([Name = Var|Bindings],Verbose,IntFlag) :-
 	(get_interval_flags_(Var,Flags)
 	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),         % mainly to attach Verbose
 	    (Verbose == false -> reset_interval_nodelist_(Var) ; true),  % Nodes restored on backtrack
 	    IntFlag = true
-	 ;  (nonvar(Var)
-	     -> term_attvars(Var,Vars),
-	        add_names_(Vars,Verbose,IntFlag)                         % mark any internal intervals 
-	     ;  true
-	    )
+	 ;  term_attvars(Var,AVars),                     % Var not an interval, but may contain them
+	    nested_bindings_(AVars,Var,NBindings),       % new bindings
+	    add_names_(NBindings,Verbose,IntFlag)        % mark any internal intervals 
 	),
 	add_names_(Bindings,Verbose,IntFlag).
+
+nested_bindings_([],_Var,[]).
+nested_bindings_([V|Vars],Var,NVars)  :- 
+	(V==Var                     % loop detection
+	 -> RVars = NVars           % and removal
+	 ;  NVars = ['' = V|RVars]  % no-name Var
+	),
+	nested_bindings_(Vars,Var,RVars).
 
 %
 %  SWISH versions:
@@ -1035,10 +1039,21 @@ pd_f(atan(U),X,DX) :-              % DX = DU/(1+U**2)
 
 % optimizations
 % also facilitates compiled arithmetic, avoids using catch/3 for instantiation errors
+goal_expansion(pd_match(DU,Exp),     % SWIP inline optimization for pd_match/2
+	           (nonvar(DU), DU = Exp)
+	          ).
+pd_match(DU,Exp)  :- nonvar(DU), DU = Exp.
+
+goal_expansion(pd_identity(DU,DX),   % SWIP inline optimization for pd_identity
+	           (ground(DU) -> DX is DU  ; DX = DU)
+	          ).
 pd_identity(DU,DX) :- ground(DU) -> DX is DU  ; DX = DU.  % conditional evaluation
 
-pd_minus(-DU,DX)  :- !, pd_identity(DU,DX).  %% double negative
-pd_minus(DU,DX)   :- ground(DU) -> DX is -DU  ; DX = -DU.
+pd_minus(DU,DX)   :- 
+	(pd_match(DU,-DV)       %% double negative
+	 -> pd_identity(DV,DX)
+	 ;  (ground(DU) -> DX is -DU  ; DX = -DU)
+	).
 
 pd_add(DU,DV,DV)  :- DU==0, !.
 pd_add(DU,DV,DU)  :- DV==0, !.
@@ -1056,13 +1071,15 @@ pd_mul(DU,DV,DX)  :- DU== -1, !, pd_minus(DV,DX).
 pd_mul(DU,DV,DX)  :- DV== -1, !, pd_minus(DU,DX).
 pd_mul(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU*DV ; DX = DU*DV.
 
-pd_div( sin(X),DV,DX) :- DV==  cos(X), !, (ground(X) -> DX is  tan(X) ; DX =  tan(X)).
-pd_div( sin(X),DV,DX) :- DV== -cos(X), !, (ground(X) -> DX is -tan(X) ; DX = -tan(X)).
-pd_div(-sin(X),DV,DX) :- pd_div(sin(X),DV,DU), !, pd_minus(DU,DX).
 pd_div(DU,DV,0)   :- DU==0, !.
 pd_div(DU,DV,0)   :- DV==0, !, fail.
 pd_div(DU,DV,DU)  :- DV==1, !.
 pd_div(DU,DV,DU)  :- DV== -1, !, pd_minus(DU,DX).
+pd_div(DU,DV,DX)  :- pd_match(DU,sin(X)), DV==  cos(X), !, 
+	                 (ground(X) -> DX is  tan(X) ; DX =  tan(X)).
+pd_div(DU,DV,DX)  :- pd_match(DU,sin(X)), DV== -cos(X), !, 
+	                 (ground(X) -> DX is -tan(X) ; DX = -tan(X)).
+pd_div(DU,DV,DX)  :- pd_match(DU,-sin(X)), pd_div(sin(X),DV,DU), !, pd_minus(DU,DX).
 pd_div(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU/DV ; DX = DU/DV.
 
 pd_pow(DU,DV,0)   :- DU==0, !.
@@ -1071,8 +1088,11 @@ pd_pow(DU,DV,1)   :- DU==1, !.
 pd_pow(DU,DV,DU)  :- DV==1, !.
 pd_pow(DU,DV,DX)  :- ground((DU,DV)) -> DX is DU**DV ; DX = DU**DV.
 
-pd_exp(log(X),DX) :- !, pd_identity(X,DX).
-pd_exp(DU,DX)     :- ground(DU) -> DX is exp(DU)  ; DX = exp(DU).
+pd_exp(DU,DX) :- 
+	(pd_match(DU,log(X))
+	 -> pd_identity(X,DX)
+	 ;  (ground(DU) -> DX is exp(DU)  ; DX = exp(DU))
+	).
 
 pd_sqrt(DU,DX)    :- ground(DU) -> DX is sqrt(DU) ; DX = sqrt(DU).
 

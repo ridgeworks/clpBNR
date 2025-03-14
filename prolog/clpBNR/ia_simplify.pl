@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2024 Rick Workman
+ *	Copyright (c) 2019-2025 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -334,8 +334,6 @@ collect_term_(E,List/[elem(Exp,1)|NewT], List/NewT) :-
 	Exp =.. [F|OArgs].
 
 % simplify_pwr_: NT rational, 
-simplify_pwr_(AT,NT,Term) :- rational(AT), !,  % constant folding
-	Term is AT**NT.
 simplify_pwr_(AT,NT,elem(Exp,Pwr)) :-
 	compound(AT), AT=Exp**P, rational(P), !,  % (X**P)**NT, NT and P both rational
 	Pwr is NT*P.

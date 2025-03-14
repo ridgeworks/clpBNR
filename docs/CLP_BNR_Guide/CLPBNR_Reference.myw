@@ -34,7 +34,8 @@ The set of operators and functions currently supported are:
 	- ~                                   %% unary negate and not
 	exp log                               %% exp/ln
 	sin asin cos acos tan atan            %% trig functions
-	integer                               %% is an integer value
+	integer                               %% is an integral value, e.g., 1 and 1.0 are both integral values
+	sig                                   %% signum of real, (-1,0,+1)
 Note that the use of some constraints may also constrain the "type" of the operands. Specifically `<>` constrains the operands to be integers, and the boolean operations similarly constrain the operands to be booleans. Synonyms for `<>` and `==` are `=\=` and `=:=` for those who prefer the standard Prolog operators.
 
 Users can extend the set of constraint functions with [User Defined Narrowing Functions].
@@ -966,7 +967,7 @@ Module `clpBNR_search` is included in pack `clpBNR` and provides some alternativ
 		indomain/2
 		]).
 
-This library should be compatible with Eclipse's [`fd_search`] library  for `integer` domains with somewhat compatible semantics for `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library has not been implemented.
+This library should be compatible with ECLIPSe's [`fd_search`] library  for `integer` domains with somewhat compatible semantics for `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library has not been implemented.
 
 .pred	**delete**(*-Term, +List, ?List, +Atom, +Atom*)
 Naming the arguments: `delete(X,Terms,Rest,Arg,Select)`

@@ -45,7 +45,7 @@ eg
 	?- T::real(0,2*pi), K = 1r2, integrate(sqrt(1-K**2*sin(T**2)),T,R,12).
 	K = 1r2,
 	T::real(0, 6.283185307179587),
-	R:: 6.18... .
+	R:: 6.1793... .
 Note that this technique can be used to evaluate any integral, e.g., even for those functions that have no derivative. The following calculates the total area under the curve {`2*X+X**2-X**3`} between {`-1`} and {`1`} even though the function value is negative in some parts of the range:
 eg
 	?- X::real(-1,1),integrate(abs(2*X+X**2-X**3),X,R,10).

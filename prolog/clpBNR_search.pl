@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2024 Rick Workman
+ *	Copyright (c) 2024-5 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,14 @@
  *	SOFTWARE.
  */
 
-/* adapted from Eclipse source file `generic_search.ecl` under 
+/* adapted from ECLiPSe source file `generic_search.ecl` under 
  *    Mozilla Public License Version 1.1 (https://www.eclipseclp.org/license/)
  *
  *  Unsupported:
  *  Tree drawing via daVinci
  *  Hooks for user definintions
  *  Selection method `max_regret`
- *  Search methods based on Eclipse libraries `sbds` and GAP based `sbds` and `sbdd`
+ *  Search methods based on ECLiPSe libraries `sbds` and GAP based `sbds` and `sbdd`
  *  `real`s are only searched using `split` and `indomain_split` using `splitsolve/1`
  *     but selection criteria (from a list) may use any "choice" or "search" methods
  *
@@ -44,8 +44,8 @@
 	 indomain/2
 	]).
 
-/** <module> clpBNR_search: Support for alternative search strategies based on Eclipse family of search libraries
-This module is intended to be the equivalent of Eclipse's [fd_search](https://eclipseclp.org/doc/bips/lib/fd_search/search-6.html) library but extended to support `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library in `fd_search` has not been implemented in `clpBNR_search`. 
+/** <module> clpBNR_search: Support for alternative search strategies based on ECLiPSe family of search libraries
+This module is intended to be the equivalent of ECLiPSe's [fd_search](https://eclipseclp.org/doc/bips/lib/fd_search/search-6.html) library but extended to support `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library in `fd_search` has not been implemented in `clpBNR_search`. 
 */
 
 :- use_module(library(lists),[flatten/2]).          % for flattening search input lists
@@ -75,7 +75,7 @@ get_bounds(X,Min,Max) :-
 	range(X,[Min,Max]).
 
 %
-% Minimal support for global var equivalent of Eclipse shelf create/destroy
+% Minimal support for global var equivalent of ECLiPSe shelf create/destroy
 % Global vars are created on global stack so will be garbage collected on success
 %
 shelf_create(Shelf,Value) :-

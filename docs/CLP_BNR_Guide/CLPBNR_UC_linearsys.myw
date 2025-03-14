@@ -198,23 +198,22 @@ eg
 	
 	?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is ndarray([[180],[300],[240]]), Xs is ndarray([[A],[B],[C]]),
 	Xs is dot(inverse(Am),Bs).
-	
 	Am = #(#(2, 1, 1), #(1, 3, 2), #(2, 1, 2)),
 	Bs = #(#(180), #(300), #(240)),
 	Xs = #(#(36), #(48), #(60)),
 	A = 36,
 	B = 48,
 	C = 60.
-The function `ndarray/1` creates an N dimensional array from a nested list representation while the `dot/2` and `inverse/1` functions calculate the dot product and matrix inverse. (Rational number calulations are enabled to avoid floating point rounding errors.) Functions on type `ndarray` are constraint aware, so as long as the array structure has been defined, the order of the goals can be changed enabling the common test and generate pattern:
+The function `ndarray/1` creates an N dimensional array from a nested list representation while the `dot/2` and `inverse/1` functions calculate the dot product and matrix inverse. (Rational number calculations are enabled to avoid floating point rounding errors.) Functions on type `ndarray` are constraint aware, so as long as the array structure has been defined, the order of the goals can be changed enabling the common test and generate pattern:
 eg
 	?- Am is ndarray([[2,1,1],[1,3,2],[2,1,2]]), Bs is new(ndarray,[3,1]),
-	ndarray([[A],[B],[C]]) is dot(inverse(Am),Bs),
-	Bs is ndarray([[180],[300],[240]]).
+	   ndarray([[A,B,C]]) is transpose(dot(inverse(Am),Bs)), Bs is transpose(ndarray([[180,300,240]])).
 	Am = #(#(2, 1, 1), #(1, 3, 2), #(2, 1, 2)),
 	Bs = #(#(180), #(300), #(240)),
 	A = 36,
 	B = 48,
 	C = 60.
+Note the use of transpose to convert between a single row matrix and a single column matrix (row matrix is simpler to read and write).
 
 The "Expenditure Planning" problem is similarly straight forward:
 eg
@@ -246,7 +245,7 @@ eg
 Since it's not obvious which equation may be redundant, experimentation can be used to find a non-zero determinant by replacing the first equation by `I1 = 10`. A new predicate to support the matrix form of the circuit definition:
 .pl
 	simpleCircuitDef(Currents,Am,Bs,Xs) :-
-		Xs is ndarray(Currents),
+		Xs is transpose(ndarray([Currents])),
 		Am is ndarray([
 		[ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 		[ 1, 0, 0, 0, 0, 0, 1, 0, 0,-1],
@@ -259,10 +258,11 @@ Since it's not obvious which equation may be redundant, experimentation can be u
 		[ 0, 0, 0,-4, 0, 6, 0, 0, 9, 0],
 		[-1, 0, 0, 4, 0, 0, 7, 8, 0, 0]
 		]),
-		Bs is ndarray([[10.0],[0],[0],[0],[0],[0],[0],[0],[0],[0]]).
+		Bs is transpose(ndarray([[10.0,0,0,0,0,0,0,0,0,0]])).
 Now:
 eg
-	?- simpleCircuitDef([[I1],[I2],[I3],[I4],[I5],[I6],[I7],[I8],[I9],[Is]],Am,Bs,Xs),Xs is dot(inverse(Am),Bs).          I1 = 10.0,
+	?- simpleCircuitDef([I1,I2,I3,I4,I5,I6,I7,I8,I9,Is],Am,Bs,Xs), Xs is dot(inverse(Am),Bs).
+	I1 = 10.0,
 	I2 = 0.5690898460339116,
 	I3 = -0.3118300526213214,
 	I4 = 0.5320600272851296,

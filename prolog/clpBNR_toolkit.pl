@@ -492,7 +492,7 @@ eval_dvars([dV(Y, _PD, Lexp, Uexp)|YDefs],[Y|Ys],[Yi|Yis],[Yf|Yfs],[Ydom|Ydoms])
 % construct Lambda args for Fxy
 fXY_lambda(X,Ys,dV(_Y,Fxy,_,_),FxyArgs) :- 
 	lambda_for_(Fxy,X,Ys,FxyArgs).
-		
+
 % construct Lambda args for derivative function of Fxy from Lambda of Fxy
 
 total_derivative_(Fxys,_Free/Ps,DxyArgs) :- !,  % ignore free variables
@@ -511,7 +511,7 @@ sumYpartials([[_X,_Ys,FxyI]|FxyIs],[YI|YIs],Fxy,Acc,Sum) :-
 	(number(DFDYI), DFDYI =:= 0 -> NxtAcc = Acc ; simplify_sum_(Acc,FxyI*DFDYI,NxtAcc)),
 	!,
 	sumYpartials(FxyIs,YIs,Fxy,NxtAcc,Sum).
-	
+
 simplify_sum_(X,Y,Y) :- number(X),X=:=0.
 simplify_sum_(X,Y,X) :- number(Y),Y=:=0.
 simplify_sum_(X,Y,X+Y).
