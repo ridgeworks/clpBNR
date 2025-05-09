@@ -109,7 +109,7 @@ nested_bindings_([],_Var,[]).
 nested_bindings_([V|Vars],Var,NVars)  :- 
 	(V==Var                     % loop detection
 	 -> RVars = NVars           % and removal
-	 ;  NVars = ['' = V|RVars]  % no-name Var
+	 ; (interval(V) ->  NVars = ['' = V|RVars] ; RVars = NVars)  % only no-name intervals
 	),
 	nested_bindings_(Vars,Var,RVars).
 
@@ -135,6 +135,24 @@ swish_trace:post_context(Dict) :-
 
 :- endif.  % current_prolog_flag(clpBNR_swish, true)
 
+/**  
+interval_goals(?Term,-Goals) is det
+
+If Term is an interval, Goals is unified with the list of goals that are declaratively equivalent to the goals that created the interval (equivalent to `clpBNR:attribute_goals(Term,Gs,[])` ). If Term is not an interval, Goals is unified with the empty list.
+Examples:
+==
+?- X::real,{Y==exp(X)},interval_goals(X,XGs),interval_goals(Y,YGs).
+XGs = [(X::real(-1.0e+16, 1.0e+16), {Y==exp(X)})],
+YGs = [(Y::real(0.0, 1.0Inf), {Y==exp(X)})],
+X::real(-1.0e+16, 1.0e+16),
+Y::real(0.0, 1.0Inf).
+
+?- interval_goals(X,XGs).
+XGs = [].
+==
+ */
+interval_goals(Term,Goals) :- clpBNR:attribute_goals(Term,Goals,[]).
+
 %
 % Constructs goals to build interval(X)
 %
@@ -142,11 +160,11 @@ attribute_goals(X) -->
 	{(interval_object(X, Type, Val, Nodes)
  	  -> (get_interval_flags_(X,Flags), memberchk(name(_,false),Flags), var(Nodes) 
  	      -> intValue_(Val,Type,Dom),           % non-verbose and empty nodelist => "pretty" value
-	         Goals = [X::Dom]
+	         Cs = []
 	      ;  interval_domain_(Type, Val, Dom),  % full copy 
-	         constraints_(Nodes,X,Cs),          % reverse map to list of original constraints
-	         to_comma_exp_(Cs,X::Dom,Goals)
-	     )
+	         constraints_(Nodes,X,Cs)           % reverse map to list of original constraints
+	     ), 
+         once(constraint_goal(Cs,X::Dom,Goals))
 	  ;  Goals = []
 	 )
 	},
@@ -157,21 +175,16 @@ list_dcg_([H|T]) --> [H], list_dcg_(T).
 
 constraints_([Node],_,[]) :- var(Node), !.  % end of indefinite list
 constraints_([node(Op,P,_,Args)|Nodes],X,[C|Cs]) :-
-	var(P),                       % skip persistent nodes (already in value)
-	term_variables(Args,[V|_]),   % this ensures constraints only get output once
-	V==X,
+	var(P),                       % non-persistent node
 	map_constraint_op_(Op,Args,C),
+	!,
 	constraints_(Nodes,X,Cs).
-constraints_([_|Nodes],X,Cs) :-
+constraints_([_|Nodes],X,Cs) :-   % skip persistent nodes (already in value)
 	constraints_(Nodes,X,Cs).
-		
-to_comma_exp_([],Decl,[Decl]).
-to_comma_exp_([N|NCs],Decl,[(Decl,{Cs})]) :-
-	to_comma_cexp_(NCs,N,Cs).
 
-to_comma_cexp_([],In,In).
-to_comma_cexp_([C|Cs],In,Out) :-
-	to_comma_cexp_(Cs,(In,C),Out).
+constraint_goal([], Decl,[Decl]).
+constraint_goal([C],Decl,[(Decl,{C})]).
+constraint_goal(Cs, Decl,[(Decl,{Cs})]).
 
 %
 %  Simplified output format for interval ranges
@@ -888,7 +901,7 @@ absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
 	add_constraint(X>= ::(Split,Split)),      % so X must be >
 	absolve_l(X,Type, DL1, NL1, Limit).
 absolve_l(_,_,_,_,_).                         % final result
-         
+
 absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
 	getValue(X,(LB1,UB1)), 
 	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points

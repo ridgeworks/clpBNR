@@ -480,7 +480,7 @@ eg
 	T::real(0, 15),
 	X1f:: 219.5...,
 	Xf::real(1232.2491681428976, 1232.776558960208).
-So after 15 sec. the rocket is travelling at 220 m./sec. at a height of 1232 m. The same query form could be used for 20 sec. but note that at 20 sec. the fuel is exhausted. So a different equation applies for `T>20`; one involving just the force of gravity. The final values for `T=20` can be used as the initial values to calculate the velocity and height at `T=30`. Note that we need two different independent variables `T00` and `T20` to represent the two ranges of `T``:
+So after 15 sec. the rocket is travelling at 220 m./sec. at a height of 1232 m. The same query form could be used for 20 sec. but note that at 20 sec. the fuel is exhausted. So a different equation applies for `T>20`; one involving just the force of gravity. The final values for `T=20` can be used as the initial values to calculate the velocity and height at `T=30`. Note that we need two different independent variables `T00` and `T20` to represent the two ranges of `T`:
 eg
 	?- G=9.8, M0=25000, B=1000, Ev=400,
 	T00::real( 0,20), boundary_values(T00,[dV(X1, -G+(B*Ev)/(M0-B*T00),0,V20),dV(X,X1,0,H20)]),

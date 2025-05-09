@@ -134,7 +134,7 @@ mid_split(X) :-
 	 ;  (small(X)
 	     -> true
 	     ;  midpoint(X,M),       % fails if not an interval
-	        ({X=<M} ; {M=<X})    % possible choicepoint
+	        ({X=<M} ; {M=<X})    % possible choicepoint, Note: can split on solution leaving CP
 	    )
 	).
 %
@@ -230,11 +230,22 @@ cf_iterate_(Count,Xs,As,P) :-
 	select_split(Xs,X),         % select widest
 	(small(X,P)                 % still wide enough to split?
 	 -> true                    % no, we're done 
-	  ; mid_split(X),           % yes, split it
+	  ; cf_split(X,Pt),         % yes, split it
+	    ({X=<Pt} ; {Pt=<X}),
 	    Count1 is Count-1,
 	    cf_iterate_(Count1,Xs,As,P)  % and iterate
 	).
 cf_iterate_(_,_,_,_).           % done (Count=<0 or all small Xs)
+
+cf_split(X,Pt) :-
+	range(X,[L,H]),
+	cf_split_point(L,H,X,M),    % modest attempt to find non-solution
+	!,
+	(M = 1.5NaN, L<0,0<H -> Pt = 0 ; Pt = M).  % (-inf,inf) case: if NaN and spans 0, use 0
+
+cf_split_point(L,H,X,M) :-	M is L/2 + H/2, \+ X = M.          % midpoint, not a solution
+cf_split_point(L,H,X,M) :-	M is 0.625*L + 0.375*H, \+ X = M.  % 0.375*width, not a solution
+cf_split_point(L,H,_,M) :-	M is 0.375*L + 0.625*H.            % 0.625*width, may be a solution
 
 /**
 taylor_contractor(+Constraints,-Contractor) is semidet
@@ -536,31 +547,31 @@ integrate_(0, Fxys, Dxys, Initial, Final, Ydomains, [Initial|Ps]/Ps) :- !,
 	 ;  step_trap(Fxys, Dxys, Initial, Final, Ydomains)
 	).
 integrate_(P, Fxys, Dxys, Initial, Final, Ydomains, L/E) :-
-    % create interpolation point and integrate two halves
-    interpolate_(Initial, Final, Ydomains, Middle),
-    Pn is P - 1,
-    integrate_(Pn, Fxys, Dxys, Initial, Middle, Ydomains, L/M),
-    integrate_(Pn, Fxys, Dxys, Middle,  Final,  Ydomains, M/E).
+	% create interpolation point and integrate two halves
+	interpolate_(Initial, Final, Ydomains, Middle),
+	Pn is P - 1,
+	integrate_(Pn, Fxys, Dxys, Initial, Middle, Ydomains, L/M),
+	integrate_(Pn, Fxys, Dxys, Middle,  Final,  Ydomains, M/E).
 
 interpolate_((X0,_Y0s), (X1,_Y1s), Ydomains, (XM,YMs)) :-
-    XM is (X0 + X1)/2,            % XM is midpoint of (X0,X1)
+	XM is (X0 + X1)/2,            % XM is midpoint of (X0,X1)
 	maplist(::,YMs,Ydomains).     % corresponding YMs
 
 step_euler(Fxys, (X0,Y0), (X1,Y1), Ydoms) :-
-    X01:: real(X0,X1),            % range of X in step
-    maplist(lambda_constrain_(X01,Y01),Fxys,Fs),   % approx f' over X0 
-    Dx is X1 - X0,                % assumed (X1>X0)
-    DX :: real(0,Dx),             % range for estimate
+	X01:: real(X0,X1),            % range of X in step
+	maplist(lambda_constrain_(X01,Y01),Fxys,Fs),   % approx f' over X0 
+	Dx is X1 - X0,                % assumed (X1>X0)
+	DX :: real(0,Dx),             % range for estimate
 	euler_constraints(Y0,Y1,Y01,Ydoms,Dx,DX,Fs,In/In,Cs/[]),  % flatten with diff list
 	{Cs}.
 	
 step_trap(Fxys, Dxys, (X0,Y0), (X1,Y1), Ydoms) :-
-    X01:: real(X0,X1),            % range of X in step
-    maplist(lambda_constrain_(X0,Y0),Fxys,F0s),    % F0s = slopes at X0
-    maplist(lambda_constrain_(X1,Y1),Fxys,F1s),    % F1s = slopes at X1 
-    maplist(lambda_constrain_(X01,Y01),Dxys,Ds),   % approx f' over X0 
-    Dx is X1 - X0,                % assumed (X1>X0)
-    DX :: real(0,Dx),             % range for estimate
+	X01:: real(X0,X1),            % range of X in step
+	maplist(lambda_constrain_(X0,Y0),Fxys,F0s),    % F0s = slopes at X0
+	maplist(lambda_constrain_(X1,Y1),Fxys,F1s),    % F1s = slopes at X1 
+	maplist(lambda_constrain_(X01,Y01),Dxys,Ds),   % approx f' over X0 
+	Dx is X1 - X0,                % assumed (X1>X0)
+	DX :: real(0,Dx),             % range for estimate
 	trap_constraints(Y0,Y1,Y01,Ydoms,Dx,DX,F0s,F1s,Ds,In/In,Cs/[]),  % flatten with diff list
 	{Cs}.  %%, absolve(Y1,2).
 
@@ -883,7 +894,7 @@ gradient_constraints_([X|Xs],[C|Cs],Exp) :-
 	partial_derivative(Exp,X,D),
 	(number(D) -> C=[] ; C=(D==0)),  % no constraint if PD is a constant
 	gradient_constraints_(Xs,Cs,Exp).
-	
+
 % for each constraint add to Lagrangian expression with auxiliary KKT constraints
 lagrangian_(C,MinMax,Exp,LExp, LC) :- nonvar(C),
 	kt_constraint_(C,CExp, LC), % generate langrange term with multiplier
@@ -892,11 +903,11 @@ lagrangian_(C,MinMax,Exp,LExp, LC) :- nonvar(C),
 lagrangian_([],_,L,L,[]).
 lagrangian_([C|Cs],MinMax,Exp,LExp,[LC|LCs]) :-
 	lagrangian_(C, MinMax,Exp,NExp,LC),
-	lagrangian_(Cs,MinMax,NExp,LExp,LCs).	
+	lagrangian_(Cs,MinMax,NExp,LExp,LCs).
 lagrangian_((C,Cs),MinMax,Exp,LExp,[LC|LCs]) :-
 	lagrangian_(C,MinMax,Exp,NExp,LC),
 	lagrangian_(Cs,MinMax,NExp,LExp,LCs).
-		
+
 lexp(min,Exp,CExp,Exp+CExp).
 lexp(max,Exp,CExp,Exp-CExp).
 

@@ -113,7 +113,7 @@ Here is the current set of operators and functions supported in this version:
 
 	==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
 	+ - * /                               %% basic arithmetic
-	**                                    %% includes real exponent, odd/even integer
+	** ^                                  %% includes real exponent, odd/even integer
 	abs                                   %% absolute value
 	sqrt                                  %% square root (needed?)
 	min max                               %% min/max (arity 2)
@@ -154,7 +154,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.12.1
+	Installed version:      0.12.2
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -162,7 +162,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.12.1 ***.
+	% *** clpBNR v0.12.2 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
 Or if the repository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.
@@ -176,6 +176,7 @@ The `clpBNR` module declaration is:
 		{}/1,                  % define constraint
 		interval/1,            % filter for clpBNR constrained var
 		interval_degree/2,     % number of constraints on clpBNR constrained var
+		interval_goals/2,      % list of goals to build clpBNR constrained var
 		list/1,                % O(1) list filter (also for compatibility)
 		domain/2, range/2,     % get type and bounds (domain)
 		delta/2,               % width (span) of an interval or numeric (also arithmetic function)

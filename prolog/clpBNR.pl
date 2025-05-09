@@ -32,6 +32,7 @@
 	add_constraint/1,      % more primitive define single constraint, bypass simplify 
 	interval/1,            % filter for clpBNR constrained var
 	interval_degree/2,     % number of constraints on clpBNR constrained var
+	interval_goals/2,      % list of goals to build clpBNR constrained var
 	list/1,                % O(1) list filter (also for compatibility)
 	domain/2, range/2,     % get type and bounds (domain)
 	delta/2,               % width (span) of an interval or numeric (also arithmetic function)
@@ -79,7 +80,7 @@
 /* supported interval relations:
 
 +	-	*	/                         %% arithmetic
-**                                    %% includes real exponent, odd/even integer
+** ^                                  %% includes real exponent, odd/even integer
 abs                                   %% absolute value
 sqrt                                  %% positive square root
 min	max                               %% binary min/max
@@ -113,7 +114,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.12.1").
+version("0.12.2").
 
 % support various optimizations via goal expansion
 :- discontiguous clpBNR:goal_expansion/2.
@@ -227,7 +228,7 @@ Resets =clpBNR= statistics - always succeeds.
 | =narrowingOps=   | number of interval primitives called |
 | =narrowingFails= | number of interval primitive failures |
 | =node_count=     | number of nodes in =clpBNR= constraint network |
-| =max_iterations= | maximum number of iterations before throttling occurs (=|max/limit|= |
+| =max_iterations= | maximum number of iterations before throttling occurs (=|max/limit|=) |
 
 System statistics included in =clpStatistics=:
 
@@ -698,7 +699,7 @@ Rs::Dom :- list(Rs),!,                    % list of vars
 	intervals_(Rs,Dom).
 
 R::Dom :-                                 % single var
-	g_read('$clpBNR:thread_init_done',_),  % ensures per-thread initialization 
+	g_read('$clpBNR:thread_init_done',_), % ensures per-thread initialization 
 	(var(Dom)                             % domain undefined
 	 -> (var(R) -> int_decl_(real,_,R) ; true),  % default or domain query (if interval(R) else fail)
 	    domain(R,Dom)                     % extract domain
@@ -781,8 +782,8 @@ applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	    (IL == IH
 	     -> Int=IL  % narrowed to point
 	     ; 	(put_attr(Int,clpBNR,interval(integer,(IL,IH),NodeList,Flags)),  % set Type (only case allowed)
-		     linkNodeList_(NodeList, Agenda, NewAgenda)
-		    )
+	         linkNodeList_(NodeList, Agenda, NewAgenda)
+	        )
 	    )
 	 ; NewAgenda = Agenda
 	).
@@ -870,7 +871,7 @@ Succeeds if Constraints is a sequence of one or more boolean expressions (typica
 Table of supported interval relations:
 
 | =|+  -  *  /|=                             | arithmetic                                |
-| =|**|=                                     | includes real exponent, odd/even integer  |
+| =|** ^|=                                   | includes real exponent, odd/even integer  |
 | =|abs|=                                    | absolute value                            |
 | =|sqrt|=                                   | positive square root                      |
 | =|min  max|=                               | binary min/max                            |
@@ -1063,6 +1064,7 @@ fmap_(-,    add,   [Z,X,Y], [X,Z,Y], [real,real,real]).     % note subtract befo
 fmap_(*,    mul,   ZXY,     ZXY,     [real,real,real]).
 fmap_(/,    mul,   [Z,X,Y], [X,Z,Y], [real,real,real]).
 fmap_(**,   pow,   ZXY,     ZXY,     [real,real,real]).
+fmap_(^,    pow,   ZXY,     ZXY,     [real,real,real]).
 fmap_(min,  min,   ZXY,     ZXY,     [real,real,real]).
 fmap_(max,  max,   ZXY,     ZXY,     [real,real,real]).
 fmap_(==,   eq,    ZXY,     ZXY,     [boolean,real,real]).  % strict equality

@@ -268,7 +268,7 @@ eg
 	Y2 = Y2::real(-1,2),
 	Y3 = Y3::real(-1,2),
 	Y4 = Y4::real(-0.25,2).
-For quadratics like this example, one can do additional preprocessing to find the single occurrence variant (#4.), but that's not always possible for an arbitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
+For quadratics like this example, one can do additional pre-processing to find the single occurrence variant (#4.), but that's not always possible for an arbitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
 
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
@@ -317,8 +317,27 @@ eg
 	Y::real(10.009999999999998, 10.010000000000002),
 	(S::real(-5.005000000000001, 5.005000000000001), {S==Y*Z}),
 	Z::real(-1r2, 1r2).
-aside>
-	Aside: In addition, `copy_term/3` will only generate a list of residual goals when `clpBNR_verbose` is `true`. This is a by-product of simplifying the top level output, and shouldn't impact the vast majority of CLP(BNR) users.
+
+Other than for simple problems, the "verbose" output can be overwhelming since it must include the entire constraint network including auxiliary intervals created when decomposing complex constraint expressions to primitive operations. The `interval_goals/2` predicate can be used to find the constraint goals for just a specific interval including only the auxiliary variables required to constrain that interval. From a previous example:
+eg
+	?- {X**2+Y**2==2, Y-X**2==0}, interval_goals(X,XGs),  interval_goals(Y,YGs).
+	XGs = [(X::real(-1.1892071150027215, 1.1892071150027215), {[_A==X**2, _B==X**2]})],
+	YGs = [(Y::real(0.7653668647301787, 1.4142135623730954), {[_C==Y**2, Y==0+_B]})],
+	X::real(-1.1892071150027215, 1.1892071150027215),
+	Y::real(0.7653668647301787, 1.4142135623730954),
+	_C::real(0.5857864376269037, 2),
+	_A::real(0, 1.4142135623730963),
+	_B::real(0.7653668647301787, 1.4142135623730954).
+
+Note that the constraint network is constructed incrementally, constraint by constraint, so it can't easily pre-optimize things like common expressions across individual constraints. A more efficient network with improved narrowing performance (by removing multiple occurrences) is achievable through simple hand optimizations when specifying the constraints, e.g.,
+eg
+	?- {Xsq == X**2, Xsq+Y**2==2, Y==Xsq}, interval_goals(X,XGs),  interval_goals(Y,YGs).
+	Xsq = Y,
+	XGs = [(X::real(-1.0000000000000004, 1.0000000000000004), {Y==X**2})],
+	YGs = [(Y::real(0.9999999999999997, 1.0000000000000004), {[Y==X**2, 2==_A+Y, _A==Y**2]})],
+	Y:: 1.000000000000000...,
+	X::real(-1.0000000000000004, 1.0000000000000004),
+	_A:: 1.000000000000000... .
 
 <#TableOfContents>
 

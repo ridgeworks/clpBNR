@@ -25,7 +25,7 @@ Constraints are syntactically defined using `{ ... }` brackets. (Note that `::` 
 The set of operators and functions currently supported are:
 	==	is	<>	=<	>=	<	>             %% comparison (`is` synonym for `==`)
 	+ - * /                               %% basic arithmetic
-	**                                    %% includes real exponent, odd/even integer
+	** ^                                  %% includes real exponent, odd/even integer
 	abs                                   %% absolute value
 	sqrt                                  %% square root (needed?)
 	min max                               %% min/max (arity 2)
@@ -383,7 +383,7 @@ eg
 
 .pred	**interval_degree**(*@Term, -Integer*)
 Unifies *Integer* with the number of `clpBNR` constraints on *Term* which must be a `number` or `interval`; otherwise **interval_degree** fails. Numbers have a degree of 0. 
-****interval_degree** may be used to prioritize multiple intervals in writing custom labelling predicates.
+**interval_degree** may be used to prioritize multiple intervals in writing custom labelling predicates.
 eg
 	?- {X>=0}, interval_degree(X,N).
 	N = 1,
@@ -398,6 +398,18 @@ eg
 	X = 0.8,
 	N = 0,
 	Y:: 0.717356090899522... .
+
+.pred	**interval_goals**(*@Term, -Goals*)
+If *Term* is `clpBNR` interval, *Goals* is unified with a list of goals which constructed that interval. If *Term* is not an interval, *Goals* is unified with the empty list. E.g.,
+eg
+	?- X::real,{Y==exp(X)},interval_goals(X,XGs),interval_goals(Y,YGs).
+	XGs = [(X::real(-1.0e+16, 1.0e+16), {Y==exp(X)})],
+	YGs = [(Y::real(0.0, 1.0Inf), {Y==exp(X)})],
+	X::real(-1.0e+16, 1.0e+16),
+	Y::real(0.0, 1.0Inf).
+	
+	?- interval_goals(X,XGs).
+	XGs = [].
 
 .pred	**list**(@Term)
 {`O(1)`} filter for lists implemented as `list(X) :- compound(X) ->  X=[_|_] ; X==[]. `. This is not equivalent to **is_list**(*+Term*) (<https://www.swi-prolog.org/pldoc/doc_for?object=is_list/1>).
@@ -967,7 +979,7 @@ Module `clpBNR_search` is included in pack `clpBNR` and provides some alternativ
 		indomain/2
 		]).
 
-This library should be compatible with ECLIPSe's [`fd_search`] library  for `integer` domains with somewhat compatible semantics for `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library has not been implemented.
+This library should be compatible with ECLiPSe's [`fd_search`] library  for `integer` domains with somewhat compatible semantics for `real` domains. (See the predicate documentation for details.) Support for drawing search trees, user defined extensions, and the SBDS library has not been implemented.
 
 .pred	**delete**(*-Term, +List, ?List, +Atom, +Atom*)
 Naming the arguments: `delete(X,Terms,Rest,Arg,Select)`

@@ -473,7 +473,7 @@ As an extreme example consider "[The Stigler Diet Problem]" which has 9 linear c
 
 ##### A Linear Transportation Problem
 
-This example is taken from an Eclipse [Mathematical Programming tutorial]. The problem is to minimize the total transportation cost given several production plants are producing product to be delivered to various clients. Associate with each plant-client pair is a per-unit cost of transportation. The detailed data for this example are specified in the figure below.
+This example is taken from an ECLiPSe [Mathematical Programming tutorial]. The problem is to minimize the total transportation cost given several production plants are producing product to be delivered to various clients. Associate with each plant-client pair is a per-unit cost of transportation. The detailed data for this example are specified in the figure below.
 [transportation_img]
 Then constraints on this problem include ensuring that the amount of product delivers must meet the clients' demands and that the amount of product shipped from a plant does not exceed it's capacity. The variables represent the amount of product that is shipped from each plant (`1` to `3`) to each client (`A` to `D`) so:
 eg

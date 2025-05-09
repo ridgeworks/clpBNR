@@ -50,6 +50,48 @@ clpStatistic(narrowingOps(C)) :- g_read('$clpBNR:evalNode',C).
 clpStatistic(narrowingFails(C)) :- g_read('$clpBNR:evalNodeFail',C).
 
 %
+% Ops histogram data collection
+%
+clpStatistics :- 
+	% initialize Ops count dictionary
+	findall(Op-0,(clause(clpBNR:narrowing_op(Op,_,_,_),_),atom(Op)),Data),
+	dict_create(Dict,'$clpBNR:ops_dict',Data),
+	g_assign('$clpBNR:ops_dict',Dict),
+	fail.  % backtrack to reset other statistics.
+
+clpStatistic(opCounts(Cs)) :-   % retrieve counts from dictionary
+	g_read('$clpBNR:ops_dict',Dict),
+	dict_pairs(Dict,'$clpBNR:ops_dict',Raw),
+	exclude_zeros(Raw,Cs).       % exclude Ops with no calls
+
+exclude_zeros([],[]).
+exclude_zeros([_-0|Raw],Cs)   :- !, exclude_zeros(Raw,Cs).
+exclude_zeros([C|Raw],[C|Cs]) :- exclude_zeros(Raw,Cs).
+
+% use library(prolog_wrap) to conditionally gather Op counts statistics	
+counts_clpBNR(Bool)  :-                  % query or already in defined state
+	( current_predicate_wrapper(clpBNR:evalNode(_Op, _P, _Is, _R), 
+	                            'clpBNR:evalNode', _Wrapped, _Body)
+	 -> Bool = true ; Bool = false
+	),
+	!.
+counts_clpBNR(true)  :-                  % turn on wrapper
+	wrap_predicate(clpBNR:evalNode(Op, _P, _Is, _R),
+	                   'clpBNR:evalNode', 
+	                   Wrapped, evalNode_wrap_(Wrapped, Op)).
+counts_clpBNR(false) :-                  % turn off wrapper
+	unwrap_predicate(clpBNR:evalNode/4,  %(Op, P, Is, R),
+	                   'clpBNR:evalNode').
+
+evalNode_wrap_(Wrapped, Op) :-
+	 % increment count for Op entry in Dict 
+	g_read('$clpBNR:ops_dict',Dict),
+	get_dict(Op,Dict,N), N1 is N+1, nb_link_dict(Op,Dict,N1),
+	Wrapped.                             % execute wrapped evalNode
+
+sandbox:safe_global_variable('$clpBNR:ops_dict').
+
+%
 % non-empty interval test
 %
 goal_expansion(non_empty(L,H), 1 =\= cmpr(L,H)).  % SWIP inline optimization for non_empty/2
@@ -272,7 +314,7 @@ narrowing_op(in, P, $(Z, X, Y), $(NewZ, NewX, Y)):-
 	        ^(Z,(0,1),NewZ)  % Z boolean
 	    )
 	 ;  ^(Z,(0,0),NewZ),     % X and Y don't intersect, Z must be false
-	 	NewX = X,            % no change in X
+	    NewX = X,            % no change in X
 	    P=p                  % persistent, since X and Y can never intersect
 	).
 
@@ -324,8 +366,8 @@ narrowing_op(mul, _, $(Z,X,Y), New) :-
 %
 % * cases ("Interval Arithmetic: from Principles to Implementation", Fig. 3)
 %
-% Note: for mixed sign, mixed mode, one of the rounding directions will be incorrect.
-%  For now assume(?) this will at worst cancel outward rounding
+% Note: Use negation to ensure proper rounding control during any conversions.
+% This is quite tricky because negation inverts direction of rounding - take care.
 %multCase(z,_, X, _, _, X) :- !.  % X==0
 %multCase(_,z, _, Y, _, Y).       % Y==0
 
@@ -334,12 +376,12 @@ multCase(p,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
 	non_empty(NZl,NZh).
 multCase(p,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
-	NZh is minr(Zh,roundtoward(Xl*Yh,to_positive)),
+	NZl is maxr(Zl,-roundtoward(Xh * -Yl,to_positive)),
+	NZh is minr(Zh,-roundtoward(Xl * -Yh,to_negative)),
 	non_empty(NZl,NZh).
 multCase(n,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
-	NZh is minr(Zh,roundtoward(Xh*Yl,to_positive)),
+	NZl is maxr(Zl,-roundtoward(-Xl * Yh,to_positive)),
+	NZh is minr(Zh,-roundtoward(-Xh * Yl,to_negative)),
 	non_empty(NZl,NZh).
 multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	NZl is maxr(Zl,roundtoward(-Xh * -Yh,to_negative)),  % negate for any conversion rounding 
@@ -347,25 +389,25 @@ multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
 	non_empty(NZl,NZh).
 
 multCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
-	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
+	NZl is maxr(Zl,-roundtoward(Xh * -Yl,to_positive)),
+	NZh is minr(Zh, roundtoward(Xh *  Yh,to_positive)),
 	non_empty(NZl,NZh).
 multCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
-	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
+	NZl is maxr(Zl,-roundtoward(-Xl *  Yh,to_positive)),
+	NZh is minr(Zh, roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
 	non_empty(NZl,NZh).
 multCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,roundtoward(Xl*Yh,to_negative)),
-	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
+	NZl is maxr(Zl,-roundtoward(-Xl * Yh,to_positive)),
+	NZh is minr(Zh, roundtoward( Xh * Yh,to_positive)),
 	non_empty(NZl,NZh).
 multCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,roundtoward(Xh*Yl,to_negative)),
-	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
+	NZl is maxr(Zl,-roundtoward( Xh * -Yl,to_positive)),
+	NZh is minr(Zh, roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
 	non_empty(NZl,NZh).
 
 multCase(s,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,minr(roundtoward(Xl*Yh,to_negative),roundtoward(Xh*Yl,to_negative))),
-	NZh is minr(Zh,maxr(roundtoward(-Xl* -Yl,to_positive),roundtoward(Xh*Yh,to_positive))),
+	NZl is maxr(Zl,minr(-roundtoward( Xl * -Yh,to_positive),-roundtoward(-Xh * Yl,to_positive))),
+	NZh is minr(Zh,maxr( roundtoward(-Xl * -Yl,to_positive), roundtoward( Xh * Yh,to_positive))),
 	non_empty(NZl,NZh).
 
 %

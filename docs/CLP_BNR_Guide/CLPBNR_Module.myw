@@ -10,6 +10,7 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		add_constraint/1,      % more primitive define single constraint, bypass simplify 
 		interval/1,            % filter for clpBNR constrained var
 		interval_degree/2,     % number of constraints on clpBNR constrained var
+		interval_goals/2,      % list of goals to build clpBNR constrained var
 		list/1,                % O(1) list filter (also for compatibility)
 		domain/2, range/2,     % get type and bounds (domain)
 		delta/2,               % width (span) of an interval or numeric (also arithmetic function)
