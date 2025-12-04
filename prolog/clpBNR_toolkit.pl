@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2022-2024 Rick Workman
+ *	Copyright (c) 2022-2025 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -285,7 +285,7 @@ Centre form contractors can converge faster than the general purpose builtin fix
 %
 % build a cf_contractor for a multivariate expression based on Taylor expansion
 %
-taylor_contractor({E1=:=E2},CF) :-
+taylor_contractor({E1=:=E2},CF) :- !,
 	taylor_contractor({E1==E2},CF).
 taylor_contractor({E1==E2},cf_contractor(Xs,As)) :-
 	Exp=E1-E2,
@@ -295,16 +295,15 @@ taylor_contractor({E1==E2},cf_contractor(Xs,As)) :-
 	T::real(0,1),
 	make_As_and_Zs_(Xs,T,As,Zs,Cs,[TEQ,DEQ]),  % T per Z
 	% now build Taylor constraint, DEQ
-	copy_term_nat(Exp,AExp),              % copy of original constraint with  As
+	copy_term_nat(Exp,AExp),             % copy of original constraint with  As
 	term_variables(AExp,As),
 	sum_diffs(Xs, As, Zs, Zs, Exp, AExp, DEQ),  % add on D(Z)'s'
 	% make any vars in original equation and contractor arguments finite real intervals
 	!,
 	Xs::real,  % all vars are intervals
 	{Cs}.      % apply constraints
-taylor_contractor({Es},CF) :-
-	taylor_merged_contractor({Es},CF),  % list or sequence	
-	!.
+taylor_contractor({Es},CF) :- (list(Es) ; Es = (_,_)), !,  % list or sequence
+	taylor_merged_contractor({Es},CF).
 taylor_contractor(Eq,_) :-
 	fail_msg_('Invalid constraint for Taylor contractor: ~w',[Eq]).
 
@@ -413,11 +412,10 @@ integrate(F,X,R) :-
 integrate(F,X,R,P) :-
 	integrate(F,X,R,P,_).
 integrate(F,X,R,P,Steps) :-                    % internal arity 5 for development
-	compound(F),                               % F must be an expression in X
-    interval(X),                               % X must be an interval 
-    integer(P), P>0,                           % P must be positive integer
+	interval(X),                               % X must be an interval 
+	integer(P), P>0,                           % P must be positive integer
 	!,                                         % args OK, commit 
-	boundary_values(X,[dV(_,F,0,R)],P,Steps). % use integration in `boundary_values`
+	boundary_values(X,[dV(_,F,0,R)],P,Steps).  % use integration in `boundary_values`
 integrate(F,X,R,P,_Steps) :-
 	fail_msg_('Invalid argument(s): ~w',[integrate(F,X,R,P)]).
 
@@ -472,7 +470,7 @@ As with any application requiring numerical integration, care must be taken to a
 boundary_values(X,YDefs) :-
 	current_prolog_flag(clpBNR_default_precision,P),
 	boundary_values_(X,YDefs,P,_).
-	
+
 boundary_values(X,YDefs,P) :-
 	boundary_values_(X,YDefs,P,_).
 
@@ -513,7 +511,7 @@ total_derivative_(Fxys,[X,Ys,Fxy],DxyArgs) :-
 	sumYpartials(Fxys,Ys,Fxy,0,DYsum),
 	simplify_sum_(DFDX, DYsum, DExp), !,
 	lambda_for_(DExp,X,Ys,DxyArgs).
-	
+
 sumYpartials([],[],_Fxy,Acc,Acc).
 sumYpartials([_Free/FxyI|FxyIs],YIs,Fxy,Acc,Sum) :- !,
 	sumYpartials([FxyI|FxyIs],YIs,Fxy,Acc,Sum).

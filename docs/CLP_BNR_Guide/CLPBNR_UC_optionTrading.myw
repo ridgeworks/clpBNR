@@ -107,7 +107,7 @@ eg
 	K = 30,
 	R = 3,
 	Call:: 7.8471109435385... .
-The current value of the call option is $7.85. There are many similar examples on the internet. The main "variable" across the examples are how the upward movement probability is determined. Or a "volatility" value may be provided instead of up and down factors. These will impact the details but not the high level (binomial) structure of the algorithm.
+The current value of the call option is $7.85. Many similar examples can be found on the web. The main "variable" across the examples are how the upward movement probability is determined. Or a "volatility" value may be provided instead of up and down factors. These will impact the details but not the high level (binomial) structure of the algorithm.
 
 ##### Algebraic Combinations of Options
 
@@ -223,4 +223,4 @@ Although trading in options can involve complex mechanisms (see the [original pa
 	[original paper] <- link https://ieeexplore.ieee.org/abstract/document/4307090
 	[Constraint Logic Programming and Option Trading] <- link https://ieeexplore.ieee.org/abstract/document/4307090
 	[Binomial Formula] <- link https://medium.com/magnimetrics/understanding-the-binomial-option-pricing-model-44ec28d6e9af
-	[CLP({`frR`}) and Some Electrical Engineering Problems] <- link http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=15A73BEF14501213F6F372FB2FDD4FAA?doi=10.1.1.32.7617&rep=rep1&type=pdf
+	[CLP({`frR`}) and Some Electrical Engineering Problems] <- link https://www.academia.edu/18533778/CLP_and_some_electrical_engineering_problems

@@ -32,27 +32,23 @@ eg
 	X:: 0.995842494200498... .
 A fourth degree polynomial equation with two real roots:
 eg
-	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
-	﻿X:: 1.000000... ;
-	X:: 1.0000000... ;
-	X:: 3.000000... ;
+?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
+	X:: 1.000000... ;
 	X:: 3.000000... ;
 	false.
-What happened here? The two roots (`X=1` and `X=3`) produced four answers. `solve` works by splitting intervals into pieces and discarding those pieces which provably do not contain solutions. Pieces which *may* contain solutions are split again, and the process is repeated. However to keep execution and time space under control, there is a minimum size interval which can be split as determined by the Prolog environment flag `clpBNR_default_precision` (default value=6) which roughly approximates the number of digits of precision. More precise answers can only be achieved by the basic fixed point iteration driven by the interval primitive operations (as indicated by the first example), or by changing the default precision (Prolog flag `clpBNR_default_precision`). 
+On occasion, `solve` may terminate prematurely return in value which actually does not contain a solution. For example, using the previous example, if the precision parameter (approximately the  number of digits) is set to `5`:
 eg
-	﻿?- set_prolog_flag(clpBNR_default_precision,7).
-	true.
-	
-	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
-	﻿X:: 1.00000000... ;
-	X:: 3.0000000... ;
+	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X,5).
+	X:: 1.00000... ;
+	X:: 2.99999... ;
+	X:: 3.00000... ;
 	false.
-The flip side says that the precision limit can cause the iteration to terminate without disproving that a solution exists, which is the case for the second and fourth solution.
+The second interval answer (`X:: 2.99999...`) doesn't actually contain an answer. The interval met the precision criteria such that it wouldn't further split the interval but it couldn't disprove that the interval didn't contain a solution. Of course changing the precision eliminates the "bogus" answer as demonstrated by the original query. However, it's difficult to predict what value(s) of precision will produce the desired result.
 
-The CLP(BNR) deterministic predicate `absolve` can be used to alleviate this problem (at a cost in performance). It "nibbles" away at the boundaries of an interval that fail to contain a solution and often removes these "false positives":
+Alternatively, the CLP(BNR) deterministic predicate `absolve` can be used to alleviate this problem (at a performance cost). It "nibbles" away at the boundaries of an interval that fail to contain a solution and often removes these "false positives":
 eg
-	﻿?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X), absolve(X).
-	﻿X:: 1.00000000... ;
+	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X,5), absolve(X).
+	X:: 1.00000000... ;
 	X:: 3.00000000... ;
 	false.
 But it is data dependent; sometimes both mechanisms are needed, as in this polynomial equation with roots at 0, 3, 4, and 5:
@@ -75,15 +71,15 @@ eg
 	?- X::real, {X*(-60+X*(47+X*(-12+X)))==0}, solve(X).
 	X = 0.0 ;
 	X:: 3.000000... ;
-	X:: 4.00000000000... ;
+	X:: 4.000000000... ;
 	X:: 5.000000... ;
 	false.
 One observation is that the Horner form requires fewer operator instances (e.g., 3 less in the case of `X**4-4*X**3+4*X**2-4*X+3`) which generally means the number of nodes executed in the fixed point iteration loop is small, leading to improved performance. As a general rule re-writing constraints to use fewer operations leads to better performance and narrower results.
 
 The ultimate "pathological" case is {`x^2-2x+1=0`}. This is one of a family of similar quadratics that just reach the X axis, i.e., the X axis is a tangent to the bottom of the parabola, so it takes a reasonably large change in `X` to get appreciably closer to a RHS value of 0. Just using constraint propagation produces a reasonable approximation, dependant on throttling (see flag `clpBNR_iteration_limit`):
- eg
+eg
 	?- X::real, {X**2-2*X+1==0}, writeln(X).
-	_168{real(0.997359377688694,1.002708358193705)}
+	_420{real(0.9973628641317894,1.0027120257957576)}
 	X:: 1.00... .
 But what if more precision is required? You could increase the throttling limit but it takes about ten times the default (i.e., 3000 to 30000) to achieve an extra digit of precsion and it may have a detrimental impact on the propagation of other constraints.
 
@@ -93,24 +89,24 @@ So for this problem, `absolve` is one of the most efficient ways to narrow {`x`}
 eg
 	% default precision for absolve is flag `clpBNR_default_precision` + 2 = 8
 	?- X::real, {X**2-2*X+1==0}, absolve(X), writeln(X).
-	_178{real(0.9998273237777738,1.000211980803252)}
+	_430{real(0.9998277128852692,1.0002122458975686)}
 	X:: 1.000... .
 	
 	?- X::real, {X**2-2*X+1==0}, absolve(X,13), writeln(X).
-	_180{real(0.9999672180005927,1.000039249404795)}
+	_432{real(0.9999673219392335,1.0000393098297864)}
 	X:: 1.0000... .
 But `absolve` by itself is deterministic and doesn't separate roots (not required for this pathological case with only one root). In general the best approach may be to use `solve` with a relatively low precision to separate the roots and `absolve` to subsequently refine the individual solutions. 
 eg
 	?- X::real, {X**2-2*X+1==0}, solve(X,3), absolve(X), writeln(X).
-	_190{real(0.9999755884293553,1.0000246969493995)}
+	_442{real(0.9999768861702931,1.0000244239841742)}
 	X:: 1.0000... ;
 	false.
 As before, expressing the constraint in an equivalent but different form can be useful, e.g., the Horner form for more precision (but note the additional "non-solution"):
 eg
 	?- X::real, {1+X*(-2+X) == 0}, solve(X,3), absolve(X), writeln(X).
-	_184{real(0.9999877319556869,1.0000002209746888)}
-	X:: 1.0000... ;
-	_180{real(1.0000002241604191,1.0000117130335848)}
+	_436{real(0.999988287136063,0.9999997758396579)}
+	X:: 0.9999... ;
+	_432{real(0.9999997790253862,1.000012268250808)}
 	X:: 1.0000... ;
 	false.
 Of course had the constraint been entered in a factored form (eliminating the dependency issue),  it takes just a few operations to converge (no solve necessary), but then you already knew the answer:

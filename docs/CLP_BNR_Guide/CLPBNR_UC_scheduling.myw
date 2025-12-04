@@ -21,91 +21,86 @@ It's fairly straight forward to express CPM problems directly in CLP(BNR). Consi
 		`g`			` 4`		`e,f`
 		`finish`	`  `		`g`
 Representing a task by the term `task(ID, Start, Finish)` the constraints can be defined as:
-```
-activity(ID, Duration, task(ID, Start, Finish)) :-
-	{Finish == Start + Duration}.
-	
-order(task(_,_,Finish), task(_,Start,_)) :-
-	{Finish =< Start}.
-```
+.pl
+	activity(ID, Duration, task(ID, Start, Finish)) :-
+		{Finish == Start + Duration}.
+		
+	order(task(_,_,Finish), task(_,Start,_)) :-
+		{Finish =< Start}.
 and the example project as:
-```
-project(StartT, FinishT, Schedule) :-
-	Start = task(start,StartT,StartT), Finish = task(finish,FinishT,FinishT),
-	Schedule = [A,B,C,D,E,F,G],
-	activity(a, 10, A), order(Start,A),
-	activity(b, 20, B), order(Start,B),
-	activity(c, 30, C), order(Start,C),
-	activity(d, 18, D), order(A,D), order(B,D),
-	activity(e,  8, E), order(B,E), order(C,E),
-	activity(f,  3, F), order(D,F),
-	activity(g,  4, G), order(E,G), order(F,G), order(G,Finish).
-
-print_with_intervals(List) :-
-	foreach(member(Item,List), (print_interval(Item),nl)).
-```
+.pl
+	project(StartT, FinishT, Schedule) :-
+		Start = task(start,StartT,StartT), Finish = task(finish,FinishT,FinishT),
+		Schedule = [A,B,C,D,E,F,G],
+		activity(a, 10, A), order(Start,A),
+		activity(b, 20, B), order(Start,B),
+		activity(c, 30, C), order(Start,C),
+		activity(d, 18, D), order(A,D), order(B,D),
+		activity(e,  8, E), order(B,E), order(C,E),
+		activity(f,  3, F), order(D,F),
+		activity(g,  4, G), order(E,G), order(F,G), order(G,Finish).
+	
+	print_with_intervals(List) :-
+		foreach(member(Item,List), (print_interval(Item),nl)).
 Feasibility problem: can the project be completed in 60 time units? Omitting (redundant) top level output:
-```
-﻿?- project(0, 60, Schedule), print_with_intervals(Schedule), nl.
-task(a,V0::real(0,25),V1::real(10,35))
-task(b,V0::real(0,15),V1::real(20,35))
-task(c,V0::real(0,18),V1::real(30,48))
-task(d,V0::real(20,35),V1::real(38,53))
-task(e,V0::real(30,48),V1::real(38,56))
-task(f,V0::real(38,53),V1::real(41,56))
-task(g,V0::real(41,56),V1::real(45,60))
-```
+eg
+	﻿?- project(0, 60, Schedule), print_with_intervals(Schedule), nl.
+	task(a,V0::real(0,25),V1::real(10,35))
+	task(b,V0::real(0,15),V1::real(20,35))
+	task(c,V0::real(0,18),V1::real(30,48))
+	task(d,V0::real(20,35),V1::real(38,53))
+	task(e,V0::real(30,48),V1::real(38,56))
+	task(f,V0::real(38,53),V1::real(41,56))
+	task(g,V0::real(41,56),V1::real(45,60))
 The output indicates this is possible with significant "floats" for the task start and finish times. Replacing the query finish time with a variable:
-```
-﻿?- project(0, Finish, Schedule), print_with_intervals(Schedule), nl.
-task(a,V0::real(0,1.0Inf),V1::real(10,1.0Inf))
-task(b,V0::real(0,1.0Inf),V1::real(20,1.0Inf))
-task(c,V0::real(0,1.0Inf),V1::real(30,1.0Inf))
-task(d,V0::real(20,1.0Inf),V1::real(38,1.0Inf))
-task(e,V0::real(30,1.0Inf),V1::real(38,1.0Inf))
-task(f,V0::real(38,1.0Inf),V1::real(41,1.0Inf))
-task(g,V0::real(41,1.0Inf),V1::real(45,1.0Inf))
-
-Schedule = [task(a, _A, _B), task(b, _C, _D), task(c, _E, _F), task(d, _G, _H), task(e, _I, _J), task(f, _K, _L), task(g, _M, _N)],
-_B::real(10, 1.0Inf),
-_A::real(0, 1.0Inf),
-_D::real(20, 1.0Inf),
-_C::real(0, 1.0Inf),
-_F::real(30, 1.0Inf),
-_E::real(0, 1.0Inf),
-_H::real(38, 1.0Inf),
-_G::real(20, 1.0Inf),
-_J::real(38, 1.0Inf),
-_I::real(30, 1.0Inf),
-_L::real(41, 1.0Inf),
-_K::real(38, 1.0Inf),
-_N::real(45, 1.0Inf),
-_M::real(41, 1.0Inf),
-Finish::real(45, 1.0Inf).
-```
+eg
+	﻿?- project(0, Finish, Schedule), print_with_intervals(Schedule), nl.
+	task(a,V0::real(0,1.0Inf),V1::real(10,1.0Inf))
+	task(b,V0::real(0,1.0Inf),V1::real(20,1.0Inf))
+	task(c,V0::real(0,1.0Inf),V1::real(30,1.0Inf))
+	task(d,V0::real(20,1.0Inf),V1::real(38,1.0Inf))
+	task(e,V0::real(30,1.0Inf),V1::real(38,1.0Inf))
+	task(f,V0::real(38,1.0Inf),V1::real(41,1.0Inf))
+	task(g,V0::real(41,1.0Inf),V1::real(45,1.0Inf))
+	
+	Schedule = [task(a, _A, _B), task(b, _C, _D), task(c, _E, _F), task(d, _G, _H), task(e, _I, _J), task(f, _K, _L), task(g, _M, _N)],
+	_B::real(10, 1.0Inf),
+	_A::real(0, 1.0Inf),
+	_D::real(20, 1.0Inf),
+	_C::real(0, 1.0Inf),
+	_F::real(30, 1.0Inf),
+	_E::real(0, 1.0Inf),
+	_H::real(38, 1.0Inf),
+	_G::real(20, 1.0Inf),
+	_J::real(38, 1.0Inf),
+	_I::real(30, 1.0Inf),
+	_L::real(41, 1.0Inf),
+	_K::real(38, 1.0Inf),
+	_N::real(45, 1.0Inf),
+	_M::real(41, 1.0Inf),
+	Finish::real(45, 1.0Inf).
 Because there was no "deadline" specified, all the task finish times have an infinite upper bound. However "`Finish`" has a lower bound of 45, suggesting this may be the optimal finish value, so we'll try setting the finish time to its lower bound to see:
-```
-﻿?- project(0, Finish, Schedule), lower_bound(Finish), print_with_intervals(Schedule), nl.
-task(a,V0::real(0,10),V1::real(10,20))
-task(b,0,20)
-task(c,V0::real(0,3),V1::real(30,33))
-task(d,20,38)
-task(e,V0::real(30,33),V1::real(38,41))
-task(f,38,41)
-task(g,41,45)
-
-Finish = 45,
-Schedule = [task(a, _A, _B), task(b, 0, 20), task(c, _C, _D), task(d, 20, 38), task(e, _E, _F), task(f, 38, 41), task(g, 41, 45)],
-_B::real(10, 20),
-_A::real(0, 10),
-_D::real(30, 33),
-_C::real(0, 3),
-_F::real(38, 41),
-_E::real(30, 33).
-```
+eg
+	﻿?- project(0, Finish, Schedule), lower_bound(Finish), print_with_intervals(Schedule), nl.
+	task(a,V0::real(0,10),V1::real(10,20))
+	task(b,0,20)
+	task(c,V0::real(0,3),V1::real(30,33))
+	task(d,20,38)
+	task(e,V0::real(30,33),V1::real(38,41))
+	task(f,38,41)
+	task(g,41,45)
+	
+	Finish = 45,
+	Schedule = [task(a, _A, _B), task(b, 0, 20), task(c, _C, _D), task(d, 20, 38), task(e, _E, _F), task(f, 38, 41), task(g, 41, 45)],
+	_B::real(10, 20),
+	_A::real(0, 10),
+	_D::real(30, 33),
+	_C::real(0, 3),
+	_F::real(38, 41),
+	_E::real(30, 33).
 Indeed, `45` is the minimal project finish time. Some of the tasks (`a`, `c`, and `e`) still have "floats" in their start/finish time while the others (`b`, `d`, `f` and `g`) are on the "critical path".
 
-In general, optimization is more difficult than feasibility and may require branch-and-bound or directed search techniques described in earlier sections ([Travelling Salesman] or [Global Optimzation]) so some justification of just setting the `Finish` time to its lower bound is required. We know that there is no guarantee that the lower bound of a constrained interval is, in fact, a point solution. Indeed it usually isn't due to outward rounding of calculated floating point values and the effect of the dependency problem which prevent optimal narrowing during constraint propagation. However, it is valid in this case due to two reasons. First the interval bounds are precise (integer values) so rounding is not an issue. Second all the interval relations (addition and inequality) used by the constraints are "interval convex". Without going into the theory, this ensures that the bounds are in fact solutions. 
+In general, optimization is more difficult than feasibility and may require branch-and-bound or directed search techniques described in earlier sections ([Travelling Salesman] or [Global Optimization]) so some justification of just setting the `Finish` time to its lower bound is required. We know that there is no guarantee that the lower bound of a constrained interval is, in fact, a point solution. Indeed it usually isn't due to outward rounding of calculated floating point values and the effect of the dependency problem which prevent optimal narrowing during constraint propagation. However, it is valid in this case due to two reasons. First the interval bounds are precise (integer values) so rounding is not an issue. Second all the interval relations (addition and inequality) used by the constraints are "interval convex". Without going into the theory, this ensures that the bounds are in fact solutions. 
 aside> Aside: More on interval convexity can be found in [Applying Interval Arithmetic to Real, Integer and Boolean Constraints]. Convex relations and solvable relations are interval convex. A relation is convex if for every two points in it, the line segment between them is also in it; it is solvable if it can be uniquely solved for each of its variables as a continuous function of the remaining variables. Many of the the narrowing primitives are interval convex everywhere (`==, =<, +, -, exp, log, max, min,` odd powers) and the rest (`*, /, abs,' odd powers and trigonometric functions) over smaller states.
 
 ##### The Job Shop Scheduling Problem (Disjunctive Scheduling)
@@ -361,7 +356,7 @@ The job shop scheduling problem has been the subject of much research and the in
 &
 	[Applying Interval Arithmetic to Real, Integer and Boolean Constraints] <- link https://ridgeworks.github.io/BNRProlog-Papers/docs/ApplyingInterval.pdf
 	[Travelling Salesman] <- link #toc4Pruning_the_Seach_Tree_-_The__Travelling_Salesman__Problem
-	[Global Optimzation] <- link #toc4Global_Optimization
+	[Global Optimization] <- link #toc4Global_Optimization
 	[Google Job Shop Problem] <- link https://developers.google.com/optimization/scheduling/job_shop
 	[JSS test data] <- link https://github.com/tamy0612/JSPLIB
 	[Appendix 3] <- link #toc4Appendix_3_-_Scheduling_Code

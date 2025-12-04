@@ -168,7 +168,7 @@ int_(Z,X,p,NewZ,X) :-                       % persistent cases
 	^(Z,(B,B),NewZ).
 	
 int_(Z,X,P,NewZ,NewX) :-                % possible narrowing case
-	(Z == (1,1) 
+	(Z = (1,1) 
 	 -> integral_(X,NewX),              % Z true, narrow X to integers
 	    (NewX = (N,N) -> P=p ; true),   % persistent if a point
 	    NewZ = Z
@@ -259,7 +259,7 @@ le_int_((1,1),Xl,Xh,Yl,Yh,P,$((1,1),(Xl,NXh),(NYl,Yh))) :- !,  % common case, na
 	NYl is maxr(Xl,Yl),                               % NewY := (NYl,Yh)
 	(non_empty(NXh,NYl) -> P=p ; true).               % now persistant?
 le_int_(Z,Xl,Xh,Yl,Yh,P,$(NewZ,NewX,NewY)) :- !,
-	(Z == (0,0)
+	(Z = (0,0)
 	 -> le_int_((1,1),Yl,Yh,Xl,Xh,P,$(_,NewY,NewX)),  % false so Y =< X (Y < X is unsafe)
 	 	NewZ = Z
 	 ;  NewX = (Xl,Xh), NewY = (Yl,Yh),               % indeterminate, X and Y unchanged
@@ -287,7 +287,7 @@ lt_int_((1,1),Xl,Xh,Yl,Yh,P,$((1,1),(Xl,NXh),(NYl,Yh))) :- !,  % common case, na
 	NYl is maxr(XlU,Yl),                              % NewY := (NYl,Yh)
 	(non_empty(NXh,NYl) -> P=p ; true).               % now persistent?
 lt_int_(Z,Xl,Xh,Yl,Yh,P,$(NewZ,NewX,NewY)) :- !,
-	(Z == (0,0)
+	(Z = (0,0)
 	 -> lt_int_((1,1),Yl,Yh,Xl,Xh,P,$(_,NewY,NewX)),  % false so Y < X
 	    NewZ = Z
 	 ;  NewX = (Xl,Xh), NewY = (Yl,Yh),               % indeterminate, X and Y unchanged
@@ -308,7 +308,7 @@ next_lt_(V,  1, NV) :- NV is minr(V+1,nexttoward(V, 1.0Inf)).
 narrowing_op(in, P, $(Z, X, Y), $(NewZ, NewX, Y)):-
 	% Only two cases: either X and Y intersect or they don't.
 	(^(X,Y,X1)               % X1 is intersection of X and Y
-	 -> (Z == (1,1) 
+	 -> (Z = (1,1) 
 	     -> NewX = X1        % Z true, X must be subinterval of Y
 	     ;  NewX = X,        % Z is false or indeterminate, X unchanged
 	        ^(Z,(0,1),NewZ)  % Z boolean
@@ -339,7 +339,7 @@ narrowing_op(add, _, $((Zl,Zh), (Xl,Xh), (Yl,Yh)), $((NZl,NZh), (NXl,NXh), (NYl,
 
 % Z==X*Y
 
-narrowing_op(mul, _, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
+narrowing_op(mul, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	intCase(Cx,X),
 	intCase(Cy,Y),
 	multCase(Cx,Cy,X,Y,Z,NewZ),                       % NewZ := Z ^ (X*Y)
@@ -351,7 +351,11 @@ narrowing_op(mul, _, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	(Y == Yp, X \== NewX                              % if Y didn't narrow and X did
 	 -> intCase(CNx,NewX),
 	    odivCase(CNz,CNx,NewZ,NewX,Y,NewY)            % re calculate: NewY := Y ^ NewZ/NewX
-	 ;  NewY = Yp
+	 ;  NewY = Yp,
+	    ( ((zero_int(NewX), finite_int(NewY)) ; (zero_int(NewY), finite_int(NewX)))
+	     -> P=p  % if X or Y = 0, and other finite, persistent 
+	     ;  true
+	    )  
 	).
 /*  general case, but sub-par performance since some re-calculations unnecessary
 narrowing_op(mul, _, $(Z,X,Y), New) :-
@@ -730,7 +734,7 @@ sinSector_(S,(Xl,Xh),(Zl,Zh),(ZlIn,ZhIn),(ZlOut,ZhOut)) :-
 	).
 
 asin_(Z,S,X,NX) :- 
-	( Z == (-1.0,1.0)
+	( Z = (-1.0,1.0)
 	 -> NX = X                             % no narrowing of X possible based on Z
 	 ;  S = (Sl,Sh),
 	    (Sl == Sh
@@ -820,7 +824,7 @@ cosSector_(S,(Xl,Xh),(Zl,Zh),(ZlIn,ZhIn),(ZlOut,ZhOut)) :-
 	).
 
 acos_(Z,S,X,NX) :- 
-	( Z == (-1.0,1.0)
+	( Z = (-1.0,1.0)
 	 -> NX = X                             % no narrowing of X possible based on Z
 	 ;  S = (Sl,Sh),
 	    (Sl == Sh

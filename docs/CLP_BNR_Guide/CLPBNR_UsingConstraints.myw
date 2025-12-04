@@ -462,7 +462,7 @@ A "magic series" of order `N` can be thought of as finding a sequence `T = [M0, 
 	occurrences(X,List,N):- 
 		N::integer(0,_),           % number of occurrences is positive
 		occurrenceBs_(List,X,Bs),  % create booleans which are true if corresponding list element is an occurrence
-		sym_sum(Bs,S), {N == S}.   % sum booleans to find number of occurrences
+		sym_sum(Bs,S), {N is S}.   % sum booleans to find number of occurrences
 
 	occurrenceBs_([], _, []).
 	occurrenceBs_([X|Xs], Y, [B|Bs]) :- 
@@ -496,7 +496,7 @@ eg
 	?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.13800300000000004), gcTime(0.0), globalStack(54440/524256), trailStack(664/264168), localStack(2152/118648), inferences(978515), narrowingOps(33577), narrowingFails(73), node_count(190), max_iterations(484/3000)],
+	SS = [userTime(0.16745899999999736), gcTime(0.0), globalStack(53976/524256), trailStack(344/264168), localStack(2152/118648), inferences(1221201), narrowingOps(36412), narrowingFails(73), opCounts([]), node_count(190), max_iterations(414/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -507,7 +507,7 @@ eg
 	_H::integer(0, 10),
 	_I::integer(0, 10),
 	_J::integer(0, 10).
-Looking at the statistics for `N=10`, we see that finding the single solution took 33577 narrowing operations with 73 failures.
+Looking at the statistics for `N=10`, we see that finding the single solution took 33892 narrowing operations with 73 failures.
 
 In thinking about the problem, you may have discovered that the sum of the the series must equal its length (the total number of elements). If this fact is used as a redundant constraint:
 .pl
@@ -520,7 +520,7 @@ eg
 	?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.049680999999999975), gcTime(0.001), globalStack(57504/524256), trailStack(1752/264168), localStack(2152/118648), inferences(344821), narrowingOps(10272), narrowingFails(41), node_count(199), max_iterations(630/3000)],
+	SS = [userTime(0.05545100000000147), gcTime(0.001), globalStack(54144/524256), trailStack(760/133096), localStack(2152/118648), inferences(397307), narrowingOps(10841), narrowingFails(41), opCounts([]), node_count(199), max_iterations(690/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -550,7 +550,7 @@ eg
 	?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.019751000000000074), gcTime(0.0), globalStack(221824/524256), trailStack(29112/264168), localStack(2152/118648), inferences(131353), narrowingOps(3082), narrowingFails(41), node_count(159), max_iterations(247/3000)],
+	SS = [userTime(0.019294000000002143), gcTime(0.0), globalStack(37960/262112), trailStack(760/133096), localStack(2152/118648), inferences(136020), narrowingOps(2638), narrowingFails(41), opCounts([]), node_count(161), max_iterations(292/3000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 5),

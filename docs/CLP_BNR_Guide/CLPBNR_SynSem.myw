@@ -125,6 +125,35 @@ eg
 	?- X::real(-10,10), Y::real(50,100), X=Y.
 	false.
 Note that the `write` family of predicates will output the interval attribute as its domain. For this to occur the write `attribute` option should be set to `portray` (`clpBNR` sets this value as the default). If this option is ever set to `write`, an infinite print loop (and probably a crash) will result due to the internal internal structure of `clpBNR` attributes. Bottom line, never use the `attribute(write)` option when outputting intervals.
+
+#### Rounding in the "Real" World
+
+In the computer world, computer languages that support floating point arithmetic (i.e., the vast majority) will interpret the constant '`0.5`' as '0.500000...' expressed to the limit of the floating point implementation. But many such (decimal) constants cannot be precisely represented in such a binary format. `clpBNR` avoids this problem by representing imprecise values as intervals:
+eg
+	?- {X == 0.5, Y == 0.1}.
+	 X = 0.5,
+	 Y:: 0.1000000000000000... .
+But in the real world there is another interpretation of '`0.5`'; it is a value between `0.495` and `0.505`. In this case, the precision of the value is specified by the syntax, i.e., the number of digits used to express the value. Now this can always be expressed explicitly by declaring the interval (Note the additional rounding due to decimal to binary conversion):
+eg
+	?- X::real(0.495,0.505), write(X).
+	_74328{real(0.49499999999999994,0.5050000000000001)}
+	X:: 0.5... .
+But this can be a bit awkward. As an alternative, `clpBNR` supports a string format of numeric constants which uses the actual number of digits in the number string to express precision as a `real` interval`:
+eg
+	?- X::"0.5".
+	X::real(0.44999999999999996, 0.5500000000000002).
+	
+	?- X::"0.5000",domain(X,Dom).
+	Dom = real(0.49994999999999995, 0.5000500000000001),
+	X:: 0.500... .
+Integer syntax is supported but floating point exponential notation is not:
+eg
+	?- X::"100".
+	X::real(99.94999999999999, 100.05000000000001).
+	
+	?- X::"0.5e3".
+	false.
+Numeric strings can also be used in constraint expressions (see below).
  
 <#TableOfContents>
 
@@ -160,6 +189,10 @@ In some cases, variables can even be narrowed to a point value resulting in unif
 eg
 	?- {X**3==8}.
 	X = 2.
+Numeric strings can also be used in constraints:
+eg
+	?- {X == pi+"0.5"}.
+	X::real(3.591592653589793, 3.691592653589794).
 An example involving two intervals:
 eg
 	?- Y::real(1,3), {X**2==Y}.
@@ -273,9 +306,9 @@ For quadratics like this example, one can do additional pre-processing to find t
 `solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
 eg
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 8,985,449 inferences, 1.470 CPU in 1.472 seconds (100% CPU, 6112334 Lips)
+	% 9,921,012 inferences, 1.634 CPU in 1.638 seconds (100% CPU, 6070221 Lips)
 	X::real(-1, 1),
-	Y::real(-0.25000033051854986, 2).
+	Y::real(-0.25000033051854986, 2.0).
 It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
 
 Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared as shown to avoid floating point overflows when dealing with large powers):
@@ -314,20 +347,19 @@ eg
 	
 	?- {X==0.0,Y==10.01,S==X+Y*Z},Z::real(-1r2,1r2).
 	X = 0.0,
-	Y::real(10.009999999999998, 10.010000000000002),
+	(Y::real(10.009999999999998, 10.010000000000002), {S==Y*Z}),
 	(S::real(-5.005000000000001, 5.005000000000001), {S==Y*Z}),
-	Z::real(-1r2, 1r2).
+	(Z::real(-1r2, 1r2), {S==Y*Z}).
 
 Other than for simple problems, the "verbose" output can be overwhelming since it must include the entire constraint network including auxiliary intervals created when decomposing complex constraint expressions to primitive operations. The `interval_goals/2` predicate can be used to find the constraint goals for just a specific interval including only the auxiliary variables required to constrain that interval. From a previous example:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, interval_goals(X,XGs),  interval_goals(Y,YGs).
-	XGs = [(X::real(-1.1892071150027215, 1.1892071150027215), {[_A==X**2, _B==X**2]})],
-	YGs = [(Y::real(0.7653668647301787, 1.4142135623730954), {[_C==Y**2, Y==0+_B]})],
+	XGs = [(X::real(-1.1892071150027215, 1.1892071150027215), {[_A==X**2, Y==X**2]})],
+	YGs = [(Y::real(0.7653668647301787, 1.4142135623730954), {[_B==Y**2, Y==X**2]})],
 	X::real(-1.1892071150027215, 1.1892071150027215),
 	Y::real(0.7653668647301787, 1.4142135623730954),
-	_C::real(0.5857864376269037, 2),
-	_A::real(0, 1.4142135623730963),
-	_B::real(0.7653668647301787, 1.4142135623730954).
+	_A::real(0.0, 1.4142135623730963),
+	_B::real(0.5857864376269037, 2.0).
 
 Note that the constraint network is constructed incrementally, constraint by constraint, so it can't easily pre-optimize things like common expressions across individual constraints. A more efficient network with improved narrowing performance (by removing multiple occurrences) is achievable through simple hand optimizations when specifying the constraints, e.g.,
 eg
@@ -613,7 +645,7 @@ eg
 	
 	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
 	X = Y,
-	Y::real(-7000.0, 10000.0).
+	Y::real(-10000.0, 7000.0).
 	
 	?- X::real(-1e3,1e3), {X==Y+1,Y==X}.
 	false.
@@ -643,15 +675,15 @@ eg
 	false.
 Sometimes the dependency can broken by re-expressing the problem:
 eg
-	﻿?- [X,Y]::integer(-1200,1200), {Y>abs(X),Y==X}.
+	?- [X,Y]::integer(-1000,1000), {Y>abs(X),Y==X}.
 	false.
 	
-	?- [X,Y]::integer(-1201,1201), {Y>abs(X),Y==X}.
+	?- [X,Y]::integer(-1001,1001), {Y>abs(X),Y==X}.
 	X = Y,
-	Y::integer(600, 601).
+	Y::integer(500, 501).
 But there's a limit to the size of the domain as illustrated by the second query. In this case throttling has again terminated the fixed point iteration. As before, `solve` can be used as to break the impasse:
 eg
-	﻿?- [X,Y]::integer(-12001,12001), {Y>abs(X),Y==X}, solve(X).
+	﻿?- [X,Y]::integer(-10001,10001), {Y>abs(X),Y==X}, solve(X).
 	false.
 
 The failure to "fail" in the face of inconsistent constraints isn't wrong according to the interpretation of positive answers documented above. It's just that the conditions weren't right to cause failure. So it's important to interpret any positive answers with this issue in mind.

@@ -16,21 +16,17 @@ eg
 The global optimization perdicates provided use the Moore-Skelboe algorithm (see [New Computer Methods for Global Optimization]) to find global optima to the precision specified by the `clpBNR_default_precision` flag (default 6 digits). Note that while a minimum value is generated (`Z:: 6.00000...`), `X` has not narrowed at all. However, `X` is now constrained by `Z`, i.e., `{X*(X*(X-6)+9)+6==Z}`. In general, there may be many values of `X` (a *minimimizer*) where the minimum value occurs. (In this example there is a global minimum at two places, only one of which is a local minimum). To find the minimizer(s), use `solve/1`:
 eg
 	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X).
-	X::real(0, 2.384186359449995e-7),
-	Z:: 6.00000... ;
-	X:: 2.999154...,
+	X:: 0.000000...,
 	Z:: 6.00000... ;
 	X:: 3.00...,
 	Z:: 6.00000... ;
-	X:: 3.0008458...,
-	Z:: 6.000002... ;
-	X:: 3.0008461...,
-	Z:: 6.000002... ;
+	X:: 3.000845...,
+	Z:: 6.00000... ;
 	false.
 As with finding roots, `solve` may return several superfluous solutions due to floating point inaccuracies, but `absolve/1` may be effective at eliminating at least some of them, as in this case:
 eg
 	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X), absolve(X).
-	X::real(0, 2.384186359449995e-7),
+	X:: 0.000000...,
 	Z:: 6.00000... ;
 	X:: 3.00...,
 	Z:: 6.00000... ;
@@ -38,7 +34,7 @@ eg
 This example has two global minima, `0.0` and `3.0` - only the latter is also a local minimum. Also note that while `Z` has 6 digit precision, `X` has considerable less (the imprecision of `Z` is amplified in generating `X`). To get more precise answers, the precision of the `global_minimum` calculation must be increased:
 eg
 	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z,8), solve(X), absolve(X).
-	X::real(0, 1.8626452502304133e-9),
+	X:: 0.00000000...,
 	Z:: 6.0000000... ;
 	X:: 3.000...,
 	Z:: 6.0000000... ;
@@ -330,7 +326,7 @@ eg
 	RegFor:: 12283.4...,
 	PremDom:: 2275.83...,
 	PremFor:: 2731.00...,
-	Regular::real(50000, 50000.009897958356),
+	Regular:: 50000.00...,
 	Premium:: 5006.8...,
 	Profit:: 124940.2...,
 	Domestic:: 39992.4...,
@@ -341,7 +337,7 @@ eg
 	RegFor:: 12283.4...,
 	PremDom:: 2275.83...,
 	PremFor:: 2731.00...,
-	Regular::real(50000, 50000.00989796513),
+	Regular:: 50000.00...,
 	Premium:: 5006.8...,
 	Profit:: 124940.2...,
 	Domestic:: 39992.4...,
@@ -361,7 +357,7 @@ eg
 	RegFor:: 12273.5...,
 	PremDom:: 2272.86...,
 	PremFor:: 2727.44...,
-	Regular::real(50000, 50000.00776354412),
+	Regular:: 50000.00...,
 	Premium:: 5000.30...,
 	Profit:: 124994.6...,
 	Domestic:: 39999.2...,
@@ -372,7 +368,7 @@ eg
 	RegFor:: 12273.5...,
 	PremDom:: 2272.8...,
 	PremFor:: 2727.44...,
-	Regular::real(50000, 50000.007763548296),
+	Regular:: 50000.00...,
 	Premium:: 5000.3...,
 	Profit:: 124994.7...,
 	Domestic:: 39999.2...,
@@ -475,7 +471,7 @@ As an extreme example consider "[The Stigler Diet Problem]" which has 9 linear c
 
 This example is taken from an ECLiPSe [Mathematical Programming tutorial]. The problem is to minimize the total transportation cost given several production plants are producing product to be delivered to various clients. Associate with each plant-client pair is a per-unit cost of transportation. The detailed data for this example are specified in the figure below.
 [transportation_img]
-Then constraints on this problem include ensuring that the amount of product delivers must meet the clients' demands and that the amount of product shipped from a plant does not exceed it's capacity. The variables represent the amount of product that is shipped from each plant (`1` to `3`) to each client (`A` to `D`) so:
+Then constraints on this problem include ensuring that the amount of product delivered must meet the clients' demands and that the amount of product shipped from a plant does not exceed its capacity. The variables represent the amount of product that is shipped from each plant (`1` to `3`) to each client (`A` to `D`) so:
 eg
 	{
 	  A1 + A2 + A3 == 21,
@@ -865,14 +861,14 @@ A simple example of unconstrained optimization with and without local optima con
 eg
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z).
 	X:: 7.8...,
-	Z:: 61.685... .
+	Z:: 61.6850... .
 	
 	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
-	X:: 7.849654...,
+	X:: 7.849653...,
 	Z:: 61.68501... ;
 	X:: 7.8...,
 	Z:: 61.6850... ;
-	X:: 7.8583098...,
+	X:: 7.8583091...,
 	Z:: 61.685009... ;
 	false.
 	
@@ -937,19 +933,14 @@ A number of global, local, and linear optimization predicates, in combination wi
 
 A second issue is that the objective function passed to global optimum predicates must contain sufficient free values (intervals) so that solutions can be fully tested. Consider the following simple change to the "Refinery Location" example:
 eg
-	﻿?- X::real(0,700),Y::real(0,400),
+	?- X::real(0,700),Y::real(0,400),
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	local_minima(OF), {OF==Z}, global_minimize(Z,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	Z = Pipe,
-	X::real(252.01219606805694, 477.33314783677343),
-	Y::real(187.04621281998413, 400),
-	Pipe:: 691.019... .
-	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
-	Z = Pipe,
-	X::real(252.05094291873826, 477.3055624803503),
-	Y::real(187.11279407425894, 400),
-	Pipe:: 691.019... .
+	X::real(240.10409027359816, 465.437905377169),
+	Y::real(169.110671960403, 400.0),
+	Pipe:: 693.256... .
 Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependency problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to further constrain `X` and `Y`, it will fail:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),

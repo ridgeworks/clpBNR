@@ -96,8 +96,8 @@ user:expand_answer(Bindings,Bindings) :-              % for toplevel answer cont
 add_names_([],_,_).
 add_names_([Name = Var|Bindings],Verbose,IntFlag) :-
 	(get_interval_flags_(Var,Flags)
-	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),         % mainly to attach Verbose
-	    (Verbose == false -> reset_interval_nodelist_(Var) ; true),  % Nodes restored on backtrack
+	 -> set_interval_flags_(Var,[name(Name,Verbose)|Flags]),            % mainly to attach Verbose
+	    (Verbose == false -> update_interval_nodelist_(Var,_) ; true),  % Nodes restored on backtrack
 	    IntFlag = true
 	 ;  term_attvars(Var,AVars),                     % Var not an interval, but may contain them
 	    nested_bindings_(AVars,Var,NBindings),       % new bindings
@@ -190,46 +190,46 @@ constraint_goal(Cs, Decl,[(Decl,{Cs})]).
 %  Simplified output format for interval ranges
 %
 % 1. Any 'real' rational bounds output as floats (conservatively rounded).
-% 2. Any subnormal bounds converted to zero.
+% 2. Virtual zero when abs(Bound) < 1E-17 (includes integer 0), output as 0.0...
 % 3. Sufficiently narrow reals output in ellipsis format.
-% 4. Any real intervals with bounds zero or subnormal output as 0.0...
-% 5. Query interval variables output as V = V::Domain
-% 6. Subterm intervals as sub-terms printed as domain (Type(L,H)).
+% 4. Query interval variables output as V = V::Domain
+% 5. Subterm intervals as sub-terms printed as domain (Type(L,H)).
 %
 intValue_((0,1),integer,boolean).                  % boolean
-intValue_((L,H),real,'$clpBNR...'(Out)) :-         % virtual zero (zero or subnormal) 
+intValue_((L,H),Type,Dom) :-                       %% two integers
+	integer(L), integer(H), !,
+	interval_domain_(Type, (L,H), Dom).
+intValue_((L,H),real,'$clpBNR...'(Out)) :-         % virtual zero 
 	zero_float_(L),
 	zero_float_(H), !,
 	format(chars(Zero),"~16f",[0.0]),
 	string_chars(Out,[' '|Zero]).                  % space prefix 
 intValue_((L,H),real,'$clpBNR...'(Out)) :-         % two floats with minimal leading match
-	float_chars_(L,LC),
-	float_chars_(H,HC),
+	(L = -0.0, H  >  0.0 -> Lf =  0.0 ; Lf = L),   % special cases with zero bound
+	(L <  0.0, H =:= 0.0 -> Hf = -0.0 ; Hf = H),
+	as_float_(Lf,FL), float_chars_(FL,LC),
+	as_float_(Hf,FH), float_chars_(FH,HC),
 	sign_chars_(LC,HC,ULC,UHC,Codes/Match),
 	leading_zero(ULC,UHC,ZLC),
 	matching_(ZLC,UHC,Match,0,Dec,MLen),
 	MLen>Dec+1, !,	% minimum of one matching digit after decimal point
 	string_codes(Out,Codes).
 intValue_((L,H),Type,Dom) :-                       % default, just convert rationals
-	rational_fraction_(L,FL),
-	rational_fraction_(H,FH),
+	as_float_(L,FL),
+	as_float_(H,FH),
 	interval_domain_(Type, (FL,FH), Dom).
 
-zero_float_(B) :- float(B), float_class(B,C), (C=zero ; C=subnormal).
+as_float_(B,F) :-
+	(float(B)
+	 -> (float_class(B,subnormal) -> F = 0.0 ; F = B)
+	 ;  F is float(B)
+	).
 
-float_chars_(B,Cs) :-
-	rational_fraction_(B,F),
-	float(F), float_class(F, normal),
+zero_float_(B) :- float(B) -> abs(B) < 1E-17 ; B==0.  % allows non-float bound == 0
+
+float_chars_(F,Cs) :-
 	format(chars(Cs),'~16f',[F]),  % same length after '.' (pads with trailing 0's)
 	length(Cs,Len), Len=<32.       % reverts to precise format if too long
-
-rational_fraction_(B,FB) :-
-	rational(B,_,D), D \= 1, !,    % non-integer rational
-	FB is float(B).
-rational_fraction_(F,0.0) :- 
-	float(F),
-	float_class(F,subnormal), !.
-rational_fraction_(B,B).
 
 sign_chars_(['-'|LC],['-'|HC],HC,LC,[' ','-'|T]/T) :- !.  % negate, save sign and reverse bounds
 sign_chars_(LC,HC,LC,HC,[' '|T]/T).  % need a character that doesn't print: 2=STX (Start of Text)
@@ -240,7 +240,7 @@ leading_zero(ULC,_,ULC).
 % Note: match should never be exact (L=H) so [] case not required
 % matching_([],[],[],N,Dec,N).
 matching_([C,'.'|LCs],[C,'.'|HCs],[C,'.'|Cs],N,Dec,Nout) :-   !, % absorbing "."
-	digit_(C,_),
+	char_type(C,decimal),
 	Dec is N+1,
 	N1 is N+2,
 	matching_(LCs,HCs,Cs,N1,Dec,Nout).
@@ -250,7 +250,7 @@ matching_([LC,'.',LC1|LCs],[HC,'.',HC1|HCs],[HC,'.'|Cs],N,Dec,Nout) :-  !,  % ab
 	N1 is N+2,
 	matching_([LC1|LCs],[HC1|HCs],Cs,N1,Dec,Nout).
 matching_([C|LCs],[C|HCs],[C|Cs],N,Dec,Nout) :- !,  % matching digit
-	digit_(C,_),
+	char_type(C,decimal),
 	N1 is N+1,
 	matching_(LCs,HCs,Cs,N1,Dec,Nout).
 matching_([LC,LC1|LCs],[HC,HC1|HCs],[HC|Cs],N,Dec,Nout) :- % match after rounding
@@ -261,12 +261,10 @@ matching_(_LCs,_HCs,[],N,Dec,N) :-                  % non-matching after '.'
 	nonvar(Dec). 
 
 digit_match_(LC,LC1,HC,HC1) :-  % rounding test if first digits different
-	digit_(LC,L), digit_(LC1,L1), digit_(HC,H), digit_(HC1,H1),
+	char_type(LC,decimal(L)), char_type(LC1,decimal(L1)),
+	char_type(HC,decimal(H)), char_type(HC1,decimal(H1)),
 	H is (L+1) mod 10,
 	L1 >= 5, H1 < 5.
-
-% char test for properly formatted number 
-digit_(DC,D) :- atom_number(DC,D), integer(D), 0=<D,D=<9.
 
 /** 
 enumerate(?Term:term_List) is nondet

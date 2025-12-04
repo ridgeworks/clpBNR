@@ -125,7 +125,7 @@ Many predicates accept a list of intervals as an argument. In most cases if the 
 
 *	*Intervals* - a single interval or a list of *Intervals*
 *	*Constraints* - a single constraint, a sequence of comma-separated *Constraints*, or a list of *Constraints*
-*	*DomainSpec* - a domain of the form `Type(Lower,Upper)`; on input (+ mode), `Type` by itself implies default bounds
+*	*DomainSpec* - a domain of the form `Type(Lower,Upper)`; on input (+ mode), `Type` by itself implies default bounds. Alternatively, a numeric string (syntactically a number in double quotes) can express a `real` domain with precision controlled by the number of digits (see examples below).
 *	*Exp* - a valid `clpBNR` expression (see [{ +Constraints }]).  
 
 .pred	*+Intervals* **::** *?DomainSpec*
@@ -163,6 +163,21 @@ eg
 	
 	﻿?- X::real(-10,10), X::real(20,99).
 	false.
+	
+	?- X::"0.5".
+	X::real(0.44999999999999996, 0.5500000000000002).
+	
+	?- X::"0.5000",domain(X,Dom).
+	Dom = real(0.49994999999999995, 0.5000500000000001),
+	X:: 0.500... .
+	
+	?- X::"100".
+	X::real(99.94999999999999, 100.05000000000001).
+	
+	?- X::"0.5e3".
+	false.
+Note that the exponent form of floating point numbers is not supported for numeric strings.
+
 Any rational bound value (includes integers) will be treated as a precise value; any floating point value is assumed to be imprecise and will be rounded outward:
 eg
 	﻿?- X::real(0.5,1.5), writeln(X).
@@ -197,6 +212,7 @@ Notes:
 	* `log/1` returns logarithms to base {`e`}. 
 	* Types for variables which aren't intervals will have their initial types inferred from the constraint expression. Bounds will set to `±inf` (even for type `integer`).
 	* `integer/1` is for use primarily in boolean expressions, e.g., (`{(Year < 1583) or integer(Year/4)}`). For most uses, the interval type `integer` will suffice.
+	* Numeric strings can be used in constraint expressions to control rounding of `real` domains.
 eg
 	?- {X>=Y}.
 	Y::real(-1.0Inf, 1.0Inf),
@@ -221,12 +237,11 @@ eg
 	
 	﻿?- {X<>1.5}.
 	false.
-
+	
+	?- {X == pi+"0.5"}.
+	X::real(3.591592653589793, 3.691592653589794).
 The interval arithmetic system operates with values but some symbolic analysis done when the constraint is built to simplify constraint expressions. However many "identity" expressions will not be recognized:
 eg
-	﻿?- {Y==X-X}.
-	Y = 0.
-	
 	﻿?- {Y==exp(log(X)), Z==sin(X)**2+cos(X)**2}.
 	Y::real(0.0, 1.0Inf),
 	X::real(0.0, 1.0Inf),
@@ -236,6 +251,16 @@ eg
 	Y:: 0.78539816339744...,
 	X:: 0.785398163397448...,
 	Z:: 1.00000000000000... .
+	
+	% `X-X` is not zero if `X`'s domain includes infinities
+	?- {Y==X-X}.
+	Y::real(-1.0Inf, 1.0Inf),
+	X::real(-1.0Inf, 1.0Inf).
+	
+	% but 
+	?- X::real,{Y==X-X}.
+	Y = 0,
+	X::real(-1.0e+16, 1.0e+16).
 
 .pred	**absolve**(*+Intervals*), **absolve**(*+Intervals, ++Integer*)
 **absolve** narrows one or more *Intervals* by "nibbling" bounds from the outside in until sub-ranges at the boundaries cannot be eliminated. The *Integer* "precision" argument (default value determined by flag `clpBNR_default_precision`) is the limit on the number of steps performed and controls the size of the sub-range, which is successively halved at each step. Unlike the rest of the **solve** family, **absolve** is deterministic.

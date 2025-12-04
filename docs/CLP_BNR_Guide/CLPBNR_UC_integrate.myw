@@ -141,20 +141,19 @@ eg
 	P = 4,
 	X::real(0, 1),
 	Yi:: 1.0...,
-	Yerr::real(-0.008159239482386949, 0.005556263802853234) ;
+	Yerr::real(-0.008462195387016425, 0.00585921970748271) ;
 	P = 6,
 	X::real(0, 1),
 	Yi:: 1.00...,
-	Yerr::real(-0.004178671058648331, 0.004015915278919868) ;
+	Yerr::real(-0.004193668056137856, 0.004030912276409504) ;
 	P = 8,
 	X::real(0, 1),
 	Yi:: 1.0...,
-	Yerr::real(-0.01512471230332646, 0.015114539795394899) ;
+	Yerr::real(-0.04262726865496713, 0.042617096147039346) ;
 	P = 10,
 	X::real(0, 1),
-	Yi::real(-9658.266090581797, 9660.266089946015),
-	Yerr::real(-9659.266090581797, 9659.266089946015).
-
+	Yi::real(-2526.6339009466365, 2528.6339003108496),
+	Yerr::real(-2527.6339009466365, 2527.6339003108496).
 In this case (backwards computation of `Yi` from a final condition) any increase in `P` beyond `6` actually has a detrimental effect in the accuracy of the `Yi` (although it still contains the precise value, so it's not wrong). This would appear to be a symptom of instability in the numerical integration algorithm as discussed above; the accumulated rounding errors with decreased step size is overwhelming any increase in precision due to that decrease. But why does that not occur for the forward calculation ( computing `Yf`)?
 
 The problem occurs because the calculation of `Yi` from a final value  (`1/e` in this example) is done by backwards propagation after the constraint network is built forward from the as yet undefined initial value (default finite real interval). But the rounding errors are accumulated in the forward direction from the rather large initial `Y` domain and this accumulation is more than enough to offset any gains realized in the backward propagation from a precise final value. This suggests constraining `Y` to a smaller initial domain would result in a smaller accumulation of rounding errors and should help mitigate the problem. (As is usually the case, more constraints is a good thing.)
@@ -166,22 +165,22 @@ eg
 	X::real(0, 1),
 	Y::real(0, 2),
 	Yi:: 1.0...,
-	Yerr::real(-0.007912639651729836, 0.006784689838181146) ;
+	Yerr::real(-0.0077856586637991, 0.006364902067367728) ;
 	P = 6,
 	X::real(0, 1),
 	Y::real(0, 2),
 	Yi:: 1.00...,
-	Yerr::real(-0.001583608896701283, 0.003393637996669918) ;
+	Yerr::real(-0.001375547644062003, 0.0026954732566022432) ;
 	P = 8,
 	X::real(0, 1),
 	Y::real(0, 2),
 	Yi:: 1.00...,
-	Yerr::real(-0.0010610419856995623, 0.003450394852820171) ;
+	Yerr::real(-0.0008030418075501977, 0.0024330910491388025) ;
 	P = 10,
 	X::real(0, 1),
 	Y::real(0, 2),
-	Yi:: 1.0...,
-	Yerr::real(-0.005800266930922726, 0.019849898586537185).
+	Yi:: 1.00...,
+	Yerr::real(-0.0006491110650532761, 0.002245542366268838).
 This is a much better result over the tested range of `P` than above, but note that increasing `P` is having a minimal effect on the precision of the answer suggesting that the rounding errors are offsetting the effects of any decrease in the step size as `P` increases.
 
 For single value problems (as in this case), the results are over conservative so `absolve` can be used to further "trim" invalid regions from the interval boundaries (at the expense of performance). For the backwards example with unrestricted `Y` domain`:
@@ -190,53 +189,53 @@ eg
 	P = 4,
 	X::real(0, 1),
 	Yi:: 1.0...,
-	Yerr::real(-0.00548043024698841, 0.0029197418452593382) ;
+	Yerr::real(-0.00532938583509468, 0.0027327883233658756) ;
 	P = 6,
 	X::real(0, 1),
 	Yi:: 1.000...,
-	Yerr::real(-0.00043348902155659896, 0.00026256797562251855) ;
+	Yerr::real(-0.0004347778260282986, 0.00023772000943456106) ;
 	P = 8,
 	X::real(0, 1),
-	Yi:: 1.000...,
-	Yerr::real(-0.00035945248949764697, 0.00016740854668939598) ;
+	Yi:: 1.00...,
+	Yerr::real(-0.0006710578539794732, 0.0003893443254079365) ;
 	P = 10,
 	X::real(0, 1),
-	Yi::real(-300.8520656386373, 92.03909087114431),
-	Yerr::real(-301.8520656386373, 91.03909087114431).
+	Yi::real(-97.73569956120367, 29.359141139173026),
+	Yerr::real(-98.73569956120367, 28.359141139173026).
 For this problem, using `absolve` is actually more effective than increasing `P`; even for unrestricted `Y`, `P=6` with `absolve` provides a tighter solution than any of the previous results. In fact, increasing `P` beyond this value lead to practically imperceptible results and, eventually, instability.
 
 So there exist 3 "levers" for managing the accumulated error: the precision parameter `P`, which is used by the numerical integration algorithm, applying `absolve` to "squeeze" the result, and constraining the independent variable prior to calculating the boundary values. If we use the default value of `P` (i.e., 6) as a baseline, the relative effectiveness of the three techniques are summarized in the tables below (one for the initial boundary problem and one for the final):
 .myw
 	.tsv
 		`Forward  (dV(Y,-2*X*Y, 1, Yf))`		`Time Ratio`	`Error ratio`
-		`P=8`									`   3.07`		`    0.06`
-		+`absolve/1`							`   2.31`		`    0.40`
-		+`Y::real(0,2)`							`   0.47`		`    1.00`
+		`P=8`									`   3.16`		`    0.06`
+		+`absolve/1`							`   2.08`		`    0.50`
+		+`Y::real(0,2)`							`   0.80`		`    1.00`
 	.tsv
 		`Backward (dV(Y,-2*X*Y,Yi,1/e))`		`          `	`           `
-		`P=8`									`   3.94`		`    3.66`
-		+`absolve/1`							`   1.93`		`    0.85`
-		+`Y::real(0,2)`							`   0.21`		`    0.61`
+		`P=8`									`   3.19`		`   10.36`
+		+`absolve/1`							`   1.98`		`    0.01`
+		+`Y::real(0,2)`							`   0.69`		`    0.24`
 	&	// local styles for table
 		@css
 			table.my_array { border-collapse:collapse; }
 			table.my_array tr td { background:whitesmoke; padding: 4px 16px; }
 			table.my_array tr:nth-child(1) td { background:lightgray; }
 
-For this problem set (initial and final), restricting the domains of any independent variables is the most effective and it will always improve execution times. Applying `absolve` to the result is the next best strategy, although there is a time tradeoff to consider. Increasing `P` can also help reduce error but it definitely incurs a time penalty (inreasing `P` by 2, as in this case, quadruples the number of integration steps) and may even result in instability (`Error ration` gets worse), so confirming the benefits is recommended before committing to this strategy.
+For this problem set (initial and final), restricting the domains of any independent variables is the most effective and it will always improve execution times. Applying `absolve` to the result is the next best strategy, although there is a time tradeoff to consider. Increasing `P` can also help reduce error but it definitely incurs a time penalty (increasing `P` by 2, as in this case, quadruples the number of integration steps) and may even result in instability (`Error ration` gets worse), so confirming the benefits is recommended before committing to this strategy.
 
 The arity 4 version of `boundary_values` adds a final argument which is unified with a the list of integration step values of length `2**P`; each value being tuple of the form of `(X,Ys)`. It's primarily intended for use during development (with low values of `P`) or for post processing (e.g., points in a graph).
 eg
 	?- X::real(0,1), boundary_values(X,[dV(Y, -2*X*Y,1,Yf)],3,Steps),maplist(writeln,Steps).
 	0,[1]
-	1r8,[_538{real(0.9844295893349677,0.9848011798958015)}]
-	1r4,[_488{real(0.939103050831425,0.9406172288888547)}]
-	3r8,[_4632{real(0.8679648609134579,0.8714777859918755)}]
-	1r2,[_438{real(0.7769307450381604,0.783451629391624)}]
-	5r8,[_9064{real(0.6730338450829737,0.6838203935516215)}]
-	3r4,[_9012{real(0.5634637285170379,0.580170558332121)}]
-	7r8,[_468786{real(0.45465608634680194,0.4795803733327926)}]
-	1,[_294{real(0.3515513718582815,0.3880524920547308)}]
+	1r8,[_680{real(0.9844295893349677,0.9848011798958015)}]
+	1r4,[_630{real(0.939103050831425,0.9406172288888547)}]
+	3r8,[_4774{real(0.8679648609134579,0.8714777859918755)}]
+	1r2,[_580{real(0.7769307450381604,0.783451629391624)}]
+	5r8,[_9322{real(0.6730338450829737,0.6838203935516215)}]
+	3r4,[_9270{real(0.5634637285170379,0.580170558332121)}]
+	7r8,[_379790{real(0.4546560863468022,0.4795803733327923)}]
+	1,[_436{real(0.35155137185832497,0.3880524920546874)}]
 	    .
 	    .
 	    .
@@ -280,15 +279,16 @@ eg
 	B = 4,
 	W = 200,
 	T::real(0, 10),
-	Vf::real(49.880402091711716, 50.06622664386094).
+	Vf::real(49.91475904121412, 50.0345357174437).
 And increasing `P` also helps:
 eg
-	?- G= 32,B=4,W=200, T::real(0,10), boundary_values(T,[dV(V,G-G*B*V/W,40,Vf)],8), absolve(Vf).
+	?- G= 32,B=4,W=200, T::real(0,10), boundary_values(T,[dV(V,G-G*B*V/W,40,Vf)],8), absolve(Vf),write(Vf).
+	_476{real(49.96813828148028,49.99466951160976)}
 	G = 32,
 	B = 4,
 	W = 200,
 	T::real(0, 10),
-	Vf:: 50.0... .
+	Vf:: 49.9... .
 Of course there's a tradeoff between a smaller step size and compute time that must be justified.
  
 ##### Brine Tank
@@ -312,7 +312,7 @@ eg
 	
 	?- T::real(0,30), boundary_values(T,[dV(A,6-A/5,5,Af)]), absolve(Af).
 	T::real(0, 30),
-	Af::real(29.69042702958739, 30.112189862588497).
+	Af::real(29.839152779802532, 29.999480086133467).
 	
 	?- T::real(0,30), boundary_values(T,[dV(A,6-A/5,5,Af)],10), absolve(Af).
 	T::real(0, 30),
@@ -344,7 +344,7 @@ eg
 	?- F::real(1.9,2.1), T::real(0,10), boundary_values(T,[dV(A,F*(3-A/10),5,Af)]), absolve(Af).
 	F::real(1.8999999999999997, 2.1000000000000005),
 	T::real(0, 10),
-	Af::real(25.879790829191812, 27.251744579186916).
+	Af::real(25.879790829191812, 27.17426672376895).
 That actually helped quite a bit, but still not as narrow as it could be. 
 
 Decreasing the step size (increasing `P`):
@@ -352,7 +352,7 @@ eg
 	?- F::real(1.9,2.1), T::real(0,10), boundary_values(T,[dV(A,F*(3-A/10),5,Af)],9), absolve(Af).
 	F::real(1.8999999999999997, 2.1000000000000005),
 	T::real(0, 10),
-	Af::real(24.90479250163392, 28.118511102029014).
+	Af::real(24.90479250163392, 28.067979600356782).
 actually made it worse, so it's probably not an instability issue. 
 
 The problem is that any uncertainty in one of "constants" is propagated from each integration step to the next, amplified by the approximation error. The end result is correct in that it contains the "real" value, but it may seem more conservative than need be. But that's the product of the accumulation of uncertainty in the data, approximation errors caused by the integration algorithm and rounding errors, and it may take some effort to separate the individual sources contributing to the error. 
@@ -416,14 +416,14 @@ eg
 	W = 200,
 	T::real(0, 5),
 	X1f:: 49.6...,
-	Xf::real(234.94958971967435, 235.07337990669006) ;
+	Xf::real(234.9495897518655, 235.07337987449907) ;
 	Tf = 10,
 	G = 32,
 	B = 4,
 	W = 200,
 	T::real(0, 10),
-	X1f::real(45.46960763158747, 54.49733824885036),
-	Xf::real(477.3479686566565, 491.4536784051594).
+	X1f::real(45.585783403912075, 54.381162476525745),
+	Xf::real(477.5294336304279, 491.2722134313881).
 Perhaps this is getting unacceptably wide at `Tf=10` so here's a case where decreasing the step size provides a significant improvement:
 eg
 	?- member(Tf,[1,5,10]), G=32,B=4,W=200, T::real(0,Tf), boundary_values(T,[dV(X1,G-G*B*X1/W,40,X1f),dV(X,X1,0,Xf)],9).
@@ -454,9 +454,9 @@ eg
 >	*(The displacement {`x`} of a vibrating mass from it's equilibrium position is given by the differential equation {`(d^2x)/(dt^2)+3*dx/dt+5*x = cos 2*t`} where {`x=0`} and {`dx//dt=4`} when {`t=0`}. Find {`x`} and {`dx//dt`} at {`t=3`}.)*
 eg
 	?- T::real(0,3r10), boundary_values(T,[dV(X1,cos(2*T)-3*X1-5*X,4,X1f),dV(X,X1,0,Xf)]).
-	T::real(0, 0.3),
+	T::real(0.0, 0.3),
 	X1f:: 1.31...,
-	Xf:: 0.765... .
+	Xf:: 0.76... .
 
 ##### Rocket Example
 

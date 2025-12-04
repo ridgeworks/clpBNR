@@ -101,48 +101,28 @@ eg
 	
 	?- X::real, taylor_contractor({X**2-2*X+1==0},T), cf_solve(T).
 	T = cf_contractor([X], [_A]),
+	X:: 0.999998...,
+	_A::real(-1.0Inf, 1.0Inf) ;
+	T = cf_contractor([X], [_A]),
 	X:: 0.99999...,
 	_A::real(-1.0Inf, 1.0Inf) ;
 	T = cf_contractor([X], [_A]),
-	X:: 0.999996...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	T = cf_contractor([X], [_A]),
-	X:: 0.999999...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	T = cf_contractor([X], [_A]),
 	X:: 1.00000...,
 	_A::real(-1.0Inf, 1.0Inf) ;
 	T = cf_contractor([X], [_A]),
-	X:: 1.000001...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	T = cf_contractor([X], [_A]),
-	X:: 1.000003...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	T = cf_contractor([X], [_A]),
-	X:: 1.000010...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	T = cf_contractor([X], [_A]),
-	X:: 1.000011...,
+	X:: 1.000000...,
 	_A::real(-1.0Inf, 1.0Inf) ;
 	false.
-	
-	?- X::real, taylor_contractor({X**2-2*X+1==0},T), cf_solve(T,8).
-	T = cf_contractor([X], [_A]),
-	X:: 1.00000...,
-	_A::real(-1.0Inf, 1.0Inf) ;
-	false.
-(The last example demonstrates how to use the precision value to eliminate even more false positives.)
-
 Comparing `solve` and iteration using the metalevel Taylor contractor in terms of narrowing operations performed (should be relatively implementation and machine independent). And for a subset of the examples the effects of using Horner notation has been added to highlight the effects of combining techniques:
 .myw
 	.tsv
 		Polynomial						`solve`			`solve_Hnr`		`Taylor`		`Taylor_Hnr`
-		`X**2-4*X+3`					`    778`		`     237`		`  1328`		`    494`
-		`X**4-4*X**3+4*X**2-4*X+3`		`  22291`		`    4882`		` 15622`		`   8611`
-		`17*X**256+35*X**17-99*X`		`    227`		` `				`   308`		` `
-		`35*X**256-14*X**17+X`			`   2434`		` `				`   848`		` `
-		`X**4-12*X**3+47*X**2-60*X`		` 355136`		`   21609`		` 20987`		`  24307`
-		`X**2-2*X+1`					`2000474`		`  967927`		`135462`		`  99332`
+		`X**2-4*X+3`					`    776`		`     219`		`   808`		`    265`
+		`X**4-4*X**3+4*X**2-4*X+3`		`  13580`		`    3899`		` 11838`		`   6284`
+		`17*X**256+35*X**17-99*X`		`    210`		` `				`   301`		` `
+		`35*X**256-14*X**17+X`			`   2577`		` `				`   916`		` `
+		`X**4-12*X**3+47*X**2-60*X`		` 158257`		`   13841`		` 15053`		`  14012`
+		`X**2-2*X+1`					`2104537`		` 1035839`		`127475`		` 102431`
 	&	// local styles for table
 		@css
 			table.my_array { border-collapse:collapse; }
@@ -174,49 +154,49 @@ An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polyno
 Because there is only a single occurrence of any variable in any equation, the fixed point iteration forces considerable narrowing by itself:
 eg
 	?- combustion(Vs,Es), Vs::real(0,1), {Es}.
-	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
-	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I|...],
+	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, ... * ... == ... * ..., ... == ...|...],
 	_A:: 0.0000001...,
 	_B:: 0.0000002...,
-	_C:: 0.00001...,
+	_C:: 0.000015...,
 	_D:: 0.0000000000625149...,
 	_E:: 0.000000...,
 	_F:: 0.000001...,
 	_G:: 0.0000049999687425...,
-	_H:: 0.00001...,
-	_I:: 0.000000...,
+	_H:: 0.000015...,
+	_I:: 0.0000005...,
 	_J:: 0.000003... .
 Adding `solve` further refines the answer:
 eg
 	?- combustion(Vs,Es), Vs::real(0,1), {Es}, solve(Vs).
-	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
-	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
-	_A:: 0.0000001471...,
-	_B:: 0.0000002262...,
-	_C:: 0.00001512...,
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I|...],
+	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, ... * ... == ... * ..., ... == ...|...],
+	_A:: 0.00000014709...,
+	_B:: 0.00000022619...,
+	_C:: 0.000015128...,
 	_D:: 0.0000000000625149...,
-	_E:: 0.000000420...,
-	_F:: 0.000001016...,
+	_E:: 0.0000004209...,
+	_F:: 0.0000010162...,
 	_G:: 0.0000049999687425...,
-	_H:: 0.00001487...,
-	_I:: 0.000000537...,
-	_J:: 0.000003602... .
+	_H:: 0.000014872...,
+	_I:: 0.0000005371...,
+	_J:: 0.0000036021... .
 The same problem using a metalevel contractor:
 eg 
 	?- combustion(Vs,Es), Vs::real(0,1), taylor_contractor({Es},T), cf_solve(T).
-	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
-	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
-	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I, _F, _B], [_K, _L, _M, _N, _O, _P, _Q, _R, _S, _T]),
-	_A:: 0.0000001...,
-	_B:: 0.0000002...,
-	_C:: 0.00001...,
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I|...],
+	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, ... * ... == ... * ..., ... == ...|...],
+	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I|...], [_K, _L, _M, _N, _O, _P, _Q, _R|...]),
+	_A:: 0.00000014...,
+	_B:: 0.00000022...,
+	_C:: 0.000015...,
 	_D:: 0.0000000000625149...,
-	_E:: 0.000000...,
-	_F:: 0.000001...,
+	_E:: 0.0000004...,
+	_F:: 0.0000010...,
 	_G:: 0.0000049999687425...,
-	_H:: 0.00001...,
-	_I:: 0.000000...,
-	_J:: 0.000003...,
+	_H:: 0.000014...,
+	_I:: 0.0000005...,
+	_J:: 0.0000036...,
 	_T::real(-1.0Inf, 1.0Inf),
 	_S::real(-1.0Inf, 1.0Inf),
 	_R::real(-1.0Inf, 1.0Inf),
@@ -227,13 +207,13 @@ eg
 	_M::real(-1.0Inf, 1.0Inf),
 	_L::real(-1.0Inf, 1.0Inf),
 	_K::real(-1.0Inf, 1.0Inf).
-This halts when the default precision limit is reached (`clpBNR_default_precision= 6`). To achieve the same precision as `solve`, it is necessary to tune the test via the second argument to `cf_solve`,to get the same precision:
+This halts when the default precision limit is reached (`clpBNR_default_precision= 6`). To achieve the same precision as `solve`, it is necessary to tune the test via the second argument to `cf_solve`,to get approximately the same precision:
 eg
 	?- combustion(Vs,Es), Vs::real(0,1), taylor_contractor({Es},T), cf_solve(T,9).
-	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
-	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-7*_H==_A*_C, 6.194411e-8*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
-	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I, _F, _B], [_K, _L, _M, _N, _O, _P, _Q, _R, _S, _T]),
-	_A:: 0.00000014709...,
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I|...],
+	Es = [_B+2*_F+_I+2*_J==1.0e-5, _C+_H==3.0e-5, _A+_C+2*_E+2*_H+_I+_J==5.0e-5, _D+2*_G==1.0e-5, 5.140437e-8*_E==_A**2, 1.006932e-7*_F==2*_B**2, 7.816278e-16*_G==_D**2, ... * ... == ... * ..., ... == ...|...],
+	T = cf_contractor([_G, _D, _E, _A, _H, _C, _J, _I|...], [_K, _L, _M, _N, _O, _P, _Q, _R|...]),
+	_A:: 0.0000001470...,
 	_B:: 0.0000002262...,
 	_C:: 0.000015128...,
 	_D:: 0.0000000000625149...,
@@ -241,7 +221,7 @@ eg
 	_F:: 0.000001016...,
 	_G:: 0.0000049999687425...,
 	_H:: 0.000014872...,
-	_I:: 0.0000005371...,
+	_I:: 0.000000537...,
 	_J:: 0.000003602...,
 	_T::real(-1.0Inf, 1.0Inf),
 	_S::real(-1.0Inf, 1.0Inf),
@@ -252,7 +232,7 @@ eg
 	_N::real(-1.0Inf, 1.0Inf),
 	_M::real(-1.0Inf, 1.0Inf),
 	_L::real(-1.0Inf, 1.0Inf),
-	_K::real(-1.0Inf, 1.0Inf).
+	_K::real(-1.0Inf, 1.0Inf) .
 The builtin `solve` and fixed point iteration does a credible job on this problem so it turns out adding the metalevel contractor redundant constraints is not worth the additional overhead incurred. It is often the case some experimentation is required to achieve required precision within a given time budget.
 
 ##### The Broyden Banded Function
@@ -284,21 +264,21 @@ eg
 	Vs = [_A, _B, _C, _D, _E],
 	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+ ... * ... + _B*(... + ...)+_C*(1+_C)+_E*(1+_E), 2*_E+5* ... ** ... + 1== ... + ... + ... * ... + _C*(... + ...)+_D*(1+_D)],
 	_A:: -0.4283028...,
-	_B:: -0.47659653...,
-	_C:: -0.5196377...,
+	_B:: -0.4765965...,
+	_C:: -0.519637...,
 	_D:: -0.5588619...,
 	_E:: -0.5588619... .
 Using a Taylor contractor:
 eg
 	?- broyden(5,Vs,Es), Vs::real(-1,1), taylor_contractor({Es},T), cf_solve(T).
 	Vs = [_A, _B, _C, _D, _E],
-	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+_A*(1+_A)+_B*(1+_B)+_C*(1+_C)+_E*(1+_E), 2*_E+5*_E**3+1==0+_A*(1+_A)+_B*(1+_B)+_C*(1+_C)+_D*(1+_D)],
+	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+ ... * ... + _B*(... + ...)+_C*(1+_C)+_E*(1+_E), 2*_E+5* ... ** ... + 1== ... + ... + ... * ... + _C*(... + ...)+_D*(1+_D)],
 	T = cf_contractor([_E, _D, _C, _B, _A], [_F, _G, _H, _I, _J]),
-	_A:: -0.428302...,
-	_B:: -0.476596...,
-	_C:: -0.519637...,
-	_D:: -0.558862...,
-	_E:: -0.558862...,
+	_A:: -0.42830286...,
+	_B:: -0.47659653...,
+	_C:: -0.5196377...,
+	_D:: -0.5588619...,
+	_E:: -0.5588619...,
 	_J::real(-1.0Inf, 1.0Inf),
 	_I::real(-1.0Inf, 1.0Inf),
 	_H::real(-1.0Inf, 1.0Inf),
@@ -311,26 +291,26 @@ eg
 	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I|...],
 	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+ ... * ... + _B*(... + ...)+_C*(1+_C)+_E*(1+_E), 2*_E+5* ... ** ... + 1== ... + ... + ... * ... + _D*(... + ...)+_F*(1+_F), ... * ... + ... * ... + 1== ... + ... + ... * ... + _G*(... + ...), ... + ... + 1== ... + ... + ... * ..., ... + ... == ... + ..., ... == ...|...],
 	T = cf_contractor([_T, _S, _R, _Q, _P, _O, _N, _M|...], [_U, _V, _W, _X, _Y, _Z, _A1, _B1|...]),
-	_A:: -0.428302863587250...,
-	_B:: -0.476596424356293...,
-	_C:: -0.519652463646401...,
-	_D:: -0.558099324856152...,
-	_E:: -0.592506155965083...,
-	_F:: -0.624503707410516...,
-	_G:: -0.623238669132451...,
-	_H:: -0.62141967671364...,
-	_I:: -0.61961584283347...,
-	_J:: -0.618226017919857...,
-	_K:: -0.61751802484149...,
-	_L:: -0.61773183031864...,
-	_M:: -0.617900316253351...,
-	_N:: -0.618007798540868...,
-	_O:: -0.61805706175504...,
-	_P:: -0.618062699716298...,
-	_Q:: -0.61804719935080...,
-	_R:: -0.61801119573861...,
-	_S:: -0.61887207949504...,
-	_T:: -0.58627694540011...,
+	_A:: -0.4283028635872...,
+	_B:: -0.476596424356...,
+	_C:: -0.519652463646...,
+	_D:: -0.558099324856...,
+	_E:: -0.592506155965...,
+	_F:: -0.624503707410...,
+	_G:: -0.623238669132...,
+	_H:: -0.62141967671...,
+	_I:: -0.61961584283...,
+	_J:: -0.61822601792...,
+	_K:: -0.61751802484...,
+	_L:: -0.61773183032...,
+	_M:: -0.6179003162...,
+	_N:: -0.6180077985...,
+	_O:: -0.6180570617...,
+	_P:: -0.6180626997...,
+	_Q:: -0.6180471993...,
+	_R:: -0.6180111957...,
+	_S:: -0.618872079...,
+	_T:: -0.586276945...,
 	_N1::real(-1.0Inf, 1.0Inf),
 	_M1::real(-1.0Inf, 1.0Inf),
 	_L1::real(-1.0Inf, 1.0Inf),
@@ -394,19 +374,19 @@ The Prolog definition of the Ebers and Moll transistor example:
 		arg(K,G1s,G1K), arg(K,G2s,G2K), arg(K,G3s,G3K), arg(K,G4s,G4K), arg(K,G5s,G5K).
 Due to slow convergence, just applying the contraints and using `solve` is fairly ineffective; the builtin throttling mechanism, even with a fairly high `clpBNR_iteration_limit`, prematurely terminates many of the sub-branches without failing so pruning is minimal. Using the Taylor contractor is a significant improvement but can still take many hours before producing a moderately acceptable result (~4 digits of precision in agreement with the published answer):
 eg
-	?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),taylor_merged_contractor({Es},T),cf_solve(T). 
+	?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),taylor_contractor({Es},T),cf_solve(T).
 	Vs = [X1, X2, X3, X4, X5, X6, X7, X8, X9],
 	Es = [(1-X1*X2)*X3*(exp(X5*(... - ... - ... * ...))-1)-211.4823+191.267*X2==0, (1-X1*X2)*X3*(exp(X5*(... - ...))-1)-134.3844+111.461*X2==0, (1- ... * ...)*X3*(exp(... * ...)-1)-111.8468+101.779*X2==0, (... - ...)*X3*(exp(...)-1)-28.5132+23.3037*X2==0, ... * ... * (... - ...)-211.4823*X1+191.267==0, ... * ... - ... * ... + 111.461==0, ... - ... + 101.779==0, ... + ... == 0, ... == ...],
 	T = cf_contractor([X9, X6, X4, X8, X7, X5, X3, X2|...], [_A, _B, _C, _D, _E, _F, _G, _H|...]),
 	X1:: 0.8999987...,
 	X2:: 0.45005...,
-	X3:: 1.00024...,
-	X4:: 2.00024...,
-	X5:: 7.99948...,
-	X6:: 8.00056...,
-	X7:: 5.00078...,
+	X3:: 1.00023...,
+	X4:: 2.0002...,
+	X5:: 7.99949...,
+	X6:: 8.00053...,
+	X7:: 5.00077...,
 	X8:: 0.99986...,
-	X9:: 1.99954...,
+	X9:: 1.99956...,
 	_I::real(-1.0Inf, 1.0Inf),
 	_H::real(-1.0Inf, 1.0Inf),
 	_G::real(-1.0Inf, 1.0Inf),
@@ -416,7 +396,7 @@ eg
 	_C::real(-1.0Inf, 1.0Inf),
 	_B::real(-1.0Inf, 1.0Inf),
 	_A::real(-1.0Inf, 1.0Inf) .
-This is just the first solution returned. Again, throttling prevents running fixed point iteration long enough to find failures that would prune the search tree caused by splitting. The complete answer would be the union of all such solutions. But the computation costs of either disabling throttling or collecting all solutions is probably prohibitive for this example, demonstrating the limitations of this implementation.
+But depending on the computer, this still takes many hours (and billions of narrowing operations) to find a (first) solution, demonstrating the current limitations of this implementation.
 
 ##### Summary
 

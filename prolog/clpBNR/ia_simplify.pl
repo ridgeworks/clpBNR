@@ -1,3 +1,5 @@
+/*** Functionality replaced by module(simplify_constraint) - remove in future release ***/
+
 /*	The MIT License (MIT)
  *
  *	Copyright (c) 2019-2025 Rick Workman
@@ -218,7 +220,7 @@ collect_exp_items_([U,V|Es],EsNxt) :-
 	collect_exp_items_([S|Es],EsNxt).
 collect_exp_items_([term(V,N1),term(U,N2)|Es],EsNxt) :-
 	V==U,
-	(ground(V) -> V =\= 1.0Inf ; true), !,  % infinities don't obey algebraic rules
+	(ground(V), \+ string(V) -> V =\= 1.0Inf ; true), !,  % infinities don't obey algebraic rules
 	N is N1+N2,
 	collect_exp_items_([term(V,N)|Es],EsNxt).
 collect_exp_items_([U,V|Es],[U|EsNxt]) :-   % Note that imprecise floats are not added
@@ -370,7 +372,7 @@ collect_term_item_([U,V|Es],EsNxt) :-
 	collect_term_item_([S|Es],EsNxt).
 collect_term_item_([elem(U,N1),elem(V,N2)|Es],EsNxt) :-
 	V==U,
-	(ground(V) -> V =\= 1.0Inf ; true), !, % infinities don't obey algebraic rules
+	(ground(V), \+string(V) -> V =\= 1.0Inf ; true), !,  % infinities don't obey algebraic rules
 	N is N1+N2,
 	collect_term_item_([elem(U,N)|Es],EsNxt).
 collect_term_item_([U,V|Es],[U|EsNxt]) :-
