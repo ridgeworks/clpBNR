@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2024-5 Rick Workman
+ *	Copyright (c) 2024-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -143,8 +143,8 @@ search(Vars,Arg,Select,Choice,Method,Option) :-
 	callable(Choice),
 	is_search_method(Method),
 	is_list(Option),
-	!,
 	reset_backtrack_count(Option),
+	!,
 	% top-level block to handle the limited number of nodes
 	catch(search1(Method,List,Arg,Select,Choice),
 	      error(domain_error(nodes,(N,Max)),_),
@@ -163,9 +163,8 @@ fail_error_message(Msg) :-
 prolog:message(clpBNR(search(Args))) -->
 	[ "Invalid argument: search(~w).\n"-[Args] ].
 
-prolog:message(clpBNR(search_nodes_failed(N,Max))) -->
-	[ "Node count = ~w, excceeded limit of ~w\n"-[N,Max] ].
-
+prolog:message(clpBNR(search_nodes_failed(_N,Max))) -->
+	[ "Reached nodes searched limit of ~w,\n"-[Max] ].
 
 % branch one the different search methods
 search1(complete,L,Arg,Select,Choice):-
@@ -394,6 +393,7 @@ sandbox:safe_global_variable('$clpBNR_search:backtrack_limit').
 
 reset_backtrack_count(Option):-
 	option(nodes(N),Option,2000),
+	integer(N), N>=1,
 	nb_setval('$clpBNR_search:node_limit',N),
 	nb_setval('$clpBNR_search:nodes',0),
 	nb_setval('$clpBNR_search:backtrack',0).

@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2025 Rick Workman
+ *	Copyright (c) 2019-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -120,6 +120,12 @@ intCase(C, (L,H)) :-
 %
 union_((Xl,Xh),(Yl,Yh),(Zl,Zh)) :-
 	Zl is minr(Xl,Yl), Zh is maxr(Xh,Yh).  % eliminates NaN's, prefers rationals
+
+%
+% (Xl,Xh) contains (Yl,Yh)
+%
+int_contains((Xl,Xh),(Yl,Yh)) :-
+	Xl is minr(Xl,Yl), Xh is maxr(Xh,Yh).
 
 %
 % to_float/2 converts an non-float bounds to floats
@@ -342,20 +348,27 @@ narrowing_op(add, _, $((Zl,Zh), (Xl,Xh), (Yl,Yh)), $((NZl,NZh), (NXl,NXh), (NYl,
 narrowing_op(mul, P, $(Z,X,Y), $(NewZ, NewX, NewY)) :-
 	intCase(Cx,X),
 	intCase(Cy,Y),
-	multCase(Cx,Cy,X,Y,Z,NewZ),                       % NewZ := Z ^ (X*Y)
-	intCase(CNz,NewZ),
-	odivCase(CNz,Cx,NewZ,X,Y,Yp),                     % Yp := Y ^ (Z/X),
-	intCase(Cyp,Yp),
-	odivCase(CNz,Cyp,NewZ,Yp,X,NewX),                 % NewX := X ^ (Z/Yp),
-	% if X narrowed it may be necessary to recalculate Y due to non-optimal ordering.
-	(Y == Yp, X \== NewX                              % if Y didn't narrow and X did
-	 -> intCase(CNx,NewX),
-	    odivCase(CNz,CNx,NewZ,NewX,Y,NewY)            % re calculate: NewY := Y ^ NewZ/NewX
-	 ;  NewY = Yp,
-	    ( ((zero_int(NewX), finite_int(NewY)) ; (zero_int(NewY), finite_int(NewX)))
-	     -> P=p  % if X or Y = 0, and other finite, persistent 
-	     ;  true
-	    )  
+	multCase(Cx,Cy,X,Y,Z1), ^(Z,Z1,NewZ),           % NewZ := Z ^ (X*Y)
+	% Uses totality condition from 
+	%   https://www.academia.edu/52359860/A_unified_framework_for_interval_constraints_and_interval_arithmetic
+	% to avoid unnecessary evaluation of NewX and NewY
+	(int_contains(Z,Z1)  %% totality condition, avoid recomputing X and Y
+	 -> NewX = X, NewY = Y
+	 ; 
+	    intCase(CNz,NewZ),
+	    odivCase(CNz,Cx,NewZ,X,Y,Yp),               % Yp := Y ^ (Z/X),
+	    intCase(Cyp,Yp),
+	    odivCase(CNz,Cyp,NewZ,Yp,X,NewX),           % NewX := X ^ (Z/Yp),
+	    % if X narrowed it may be necessary to recalculate Y due to non-optimal ordering.
+	    (Y == Yp, X \== NewX                        % if Y didn't narrow and X did
+	     -> intCase(CNx,NewX),
+	        odivCase(CNz,CNx,NewZ,NewX,Y,NewY)      % re calculate: NewY := Y ^ NewZ/NewX
+	     ;  NewY = Yp,
+	        ( ((zero_int(NewX), finite_int(NewY)) ; (zero_int(NewY), finite_int(NewX)))
+	         -> P=p  % if X or Y = 0, and other finite, persistent 
+	         ;  true
+	        )
+	    )
 	).
 /*  general case, but sub-par performance since some re-calculations unnecessary
 narrowing_op(mul, _, $(Z,X,Y), New) :-
@@ -374,45 +387,35 @@ narrowing_op(mul, _, $(Z,X,Y), New) :-
 % This is quite tricky because negation inverts direction of rounding - take care.
 %multCase(z,_, X, _, _, X) :- !.  % X==0
 %multCase(_,z, _, Y, _, Y).       % Y==0
+multCase(p,p, (Xl,Xh), (Yl,Yh), (NZl,NZh)):- 
+	NZl is roundtoward(Xl*Yl,to_negative),
+	NZh is roundtoward(Xh*Yh,to_positive).
+multCase(p,n, (Xl,Xh), (Yl,Yh), (NZl,NZh)):- 
+	NZl is -roundtoward(Xh * -Yl,to_positive),
+	NZh is -roundtoward(Xl * -Yh,to_negative).
+multCase(n,p, (Xl,Xh), (Yl,Yh), (NZl,NZh)):- 
+	NZl is -roundtoward(-Xl * Yh,to_positive),
+	NZh is -roundtoward(-Xh * Yl,to_negative).
+multCase(n,n, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is roundtoward(-Xh * -Yh,to_negative),  % negate for any conversion rounding 
+	NZh is roundtoward(-Xl * -Yl,to_positive).
 
-multCase(p,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,roundtoward(Xl*Yl,to_negative)),
-	NZh is minr(Zh,roundtoward(Xh*Yh,to_positive)),
-	non_empty(NZl,NZh).
-multCase(p,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,-roundtoward(Xh * -Yl,to_positive)),
-	NZh is minr(Zh,-roundtoward(Xl * -Yh,to_negative)),
-	non_empty(NZl,NZh).
-multCase(n,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):- 
-	NZl is maxr(Zl,-roundtoward(-Xl * Yh,to_positive)),
-	NZh is minr(Zh,-roundtoward(-Xh * Yl,to_negative)),
-	non_empty(NZl,NZh).
-multCase(n,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,roundtoward(-Xh * -Yh,to_negative)),  % negate for any conversion rounding 
-	NZh is minr(Zh,roundtoward(-Xl * -Yl,to_positive)),
-	non_empty(NZl,NZh).
+multCase(p,s, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is -roundtoward(Xh * -Yl,to_positive),
+	NZh is roundtoward(Xh *  Yh,to_positive).
+multCase(n,s, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is -roundtoward(-Xl *  Yh,to_positive),
+	NZh is roundtoward(-Xl * -Yl,to_positive).
+multCase(s,p, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is -roundtoward(-Xl * Yh,to_positive),
+	NZh is roundtoward( Xh * Yh,to_positive).
+multCase(s,n, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is -roundtoward( Xh * -Yl,to_positive),
+	NZh is roundtoward(-Xl * -Yl,to_positive).
 
-multCase(p,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,-roundtoward(Xh * -Yl,to_positive)),
-	NZh is minr(Zh, roundtoward(Xh *  Yh,to_positive)),
-	non_empty(NZl,NZh).
-multCase(n,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,-roundtoward(-Xl *  Yh,to_positive)),
-	NZh is minr(Zh, roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
-	non_empty(NZl,NZh).
-multCase(s,p, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,-roundtoward(-Xl * Yh,to_positive)),
-	NZh is minr(Zh, roundtoward( Xh * Yh,to_positive)),
-	non_empty(NZl,NZh).
-multCase(s,n, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,-roundtoward( Xh * -Yl,to_positive)),
-	NZh is minr(Zh, roundtoward(-Xl * -Yl,to_positive)),  % negate for any conversion rounding
-	non_empty(NZl,NZh).
-
-multCase(s,s, (Xl,Xh), (Yl,Yh), (Zl,Zh), (NZl,NZh)):-
-	NZl is maxr(Zl,minr(-roundtoward( Xl * -Yh,to_positive),-roundtoward(-Xh * Yl,to_positive))),
-	NZh is minr(Zh,maxr( roundtoward(-Xl * -Yl,to_positive), roundtoward( Xh * Yh,to_positive))),
-	non_empty(NZl,NZh).
+multCase(s,s, (Xl,Xh), (Yl,Yh), (NZl,NZh)):-
+	NZl is minr(-roundtoward( Xl * -Yh,to_positive),-roundtoward(-Xh * Yl,to_positive)),
+	NZh is maxr( roundtoward(-Xl * -Yl,to_positive), roundtoward( Xh * Yh,to_positive)).
 
 %
 % / cases ("Interval Arithmetic: from Principles to Implementation", Fig. 4)

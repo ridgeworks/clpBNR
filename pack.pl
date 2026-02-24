@@ -1,6 +1,6 @@
 name(clpBNR).
 title('CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.').
-version('0.12.3').
+version('0.13.0').
 author('Rick Workman', 'ridgeworks@mac.com').
 home('https://github.com/ridgeworks/clpBNR').
 download('https://github.com/ridgeworks/clpBNR.git').

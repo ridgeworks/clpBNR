@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2025 Rick Workman
+ *	Copyright (c) 2019-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +54,7 @@
 	% utilities
 	print_interval/1, print_interval/2,      % pretty print interval with optional stream
 	small/1, small/2,      % defines small interval width based on precision value
+	real_split_point/3,    % find split point subject to precision, non-solution restrictions
 	solve/1, solve/2,      % solve (list of) intervals using split to find point solutions
 	splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 	absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds
@@ -114,7 +115,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.12.3").
+version("0.13.0").
 
 % support various optimizations via goal expansion
 :- discontiguous clpBNR:goal_expansion/2.
@@ -995,7 +996,6 @@ declare_vars_([CV|CVars]) :-
 	(interval(CV) -> true ; new_universal_interval(real,CV)),
 	declare_vars_(CVars).
 
-%%:- include(clpBNR/ia_simplify).  % simplifies constraints to a hopefully more efficient equivalent
 :- use_module(clpBNR/simplify_constraint).
 
 addConstraints_([],Agenda,Agenda) :- !.

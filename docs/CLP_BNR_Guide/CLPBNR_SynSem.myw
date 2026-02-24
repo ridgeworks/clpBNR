@@ -47,7 +47,7 @@ As a further consequence, as shown in the last example, the distributive law ove
 
 Implementing a mathematically sound arithmetic system over the (infinite) set of real numbers on a finite computer is a challenging task. Commonly only a small subset of the reals, e.g., integers and IEEE floating point numbers, are represented in the finite numeric formats. This sacrifices precision and, as soon as any arithmetic operations requiring rounding are done, mathematical soundness (as shown above). Arbitrary precision can partially achieved for a price using multi-precision libraries, as SWI-Prolog's use of the GNU MP library demonstrates. However even that is insufficient since irrational values cannot concretely be represented in such a system. To address mathematical soundness requires a different approach and interval arithmetic is one way to tackle this problem.
  
-An interval is a pair of numeric values, specifically a lower and upper bound, representing the set of real numbers between (and including) the bounds. Conventional arithmetic operations on numeric values is replaced by the corresponding arithmetic operations over intervals (e.g., see [Interval Arithmetic: from Principles to Implementation]). Since these involve arithmetic on the individual bounds, care must be taken to round any computed bounds outwards, i.e., lower bounds to {`-oo`} and upper bounds toward {`oo`}, to ensure that the interval result contains the real value being computed. This not only guarantees soundness but also quantifies the upper limit on any rounding errors accumulated during the computation. In a CLP context, intervals representing real values initially have large "widths" (the difference between the upper and lower bounds) and use constraints to narrow the bounds in much the same way as Prolog resolution "narrows" logic variables through unification. (For further background on intervals and the theory behind them, see [Introduction to INTERVAL ANALYSIS].)
+An interval is a pair of numeric values, specifically a lower and upper bound, representing the set of real numbers between (and including) the bounds. Conventional arithmetic operations on numeric values is replaced by the corresponding arithmetic operations over intervals (e.g., see [Interval Arithmetic: from Principles to Implementation]). Since these involve arithmetic on the individual bounds, care must be taken to round any computed bounds outwards, i.e., lower bounds toward {`-oo`} and upper bounds toward {`oo`}, to ensure that the interval result contains the real value being computed. This not only guarantees soundness but also quantifies the upper limit on any rounding errors accumulated during the computation. In a CLP context, intervals representing real values initially have large "widths" (the difference between the upper and lower bounds) and use constraints to narrow the bounds in much the same way as Prolog resolution "narrows" logic variables through unification. (For further background on intervals and the theory behind them, see [Introduction to INTERVAL ANALYSIS].)
 
 In CLP(BNR), a real number {`x`} is represented by a constrained logic variable containing a numeric lower bound {`L`} and a numeric upper bound {`U`} such that {`L<=x<=U`}. If the bounds of such an arithmetic variable narrow such that {`L=U`}, then the variable is unified with the bound's value. Any Prolog goal involving an arithmetic operation that narrows an interval such that {`L>U`} will fail. Possible values for bounds include {`+-oo`} as well as any numeric value supported by the underlying Prolog system (SWI-Prolog  supports integers, rational numbers, and floating point numbers).
 
@@ -83,7 +83,7 @@ eg
 	Y::real(-0.5, 0.5).
 These simple examples illustrate a number of points:
 1..
-	+ Bounds can be integer, rational, or floating point values. The magnitude of default values for {`L`} and {`U`} is {`+-1.0e16`}. This is fairly generous but also allows for limited arithmetic operations without causing overflows (i.e., to {`oo`}). For completeness, intervals with infinite bounds are supported (see the fourth example). But because just about any operation involving an infinity generates another infinity, these intervals can be difficult to narrow (see below). Therefore infinite bounds must be explicitly specified.
+	+ Bounds can be integer, rational, or floating point values. The default values for {`L`} and {`U`} are {`+-1.0e16`},  respectively. This is fairly generous but also allows for limited arithmetic operations without causing overflows (i.e., to {`oo`}). For completeness, intervals with infinite bounds are supported (see the fourth example). But because just about any operation involving an infinity generates another infinity, these intervals can be difficult to narrow (see below). Therefore infinite bounds must be explicitly specified.
 	+ Floating point bounds values are rounded outward (towards {`-oo`} for lower bound and {`+oo`} for upper bound). This is done because the syntactic value and the resulting internal value may not be equivalent. By rounding outwards, the resulting interval is guaranteed to contain the syntactic value. Since integer and rational values are "precise", no outward rounding is required.
 	+ A rational value can be optionally defined using integer fraction syntax, e.g., `1r2`, `11r10`, when using `::/2` (and in constraints, as we shall see later). These values are considered precise whereas floating point numbers are imprecise and rounded outwards to ensure soundness.
 	+ Bounds can be (grounded) arithmetic expressions. If the evaluated expression yields a floating point result, it will be outward rounded. (Since there is no guarantee of the preciseness of a floating point result, it is a user responsibility to ensure that this is sufficient. As of version 8.2.0 of SWI-Prolog, IEEE rounding modes are supported in arithmetic evaluation.) 
@@ -124,7 +124,7 @@ eg
 
 	?- X::real(-10,10), Y::real(50,100), X=Y.
 	false.
-Note that the `write` family of predicates will output the interval attribute as its domain. For this to occur the write `attribute` option should be set to `portray` (`clpBNR` sets this value as the default). If this option is ever set to `write`, an infinite print loop (and probably a crash) will result due to the internal internal structure of `clpBNR` attributes. Bottom line, never use the `attribute(write)` option when outputting intervals.
+Note that the `write` family of predicates will output the interval attribute as its domain. For this to occur the write `attribute` option should be set to `portray` (`clpBNR` sets this value as the default). If this option is ever set to `write`, an infinite print loop (and probably a crash) will result due to the internal structure of `clpBNR` attributes. Bottom line, never use the `attribute(write)` option when outputting intervals.
 
 #### Rounding in the "Real" World
 
@@ -253,8 +253,8 @@ In this particular case, it's apparent why constraining `Y` would not have such 
 To alleviate this problem, CLP(BNR) provides `solve/1`. This predicate takes an interval and performs a non-deterministic bifurcating search to find solutions. Solving for `Y`:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, solve(Y).
-	﻿X::real(-1.000000017868724,1.000000017868724),
-	Y:: 1.0000000... ;
+	X::real(-1.000000259096709, 1.000000259096709),
+	Y:: 1.00000... ;
 	false.
 `Y` can't get much narrower (`solve` has a default precision of approximately 6 digits) and `X` has now been narrowed as much as it can while still containing both solutions. Alternatively, solving for `X`:
 eg
@@ -293,7 +293,7 @@ This constraint could be actually written four ways:
 	- `Y == X*X+X               Y` will narrow to `real(-2,2)`
 	- `Y == X**2+X              Y` will narrow to `real(-1,2)`
 	- `Y == (X+1/2)**2 - 1/4    Y` will narrow to `real(-1/4,2)`
-The last form is the only one with a single occurence of `X` and yields the best result. In CLP(BNR), symbolic preprocessing of constraints will partially optimize so all of the first three variants will be mapped to the third variant (shown in the green box on the graph):
+The last form is the only one with a single occurrence of `X` and yields the best result. In `clpBNR`  symbolic pre-processing of constraints will partially optimize the second form to the third (shown in the green box on the graph):
 eg
 	?- X::real(-1,1),{Y1==X*(X+1), Y2==X*X+X, Y3==X**2+X, Y4==(X+1/2)**2 - 1/4}.
 	﻿X = X::real(-1,1),
@@ -303,14 +303,18 @@ eg
 	Y4 = Y4::real(-0.25,2).
 For quadratics like this example, one can do additional pre-processing to find the single occurrence variant (#4.), but that's not always possible for an arbitrary constraint. Generally, optimizations of this kind are best left to the application level where specific characteristics of the problem can be exploited.
 
-`solve/1` can be applied to find the optimal narrowing given these constraints but, in this particular case, it can take awhile:
+`solve/2` provides the ability to specify a precision value which can be used to generate a range for `Y` which is arbitrarily close to the optimal value at the expense of performance:
 eg
+	% default precision value is defined by environment flag `clpBNR_default_precision`
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 9,921,012 inferences, 1.634 CPU in 1.638 seconds (100% CPU, 6070221 Lips)
+	% 120,762 inferences, 0.034 CPU in 0.037 seconds (92% CPU, 3550153 Lips)
 	X::real(-1, 1),
-	Y::real(-0.25000033051854986, 2.0).
-It doesn't make much sense to apply crude search predicates, like `solve/1`, to simple cases like this, but it does demonstrate the underlying correctness of the interval arithmetic.
-
+	Y::real(-0.27262693316631437, 2.0).
+	
+	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y,16)).
+	% 1,305,020 inferences, 0.195 CPU in 0.196 seconds (100% CPU, 6679462 Lips)
+	X::real(-1, 1),
+	Y::real(-0.2500211540681734, 2.0).
 Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared as shown to avoid floating point overflows when dealing with large powers):
 eg
 	﻿?- X::real, {0 == 35*X**256 - 14*X**17 + X}, solve(X).
@@ -329,8 +333,7 @@ One might expect that is `9` is the product of two positive reals (`Y` and `Z`) 
 eg
 	?- [Y,Z]::real(0,_), {9 == Y*Z}, Y = Z, solve(Y).
 	Y = Z,
-	Z:: 3.00000000000000... .
-
+	Z:: 3.00000... .
 "Verbose" mode is enabled by setting the `clpBNR_verbose` Prolog environment flag to `true` (default `false)`. When this is done all interval bounds are transparently output (no float conversion or ellipsis postfix format) and the constraint network is presented in top level answers. This can result in a significant amount of detail which may not be generally useful:
 eg
 	﻿?- set_prolog_flag(clpBNR_verbose,false).
@@ -370,6 +373,109 @@ eg
 	Y:: 1.000000000000000...,
 	X::real(-1.0000000000000004, 1.0000000000000004),
 	_A:: 1.000000000000000... .
+
+<#TableOfContents>
+
+#### The Role of "Solvers" in CLP(BNR)
+
+Note: this section can be skipped on first reading.
+
+Most instances of CLP over numeric domains have some form of constraint propagation but, in general for efficiency reasons, it is too weak to produce useful solutions by itself. In addition a search mechanism is often necessary which subdivides a problem into smaller and smaller sub-problems until either constraint propagation is sufficient or a precision limit is reached. Such a search is also required to separate multiple solutions, e.g., roots of a polynomial. The built-in `solve/1,2` is one such predicate. (In CLP's over finite domains, this is often called "labelling".)
+
+Solvers generally work with a list of one or more intervals; first selecting an interval from the list and then dividing it into two sub-intervals at some split point selected from the set of values defined by the interval. This defines two sub-problems, each of which must satisfy the original problem constraints. If any sub-problem fails the test, it can be discarded. This process is recursively applied to the set of intervals until all the intervals in the list meet some precision requirement, which then represents a solution to the the original problem. Each bifurcation also creates a choice, so failure driven backtracking will search for other solutions (standard Prolog search semantics).
+
+Different solvers implement different tactics in the selection of the interval from the list, how the "split point" for that interval is selected, and in defining the termination condition. For example,`solve` selects the intervals in list order. Each interval is then split into roughly two equal parts defining the two sub-problems which must be consistent with all applied constraints on the variables. As just described, any sub-problems which fail to satisfy the constraints are discarded, and this process is applied recursively until the termination condition is met.
+
+One possible termination condition is to continue until there is no narrowing of any of the variables under consideration, but that might take a ridiculously long time, particularly if the problem is under-constrained. Instead a precision parameter `P` is used. `P` can be roughly thought of as the number of digits of precision required for an acceptable answer. It can optionally be specified in `solve`'s arguments with the default defined by the environment flag `clpBNR_default_precision`. `solve` will terminate when all the variables are "small" as defined by the precision parameter.
+
+But there is another issue that requires attention when splitting a continuous domain. If you split at a point that is close to a solution you run the risk of generating multiple answers for that solution since both of the created sub-problems may contain that answer due to accumulated rounding errors and depending on the required precision. This is the so-called clustering problem (see example below). So a split point should not be selected which is the "vicinity" of a solution; the width of the vicinity is determined by the requested precision. This also requires than a minimal search be done over the interval being split to find an acceptable split point. The depth of this search is also a function of the requested precision; the higher the value, the higher the number of points tested to find an acceptable split point. If an acceptable split point cannot be found, the interval is deemed to be non-splittable, just like an interval which is too small to be split given the defined precision value. This is one reason why a solution may contain intervals wider than the precision value would dictate.
+
+For those situations where such a rigorous approach to splitting may not useful, `splitsolve/1,2` is supported. It selects the widest interval in the list for splitting and it is always split at the calculated split point, regardless of whether it is a solution. Splitting stops when all intervals are all narrower than allowed by 'P'. `splitsolve` will always result in narrower intervals but suffers from the cluster problem described above. Comparing `solve` and `splitsolve` on finding the roots of a simple quadratic equation:
+eg
+	?- X::real,{X**2-2*X+1==0},splitsolve(X,3).
+	X:: 0.9991... ;
+	X:: 1.00... ;
+	X:: 1.000... ;
+	false.
+	
+	?- X::real,{X**2-2*X+1==0},solve(X,3).
+	X:: 1.00... .
+	
+	?- X::real,{X**2-2*X+1==0},solve(X).
+	X:: 1.000... ;
+	false.
+	
+	?- X::real,{X**2-2*X+1==0},solve(X,7).
+	X:: 1.0000... ;
+	false.
+This mechanism for avoiding clusters is still a heuristic and not generally guaranteed to eliminate clusters. Such clusters can be further reduced using `absolve/1,2` which operates slightly differently. It selects each interval in list order and tries to "nibble" away at the bounds to narrow the interval; the higher the precision value, the harder it tries. Unlike the previously described solvers, it is (semi-)deterministic, i.e., it doesn't divide the problem into sub-problems leaving choice points for alternative solutions on subsequent failure, but just tries to removed whatever it can at the bounds of the interval(s).
+eg
+	?- X::real,{X**2-2*X+1==0},solve(X,8).
+	X:: 1.0000... ;
+	X:: 1.00001022... ;
+	false.
+	
+	?- X::real,{X**2-2*X+1==0},solve(X,8),absolve(X).
+	X:: 1.0000... ;
+	false.
+While its main use is sharpening results and eliminating false positives, `absolve` may also be used to "pre-shrink" a set of intervals prior to using a bifurcation solver, making the solver's job easier.
+
+When a solver is necessary, a general strategy is:
+- try `solve/1,2`
+- when `solve` fails to narrow sufficiently (can't find an acceptable split point), try `splitsolve` at a low precision (e.g., `P`=2), followed by `solve`
+- use `absolve` to trim solutions (including cluster reduction) or to "pre-shrink" intervals to improve `solve`'s efficiency
+
+Note that there is nothing special about the solvers provided; custom solvers for specific problems can be implemented just using CLP(BNR) constraints with standard Prolog programming techniques. Another `library(clpBNR_toolkit)` solver, using a taylor meta-contractor for differentiable equations, is described later in this document. Also described later are the global optimization predicates in `library(clpBNR)` which use the Moore-Skelboe algorithm to implement a branch-and-bound search for constrained and unconstrained optima.
+
+##### "No `solve` Required" : the "Combustion" problem
+
+An example problem from [Numerica] from (taken from A. P. MORGAN, Solving Polynomial Systems Using Continuation for Scientific and Engineering Problems, Prentice-Hall, 1987) refers to a combustion problem for a temperature of 3000˚ represented by a system of 9 equations in 9 unknowns. Expressed in Prolog it looks like:
+.pl
+	combustion(
+		[X1,X2,X3,X4,X5,X6,X7,X8,X9,X10],
+		[X2+2*X6+X9+2*X10 == 1e-5,
+		 X3+X8 == 3e-5,
+		 X1+X3+2*X5+2*X8+X9+X10 == 5e-5,
+		 X4+2*X7 == 1e-5,
+		 0.5140437e-7*X5 == X1**2,
+		 0.1006932e-6*X6 == 2*X2**2,
+		 0.7816278e-15*X7 == X4**2,
+		 0.1496236e-6*X8 == X1*X3,
+		 0.6194411e-7*X9 == X1*X2,
+		 0.2089296e-14*X10 == X1*X2**2
+		]
+		).
+Because there is only a single occurrence of any variable in any equation, local constraint propagation is sufficient to produce and answer without requiring the use of a solver:
+eg
+	?- combustion(Vs,Es), Vs::real(0,1), {Es}.
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
+	Es = [_B+2*_F+_I+2*_J==1.0e-05, _C+_H==3.0e-05, _A+_C+2*_E+2*_H+_I+_J==5.0e-05, _D+2*_G==1.0e-05, 5.140437e-08*_E==_A**2, 1.006932e-07*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-07*_H==_A*_C, 6.194411e-08*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
+	_A:: 0.0000001...,
+	_B:: 0.0000002...,
+	_C:: 0.000015...,
+	_D:: 0.0000000000625149...,
+	_E:: 0.000000...,
+	_F:: 0.000001...,
+	_G:: 0.0000049999687425...,
+	_H:: 0.000015...,
+	_I:: 0.0000005...,
+	_J:: 0.000003... .
+And using `absolve` to trim the results yields a very precise answer in a fraction of a second:
+eg
+	?- combustion(Vs,Es), Vs::real(0,1), {Es}, absolve(Vs).
+	Vs = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
+	Es = [_B+2*_F+_I+2*_J==1.0e-05, _C+_H==3.0e-05, _A+_C+2*_E+2*_H+_I+_J==5.0e-05, _D+2*_G==1.0e-05, 5.140437e-08*_E==_A**2, 1.006932e-07*_F==2*_B**2, 7.816278e-16*_G==_D**2, 1.496236e-07*_H==_A*_C, 6.194411e-08*_I==_A*_B, 2.089296e-15*_J==_A*_B**2],
+	_A:: 0.0000001470901328...,
+	_B:: 0.0000002261963610...,
+	_C:: 0.0000151280763383...,
+	_D:: 0.0000000000625149...,
+	_E:: 0.0000004208884801...,
+	_F:: 0.0000010162512214...,
+	_G:: 0.0000049999687425...,
+	_H:: 0.0000148719236617...,
+	_I:: 0.0000005371172945...,
+	_J:: 0.0000036020919509... .
+This example illustrates how effective the local propagation method can be when the mathematical representation of the problem can avoid the "dependency" issue. Unfortunately that is not often the case for many problems in the real world, so some knowledge of how to effectively use searching strategies is required.
 
 <#TableOfContents>
 
@@ -645,7 +751,7 @@ eg
 	
 	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
 	X = Y,
-	Y::real(-10000.0, 7000.0).
+	Y::real(-1.0e+04, 7000.0).
 	
 	?- X::real(-1e3,1e3), {X==Y+1,Y==X}.
 	false.
@@ -668,19 +774,19 @@ The alternative to this behaviour is the appearance of non-termination; it will 
 Another interesting example of an inconsistent constraint:
 eg
 	?- X::integer, {X>abs(X)}.
-	X::integer(500, 72057594037917936).
+	X::integer(1000, 72057594037917936).
 As seen above, throttling can be mitigating by defining tighter constraints (initial range) or something like `solve` can be used after the fact, but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
 	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).
 	false.
 Sometimes the dependency can broken by re-expressing the problem:
 eg
-	?- [X,Y]::integer(-1000,1000), {Y>abs(X),Y==X}.
+	?- [X,Y]::integer(-1200,1200), {Y>abs(X),Y==X}.
 	false.
 	
-	?- [X,Y]::integer(-1001,1001), {Y>abs(X),Y==X}.
+	?- [X,Y]::integer(-1201,1201), {Y>abs(X),Y==X}.
 	X = Y,
-	Y::integer(500, 501).
+	Y::integer(600, 601).
 But there's a limit to the size of the domain as illustrated by the second query. In this case throttling has again terminated the fixed point iteration. As before, `solve` can be used as to break the impasse:
 eg
 	﻿?- [X,Y]::integer(-10001,10001), {Y>abs(X),Y==X}, solve(X).

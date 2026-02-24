@@ -265,7 +265,7 @@ eg
 .pred	**absolve**(*+Intervals*), **absolve**(*+Intervals, ++Integer*)
 **absolve** narrows one or more *Intervals* by "nibbling" bounds from the outside in until sub-ranges at the boundaries cannot be eliminated. The *Integer* "precision" argument (default value determined by flag `clpBNR_default_precision`) is the limit on the number of steps performed and controls the size of the sub-range, which is successively halved at each step. Unlike the rest of the **solve** family, **absolve** is deterministic.
 
-Examples of **splitsolve** can be found in earlier sections of this User Guide. **absolve** is sometimes used to eliminate "false positives" when splitting of intervals terminates due to precision limits or throttling terminates a fixed point iteration.
+The main use cases of **absolve** include sharpening results, pruning away elements of a cluster left by other solvers (e.g., **splitsolve**) or to "pre-shrink" a set of intervals prior to using a bifurcation solver, making the solver's job easier.
 
 .pred	**add_constraint**(*+Contraint*)
 
@@ -563,6 +563,20 @@ eg
 	Y::real(-1.0e+16, 1.0e+16),
 	X::real(-1.0Inf, 1.0Inf).
 
+.pred	**real_split_point**(*+Interval, ++Integer, -Number*)
+Succeeds if a split point (third argument) unifies with a point in the interval satisfying the precision restrictions defined below; otherwise fails. 
+
+The precision restrictions are :
+*	X is not `small` as defined by the second argument (approximately number of digits of precision)
+*	to prevent "clusters", the split point is not in the "vicinity" of a solution 
+*	the number of points to be tested is limited by approximately twice the second argument
+
+Conversely, failure occurs if the:
+*	the interval is `small`
+*	all the points tested are too close to a solution
+
+**real_split_point/3** is used by `clpBNR`'s internal solvers and is exported to facilitate creation of custom solvers for specialized problem domains.
+
 .pred	**small**(*+Intervals*), **small**(*+Intervals, ++Integer*)
 Succeeds if all *Intervals* are "small" based on the optional precision value in the second argument (defaults to precision value define by flag `clpBNR_default_precision`). The precision value roughly corresponds to the number of leading decimal digits of the lower and upper bounds that agree. Numeric values (point intervals), by definition, are small.
 eg
@@ -582,42 +596,38 @@ eg
 	﻿?- small(X).
 	false.
 
-.pred	**splitsolve**(*+Intervals*), **splitsolve**(*+Intervals, ++Integer*)
-**splitsolve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). For more than one interval, the widest interval at the time of selection is used. Each interval is split at its midpoint.
- 
-**splitsolve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
-
-The second argument can be used to override the current global precision value (flag `clpBNR_default_precision`).
-
-A fundamental issue with **splitsolve** is that it may create several solutions in the neighbourhood of a single solution value when the solution is too small to split but too large to eliminate it from a possible solution space. Using a higher precision value usually doesn't help. Instead try adding additional redundant constraints, e.g., Taylor series expansions.
-
-**splitsolve** is frequently used with **global_minimum** and **global_minimum** to find global minimizers/maximizers:
-eg
-	﻿?- X::real(0,pi),global_maximum(X**2*sin(X),Z).
-	X::real(2.2877547452163918, 3.1415926535897936),
-	Z:: 3.94530... .
-	
-	﻿?- X::real(0,pi),global_maximum(X**2*sin(X),Z),splitsolve(X).
-	X:: 2.28837...,
-	Z:: 3.94530... .
-Other examples using **splitsolve** can be found in earlier sections of this User Guide.
-
 .pred	**solve**(*+Intervals+*), **solve**(*+Intervals, ++Integer*)
-Like **splitsolve**, **solve** performs a non-deterministic bifurcating search on one or more *Intervals* until all intervals pass the precision test (see **small/1**). If *Intervals* is a list, individual intervals are selected on a round robin basis, repeating when the end of the list is reached. This is applied recursively until all intervals are "small" or no split point can be found. **solve** is intended for cases where a fixed point is a join of several smaller fix points.  (If a point in the interval can be found which is not a solution, the  problem can be decomposed into two smaller problems.)
+Succeeds if a solution can be found for all values in X where the resultant domain of any value is narrower than the limit specified by the default precision (number of digits as defined by the environment flag `clpBNR_default_precision`) or when an acceptable split point cannot be found; otherwise fails. 
 
-If the *Intervals* list length is greater than one, the leftmost interval in the list is split. Like **splitsolve**, **solve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
+This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the vicinity of a solution (unlike **splitsolve/1**), thus avoiding splitting a single solution into multiple answers, i.e., clusters (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
 eg
-	﻿?- [X,Y]::real, {X+Y==2,X-Y==0}.
-	X::real(-9.999999999999998e+15, 1.0e+16),
-	Y::real(-9.999999999999998e+15, 1.0e+16).
+	% multiple solutions
+	?- X::real, {17*X**256+35*X**17-99*X==0}, solve(X).
+	X:: 0.0000000000000000... ;
+	X:: 1.005027892894011... .
 	
+	% weak local constraint propagation
+	﻿?- [X,Y]::real, {X+Y==2,X-Y==0}.
+	X = Y,
+	Y::real(-9999999999999998.0, 1.0e+16).
+	
+	% but 
 	﻿﻿?- [X,Y]::real, {X+Y==2,X-Y==0}, solve([X,Y]).
 	 X:: 1.00000000...,
 	 Y:: 1.00000000... .
 	
+**solve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
+eg
 	?- [X,Y]::integer, {X+Y==2,X-Y==0}, solve([X,Y]).
 	X = Y, Y = 1.
 Other examples using **solve** can be found in earlier sections of this User Guide.
+
+.pred	**splitsolve**(*+Intervals*), **splitsolve**(*+Intervals, ++Integer*)
+Succeeds if a solution can be found for all values in X where the resultant domain of any value if narrower than the limit specified by the default precision (number of digits as defined by the environment flag `clpBNR_default_precision`); otherwise fails. This is done by splitting any intervals in order of their widths until all domains are smaller than the required limit. Other solutions can be generated on backtracking.
+
+Normally `solve/1` is a better choice but this predicate can be used when =|solve/1|= cannot find a suitable non-solution value to use to split an interval (or intervals). A possible strategy is to use **splitsolve** with a low precision value to coarsely generate sub-problems prior to using **solve** on each sub-problem. This predicate is also less computationally expensive, but may result in many solutions being produced for a single wider interval. (This is why =|solve/1|= splits on non-solutions.) In many cases these clusters can be trimmed using **absolve/1,2**
+
+Like **solve**, **splitsolve** works for both `real` and `integer` interval types. If the type is `integer`, **enumerate** is used when the interval width is less than or equal to `16`.
 
 .pred	**trace_clpBNR**(*?Boolean*)
 If *Boolean* is `true`/`false`, tracing (using `debug` messages) of `clpBNR` primitive operations is enabled/disabled. Otherwise *Boolean* is unified with the current tracing state.
@@ -773,6 +783,7 @@ Module `clpBNR_toolkit` is included in pack `clpBNR` and provides some alternati
 		taylor_merged_contractor/2, % build merged Taylor cf_contractor from list of equations
 		cf_contractor/2,            % execute cf_contractor
 		cf_solve/1, cf_solve/2,     % a solve predicate for centre form contractors
+		taylor_solve/1, taylor_solve/2,  % combines taylor_contractor/2 and cf_solve/1
 	
 		integrate/3, integrate/4,   % simple numerical integration
 		boundary_values/2, boundary_values/3, boundary_values/4,  % solve boundary value problems
@@ -790,7 +801,6 @@ Module `clpBNR_toolkit` is included in pack `clpBNR` and provides some alternati
 Note that many of these predicates take `clpBNR` constraints enclosed in curly brackets to reinforce the syntax and semantics. Exported `clpBNR_toolkit` predicates are documented below using the same conventions as the `clpBNR` reference.
 
 .pred	**boundary_values**(*?Interval,+List*), **boundary_values**(*?Interval,+List,++Integer*), **boundary_values**(*?Interval,+List,++Integer,-List*)
-
 Succeeds if a solution can be found to the boundary value problem specified by the independent variable in the first argument (a `clpBNR` interval) and a list of dependent variables defined by the second argument. Each dependent variable definition is a compound term of the form `dV(Y, Fxy, Yi, Yf)`. The initial and final values of the independent variable for the purposes of the boundary value problem are specified by the lower and upper values of the domain of the first argument. The arguments of for `dV/4`
 are:
 * `Y` : the dependent variable for this definition
@@ -838,12 +848,10 @@ eg
 	false.
 
 .pred	**cf_contractor**(*+[Intervals],+[Intervals]*)
-
-Executes a single step of a centre form contractor such as that constructed by **taylor_contractor/2**. This predicate isn't normally needed (see **cf_solve**) but can be used in a custom **iterate_until** loop with **mid_split** to implement a labelling predicate (analogous to **solve**). (See **taylor_contractor/2** for details.) 
+Executes a single step of a centre form contractor such as that constructed by **taylor_contractor/2**. This predicate isn't normally needed (see **cf_solve**) but can be used in a custom **iterate_until** loop with **mid_split** to implement a labelling predicate (analogous to **taylor_solve**). (See **taylor_contractor/2** for details.) 
 
 .pred	**cf_solve**(*+Contractor*), cf_solve**(*+Contractor,++Integer*)
-
-Iterates a centre form contractor until all variables are narrowed to pass the **small** test. The digits of precision for the test are determined by the second argument, or by the flag `clpBNR_default_precision` for **cf_solve/1**. Like **solve**, additional solutions are produced on backtracking, and failure occurs when there are no (more) solutions. 
+Iterates a centre form contractor, subdividing the problem until all variables are narrowed to pass the **small** test, or no acceptable point to subdivide the problem is found. Like **solve**, splitting in the vicinity of a solution is not done to avoid solution clusters. The digits of precision for the test are determined by the second argument, or by the flag `clpBNR_default_precision` for **cf_solve/1**. Like **solve**, additional solutions are produced on backtracking, and failure occurs when there are no (more) solutions. 
 eg
 	?- [X1,X2]::real, taylor_merged_contractor({X1**2+X2**2==1, X1-X2**2==0},T), cf_solve(T).
 	T = cf_contractor([X2, X1], [_A, _B]),
@@ -858,7 +866,6 @@ eg
 	_A::real(-1.0Inf, 1.0Inf).
 
 .pred	**integrate**(*+Exp,?Interval,-Numeric)*), **integrate**(*+Exp,?Interval,-Numeric,++Integer*)
-
 Succeeds if the third argument can be unified with the value of the numerical integration of the first argument (normally an arithmetic expression) over the range of the interval second argument. The expression must be continuously differentiable over this range or it fails.
 
 The number of integration steps is determined by the optional fourth argument, a positive integer (default is value of environment flag clpBNR_default_precision). Example of use with increasing precision values:
@@ -876,7 +883,6 @@ eg
 	false.
 
 .pred	**iterate_until**(*+Count, +Test, +Contractor*)
-
 **iterate_until** is a general purpose iterator that calls *Contractor* until the iteration count exceeds *Count* or the goal *Test* succeeds. Contractors included with this module include `mid_split/1`, `mid_split_one/1`, `taylor_contractor/2`, and `taylor_merged_contractor/2`. An example using `mid_split/1`:
 eg
 	?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, iterate_until(50,small(X),mid_split(X)).
@@ -955,8 +961,8 @@ Other examples can be found in earlier sections of this User Guide.
 .pred	**mid_split_one**(*+[Intervals]*)
 **mid_split_one** is a contractor which selects the widest interval from a list of intervals and splits it using `mid_split/1`. Failure occurs if the argument is not a list containing just intervals or numbers.
 
-.pred	**taylor_contractor**(*+{Constraint}, -Contractor*)
-**taylor_contractor** builds a centre form contractor from a single *Constraint* equation, i.e., the constraint relational operator must be either `==` of `=:=`, based on the Taylor expansion of the constraint. The constraint must be continuously differentiable. The generated contractor can be used in combination with other contractors, e.g., `mid_split/1`, to generate solutions, e.g.,
+.pred	**taylor_contractor**(*+{Constraints}, -Contractor*)
+**taylor_contractor** builds a centre form contractor from a  *Constraints* equation, i.e., the constraint relational operator must be either `==` of `=:=`, based on the Taylor expansion of the constraint. The constraint must be continuously differentiable. The generated contractor can be used in combination with other contractors, e.g., `mid_split/1`, to generate solutions, e.g.,
 eg
 	?- X::real,taylor_contractor({X**4-12*X**3+47*X**2-60*X==0},T),iterate_until(20,small(X),(mid_split(X),T)).
 	T = cf_contractor([X], [_A]),
@@ -972,12 +978,9 @@ eg
 	X:: 5.0000000...,
 	_A::real(-1.0Inf, 1.0Inf) ;
 	false.
-Messages will be generated on failure when `debug(clpBNR)` is true.
-
-.pred	**taylor_merged_contractor**(*+{Constraints}, -Contractor*)
-**taylor_merged_contractor** generates a multivariate, centre form contractor from a set of constraints, subject to the rule that each constraint is a permitted equation to **taylor_contractor**. Example 8.4 from [Introduction to INTERVAL ANALYSIS]:
+**taylor_contractor** can also be used with a set of constraints; example 8.4 from [Introduction to INTERVAL ANALYSIS]:
 eg
-	?- [X1,X2]::real, taylor_merged_contractor({X1**2+X2**2==1, X1-X2**2==0},T),
+	?- [X1,X2]::real, taylor_contractor({X1**2+X2**2==1, X1-X2**2==0},T),
 	iterate_until(20,small([X1,X2]),(mid_split_one([X1,X2]),T)).
 	T = cf_contractor([X2, X1], [_A, _B]),
 	X1:: 0.61803398874989...,
@@ -990,6 +993,26 @@ eg
 	_B::real(-1.0Inf, 1.0Inf),
 	_A::real(-1.0Inf, 1.0Inf).
 Messages will be generated on failure when `debug(clpBNR)` is true.
+
+.pred	**taylor_merged_contractor**(*+{Constraints}, -Contractor*)
+DEPRECATED - now supported by **taylor_contractor** 
+
+**taylor_merged_contractor** generates a multivariate, centre form contractor from a set of constraints.
+
+.pred	**taylor_solve**(*+{Constraints}*), **taylor_solve**(*+{Constraints}, ++Integer*)
+Succeeds if a taylor contractor can be built from the Constraints which is then used to by **cf_solve** to generate solutions, i.e., a combination of **taylor_contractor/2|** and **cf_solve**. The optional integer precision parameter is passed to **cf_solve**. Examples:
+eg
+	?- X::real,taylor_solve({X**4-12*X**3+47*X**2-60*X==0}).
+	X:: 0.0000000000000000... ;
+	X:: 3.00000... ;
+	X:: 4.00000... ;
+	X:: 5.0000000... ;
+	false.
+	
+	?- taylor_solve({2*X1+5*X1**3+1==X2*(1+X2), 2*X2+5*X2**3+1==X1*(1+X1)}).
+	X1:: -0.427304623558...,
+	X2:: -0.4273046235581... ;
+	false.
 
 <#TableOfContents>
 

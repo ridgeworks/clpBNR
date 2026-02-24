@@ -4,7 +4,19 @@
 aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/travellingSalesman.pl
 
-#### Appendix 2 - Bin Packing Examples
+#### Appendix 2 - Scheduling Code
+##### `scheduling.pl` ( [/*scheduling.pl*/raw text] )
+@include supplemental/scheduling.pl
+
+#### Appendix 3 - Heat Exchanger Example
+##### `hxcgr_eg.pl` ( [/*hxcgr_eg.pl*/raw text] )
+@include supplemental/hxcgr_eg.pl
+
+#### Appendix 4 - Transportation Example
+##### `transportation_eg.pl` ( [/*transportation_eg.pl*/raw text] )
+@include supplemental/transportation_eg.pl
+
+#### Appendix 5 - Bin Packing Examples
 ##### `camels.pl` ( [/*camels.pl*/raw text] )
 @include supplemental/camels.pl
 
@@ -12,12 +24,10 @@ aside> ( [/*travellingSalesman.pl*/raw text] )
 @include supplemental/colouredBins.pl
 <#TableOfContents>
 
-#### Appendix 3 - Scheduling Code
-##### `scheduling.pl` ( [/*scheduling.pl*/raw text] )
-@include supplemental/scheduling.pl
-
 &
 	[/*travellingSalesman.pl*/raw text] <- link supplemental/travellingSalesman.pl
 	[/*camels.pl*/raw text] <- link supplemental/camels.pl
 	[/*colouredBins.pl*/raw text] <- link supplemental/colouredBins.pl
 	[/*scheduling.pl*/raw text] <- link supplemental/scheduling.pl
+	[/*hxcgr_eg.pl*/raw text] <- link supplemental/hxcgr_eg.pl
+	[/*transportation_eg.pl*/raw text] <- link supplemental/transportation_eg.pl

@@ -32,6 +32,7 @@ This version of CLP(BNR) is structured as a SWI-Prolog module with the following
 		% utilities
 		print_interval/1, print_interval/2,      % pretty print interval with optional stream
 		small/1, small/2,      % defines small interval width based on precision value
+		real_split_point/3,    % find split point subject to precision, non-solution restrictions
 		solve/1, solve/2,      % solve (list of) intervals using split to find point solutions
 		splitsolve/1, splitsolve/2,   % solve (list of) intervals using split
 		absolve/1, absolve/2,  % absolve (list of) intervals, narrows by nibbling bounds

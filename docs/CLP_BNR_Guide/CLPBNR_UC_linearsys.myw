@@ -16,8 +16,8 @@ The red and blue lines are the equations and the solid black lines represent fix
 Fortunately `solve/1` can be used overcome this deficiency:
 eg
 	?- [X,Y]::real, {X+Y==1,X-Y==1}, solve(X).
-	﻿X:: 1.00000000...,
-	Y::real(-8.257253769627937e-10,8.257253769627937e-10).
+	X:: 1.00000...,
+	Y::real(-5.556316261534633e-07, 5.556316261534633e-07).
 and, in this case, it works equally well if you solve for `X` or `Y` or both. However this may not always be the case. While the solution found should always be the same, the time taken to find it may vary widely (sometimes an order of magnitude or more). The following "real-world" examples were taken from [SYSTEMS OF LINEAR EQUATIONS AND MATRICES].
 
 ##### Manufacturing: Production Scheduling
@@ -106,47 +106,51 @@ eg
 	I9::real(-8.888888888888889e+15, 8.888888888888889e+15).
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), solve(Vs).
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
 	I1 = 10,
-	Is:: 10.8282986...,
-	I2:: 0.5690898...,
-	I3:: -0.3118300...,
-	I4:: 0.532060...,
-	I5:: 0.257259...,
-	I6:: 0.2962385...,
-	I7:: 0.8282986...,
-	I8:: 0.2592087...,
-	I9:: 0.0389787... ;
+	Is:: 10.82829...,
+	I2:: 0.56909...,
+	I3:: -0.31183...,
+	I4:: 0.53206...,
+	I5:: 0.25726...,
+	I6:: 0.29623...,
+	I7:: 0.82829...,
+	I8:: 0.25920...,
+	I9:: 0.03897... ;
 	false.
-Using `solve` finds the solution in a few seconds, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
+Using `solve` finds the solution in less than a second, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of two:
 eg
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), time(solve(Vs)).
-	% 6,415,537 inferences, 1.136 CPU in 1.137 seconds (100% CPU, 5646436 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	% 4,452,766 inferences, 0.675 CPU in 0.676 seconds (100% CPU, 6599633 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|…],
 	I1 = 10,
-	Is:: 10.8282986...,
-	I2:: 0.5690898...,
-	I3:: -0.3118300...,
-	I4:: 0.532060...,
-	I5:: 0.257259...,
-	I6:: 0.2962385...,
-	I7:: 0.8282986...,
-	I8:: 0.2592087...,
-	I9:: 0.0389787... .
+	Is:: 10.82829...,
+	I2:: 0.56909...,
+	I3:: -0.31183...,
+	I4:: 0.53206...,
+	I5:: 0.25726...,
+	I6:: 0.29623...,
+	I7:: 0.82829...,
+	I8:: 0.25920...,
+	I9:: 0.03897... ;
+	% 64,396 inferences, 0.010 CPU in 0.011 seconds (100% CPU, 6138214 Lips)
+	false.
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), {Is>=0}, time(solve(Vs)).
-	% 1,482,572 inferences, 0.286 CPU in 0.286 seconds (100% CPU, 5185686 Lips)
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	% 1,915,884 inferences, 0.295 CPU in 0.296 seconds (100% CPU, 6487902 Lips)
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|…],
 	I1 = 10,
-	Is:: 10.8282986...,
-	I2:: 0.5690898...,
-	I3:: -0.3118300...,
-	I4:: 0.532060...,
-	I5:: 0.257259...,
-	I6:: 0.2962385...,
-	I7:: 0.8282986...,
-	I8:: 0.2592087...,
-	I9:: 0.0389787... .
+	Is:: 10.82829...,
+	I2:: 0.56909...,
+	I3:: -0.31183...,
+	I4:: 0.53206...,
+	I5:: 0.25726...,
+	I6:: 0.29623...,
+	I7:: 0.82829...,
+	I8:: 0.25920...,
+	I9:: 0.03897... ;
+	% 63,885 inferences, 0.010 CPU in 0.010 seconds (100% CPU, 6215703 Lips)
+	false.
 This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for solutions for negative `Is`.
 
 ##### Under and Overdetermined Systems

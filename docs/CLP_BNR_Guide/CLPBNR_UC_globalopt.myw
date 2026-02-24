@@ -1,8 +1,10 @@
 #### Global Optimization
 
-An important class of problems in engineering design and operations research is the optimal allocation of "resources", usually referred to as global optimization. Specifically it aims to find the maximum or minimum value of a function of one or more variables and to find the values of the variables where this optima is reached. Techniques for solving *local* optimization problems, i.e., solutions in the neighbourhood of a given point, have been well-researched but techniques for global optimization seem to be less well developed. One of the reasons for this is the difficulty of representing global information, but intervals can be used to address this issue. The evaluation of a function of intervals using interval arithmetic is an interval containing all the values of the function given the interval values of the arguments. Then using search techniques similar to solving for the roots of equations, a minimum/maximum value of the function, along with it's *minimizers* (the values of the arguments producing the minimum/maximum) can be found. 
+An important class of problems in engineering design and operations research is the optimal allocation of "resources", usually referred to as global optimization.  The subjects for global optimization are typically under-constrained systems; such systems may have many, possibly countless solutions. The general idea is to use an "objective function" to define which solution is "best". Specifically global optimization aims to find the maximum or minimum value of a function of one or more variables and to find the values of the variables where this optima is reached.
 
-Such searches can be computationally expensive, so it is often advantageous to combine it with local optimization techniques. These take the form of additional (redundant) constraints which can accelerate the searching process. In addition many global optimization problems include additional problem constraints which put further conditions on the set of solutions, so the combination of *Constraint Logic Programming* and *Relational Interval Arithmetic* seems to be a good fit for tackling this class of problems.
+Techniques for solving *local* optimization problems, i.e., solutions in the neighbourhood of a given point, have been well-researched but techniques for global optimization seem to be less well developed. One of the reasons for this is the difficulty of representing global information, but intervals can be used to address this issue. The evaluation of a function of intervals using interval arithmetic is an interval containing all the values of the function given the interval values of the arguments. Then using search techniques similar to solving for the roots of equations, a minimum/maximum value of the function, along with its *minimizers* (the values of the arguments producing the minimum/maximum) can be found. 
+
+Such searches can be computationally expensive, so it is sometimes advantageous to combine it with local optimization techniques. These take the form of additional (redundant) constraints which can accelerate the searching process. In addition many global optimization problems include additional problem constraints which put further conditions on the set of solutions, so the combination of *Constraint Logic Programming* and *Relational Interval Arithmetic* seems to be a good fit for tackling this class of problems.
 
 Material in this section draws heavily on two sources: for theory, see [New Computer Methods for Global Optimization] (Ratschek and Rokne, 2007). The examples are largely from [Schaum's Outlines, Operations Research] (Bronson and Naadimuthu,1997).
 
@@ -20,20 +22,10 @@ eg
 	Z:: 6.00000... ;
 	X:: 3.00...,
 	Z:: 6.00000... ;
-	X:: 3.000845...,
-	Z:: 6.00000... ;
 	false.
-As with finding roots, `solve` may return several superfluous solutions due to floating point inaccuracies, but `absolve/1` may be effective at eliminating at least some of them, as in this case:
+This example has two global minima at `X = 0.0` and `X = 3.0` - only the latter is also a local minimum. Also note that while `Z` has 6 digit precision, `X` has considerable less (the imprecision of `Z` is amplified in generating `X`). To get more precise minimizer values, the precision of the `global_minimum` calculation must be increased:
 eg
-	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z), solve(X), absolve(X).
-	X:: 0.000000...,
-	Z:: 6.00000... ;
-	X:: 3.00...,
-	Z:: 6.00000... ;
-	false.
-This example has two global minima, `0.0` and `3.0` - only the latter is also a local minimum. Also note that while `Z` has 6 digit precision, `X` has considerable less (the imprecision of `Z` is amplified in generating `X`). To get more precise answers, the precision of the `global_minimum` calculation must be increased:
-eg
-	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z,8), solve(X), absolve(X).
+	?- X::real(0,4.0), global_minimum(X*(X*(X-6)+9)+6,Z,8), solve(X).
 	X:: 0.00000000...,
 	Z:: 6.0000000... ;
 	X:: 3.000...,
@@ -50,15 +42,11 @@ eg
 	Z:: 6.00000... .
 These predicates are general in nature; they can find optima on boundaries (where no local optima exist) and on functions of `integer` variables. Some examples of objective functions of more than one variable:
 eg
-	?- X::real(0,4.0), global_minimize(X*(X*(X-6)+9)+6,Z).
-	X:: 3.000000...,
-	Z:: 6.00000... .
-	
 	?- [X1,X2,X3]::real, global_maximum(- (2*X1-5)**2-(X2-3)**2-(5*X3-2)**2,Z).
 	X1:: 2.500...,
-	X2:: 3.000...,
+	X2:: 3.00...,
 	X3:: 0.400...,
-	Z::real(-1.8040366808093222e-7, 0).
+	Z:: -0.000000... .
 	
 	?- [X1,X2]::integer(-100,100), global_minimum((X1-sqrt(5))**2+(X2-pi)**2+10,Z).
 	X1 = 2,
@@ -73,20 +61,15 @@ eg
 
 Moving to CLP usually involves a paradigm shift from "generate and test" to to "apply test, then generate". This facilitates solving constrained optimization problems; just apply the constraints before calling the global optimization predicate. Some examples from "Schaum's" (chapter 12):
 eg
-	﻿?- {X**2+Y**2==1}, global_minimum(X+Y,Z).
+	?- {X**2+Y**2==1}, global_minimum(X+Y,Z).
 	X:: -0.70...,
 	Y:: -0.70...,
-	Z:: -1.41421... .
-	
-	?- {X**2+Y**2==1}, global_minimum(X+Y,Z), solve([X,Y]), absolve([X,Y]).
-	X:: -0.70...,
-	Y:: -0.70...,
-	Z:: -1.41421... .
+	Z:: -1.414213... .
 	
 	?- {X**2+Y**2==1}, global_minimize(X+Y,Z).
 	X:: -0.707107...,
 	Y:: -0.707106...,
-	Z:: -1.41421... .
+	Z:: -1.414213... .
 	
 	?- Xs=[X1,X2,X3], Xs::integer, {X1+2*X2+3*X3==4,X1*X3==19}, global_maximum(-X1**6*X2**2-X1**4*X3**2-1,Z), solve(Xs).
 	Xs = [1, -27, 19],
@@ -95,13 +78,13 @@ eg
 	X3 = 19,
 	Z = -1091.
 	
-	?- Xs=[X1,X2], Xs::real, {X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z), solve(Xs), absolve(Xs).
+	?- Xs=[X1,X2], Xs::real, {X1+X2=<2}, global_maximum(log(1+X1)+2*log(1+X2),Z), solve(Xs).
 	Xs = [X1, X2],
 	X1:: 0.33...,
 	X2:: 1.66...,
 	Z:: 2.24934... .
 	
-	?- Xs=[X1,X2], Xs::real(0,_), {X1+2*X2=<3,8*X1+5*X2>=10},  global_minimum((X1-2)**2+(X2-2)**2,Z), solve(Xs), absolve(Xs).
+	?- Xs=[X1,X2], Xs::real(0,_), {X1+2*X2=<3,8*X1+5*X2>=10},  global_minimum((X1-2)**2+(X2-2)**2,Z), solve(Xs).
 	Xs = [X1, X2],
 	X1:: 1.40...,
 	X2:: 0.800...,
@@ -158,7 +141,7 @@ eg
 	Grey = Yellow, Yellow = 3,
 	Take = 36 ;
 	false.
-In this case the (only) optimal solution is to take 3 each of the Grey and Yellow boxes for a total value of 36 and an enumeration step (`splitsolve` or `enumerate`) is necessary to produce the minimizer values.
+In this case the (only) optimal solution is to take 3 each of the Grey and Yellow boxes for a total value of 36 and an enumeration step is necessary to produce the minimizer values.
 
 A variation on this simple knapsack problems is the multi-constraint problem, e.g., if the knapsack was constrained by volume in addition to weight. These can be simply addressed by adding the additional constraints to the `{}` constraint term as can be seen in the following examples from Schaum's.
  
@@ -262,15 +245,15 @@ eg
 	global_maximum(OF,Profit,3),
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(13735.04638671875, 40000),
-	RegFor::real(10000, 45019.93815104167),
-	PremDom::real(0, 16666.666666666668),
+	RegDom::real(13734.382946893173, 4.0e+04),
+	RegFor::real(1.0e+04, 45020.82273747577),
+	PremDom::real(0.0, 16666.666666666668),
 	PremFor::real(0, 20000),
-	Profit::real(124940.185546875, 125059.814453125),
-	Regular::real(23735.04638671875, 85019.93815104167),
-	Premium::real(0, 36666.666666666664),
-	Domestic::real(13735.04638671875, 56666.666666666664),
-	Foreign::real(10000, 65019.93815104167).
+	Profit::real(124937.53178757269, 125062.46821242732),
+	Regular::real(23734.382946893173, 85020.82273747577),
+	Premium::real(0.0, 36666.666666666664),
+	Domestic::real(13734.382946893173, 56666.666666666664),
+	Foreign::real(1.0e+04, 65020.82273747577).
 The profit is in the neighbourhood of $125,000, but to calculate the amounts of each oil type to use and each type of gasoline to produce, the minimizers must be calculated. Since any set of minimizers will suffice for this problem (there may only be one), `global_maximize` may be good enough:
 eg
 	﻿?- [RegDom,RegFor,PremDom,PremFor]::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -282,15 +265,15 @@ eg
 	global_maximize(OF,Profit,3), 
 	{Regular==RegDom+RegFor, Premium==PremDom+PremFor, Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(37730.712890625, 37739.2578125),
-	RegFor::real(12260.7421875, 12269.287109375),
-	PremDom::real(2260.7421875, 2269.287109375),
-	PremFor::real(2730.712890625, 2739.2578125),
-	Profit::real(124940.185546875, 125059.814453125),
-	Regular::real(49991.455078125, 50008.544921875),
-	Premium::real(4991.455078125, 5008.544921875),
-	Domestic::real(39991.455078125, 40008.544921875),
-	Foreign::real(14991.455078125, 15008.544921875).
+	RegDom::real(38048.902413980606, 38057.826444327366),
+	RegFor::real(11942.173555672634, 11951.097586019394),
+	PremDom::real(1942.1735556726371, 1951.097586019394),
+	PremFor::real(3048.902413980606, 3057.826444327363),
+	Profit::real(124937.53178757269, 125062.46821242732),
+	Regular::real(49991.07596965324, 50008.92403034676),
+	Premium::real(4991.075969653243, 5008.924030346757),
+	Domestic::real(39991.07596965324, 40008.92403034676),
+	Foreign::real(14991.07596965324, 15008.924030346758).
 `solve` isn't particularly effective for this problem because it can't find a non-solution value to split a domain (all variables are "imprecise"). `splitsolve` isn't as demanding so it provides useful results. But the less demanding strategy also results in many sub-solutions derived from the maximum profit value - perhaps that's good enough:
 eg
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -302,15 +285,15 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(37700.08389719467, 40000),
-	RegFor::real(10000, 12299.916102805328),
-	PremDom::real(0, 2299.915704881891),
-	PremFor::real(2727.272593380415, 5059.814534824517),
-	Regular::real(50000, 52299.91610280533),
-	Premium::real(5000, 7359.730239706409),
-	Profit::real(124940.185546875, 125059.814453125),
-	Domestic::real(37700.08389719467, 42299.915704881896),
-	Foreign::real(12727.272593380414, 17359.730637629847) ;
+	RegDom::real(37679.24411466068, 4.0e+04),
+	RegFor::real(1.0e+04, 12320.755885339317),
+	PremDom::real(0.0, 2320.7558853393202),
+	PremFor::real(2679.2441146606798, 5155.095147342616),
+	Regular::real(5.0e+04, 52320.75588533932),
+	Premium::real(5000.0, 7475.851032681936),
+	Profit::real(124937.53178757269, 125062.46821242732),
+	Domestic::real(37679.24411466068, 42320.75588533932),
+	Foreign::real(12679.24411466068, 17475.851032681934) ;
 	false.
 	
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -322,26 +305,26 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37716.6...,
-	RegFor:: 12283.4...,
-	PremDom:: 2275.83...,
-	PremFor:: 2731.00...,
+	RegDom:: 37716.52...,
+	RegFor:: 12283.48...,
+	PremDom:: 2275.39...,
+	PremFor:: 2730.46...,
 	Regular:: 50000.00...,
-	Premium:: 5006.8...,
-	Profit:: 124940.2...,
-	Domestic:: 39992.4...,
-	Foreign:: 15014.4... ;
+	Premium:: 5005.8...,
+	Profit:: 124937.5...,
+	Domestic:: 39991.9...,
+	Foreign:: 15013.9... ;
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37716.6...,
-	RegFor:: 12283.4...,
-	PremDom:: 2275.83...,
-	PremFor:: 2731.00...,
+	RegDom:: 37716.52...,
+	RegFor:: 12283.48...,
+	PremDom:: 2275.39...,
+	PremFor:: 2730.47...,
 	Regular:: 50000.00...,
-	Premium:: 5006.8...,
-	Profit:: 124940.2...,
-	Domestic:: 39992.4...,
-	Foreign:: 15014.4... .
+	Premium:: 5005.8...,
+	Profit:: 124937.5...,
+	Domestic:: 39991.9...,
+	Foreign:: 15013.9... .
 This is reasonably close to the precise answer for this problem, a profit of $125,000 (50,000 regular and 5,000 premium barrels using 40,000 domestic and 15000 foreign barrels). If necessary, one way of "sharpening" the answer is to increase the precision value argument to `global_maximize` at the expense of longer calculation time:
 eg
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -353,27 +336,144 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37726.41...,
-	RegFor:: 12273.5...,
-	PremDom:: 2272.86...,
-	PremFor:: 2727.44...,
+	RegDom:: 37726.3...,
+	RegFor:: 12273.6...,
+	PremDom:: 2272.83...,
+	PremFor:: 2727.40...,
 	Regular:: 50000.00...,
-	Premium:: 5000.30...,
-	Profit:: 124994.6...,
-	Domestic:: 39999.2...,
+	Premium:: 5000.2...,
+	Profit:: 124993.8...,
+	Domestic:: 39999.1...,
 	Foreign:: 15001.0... ;
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom:: 37726.4...,
-	RegFor:: 12273.5...,
-	PremDom:: 2272.8...,
-	PremFor:: 2727.44...,
+	RegDom:: 37726.3...,
+	RegFor:: 12273.6...,
+	PremDom:: 2272.84...,
+	PremFor:: 2727.41...,
 	Regular:: 50000.00...,
-	Premium:: 5000.3...,
-	Profit:: 124994.7...,
-	Domestic:: 39999.2...,
-	Foreign:: 15001.0... .
+	Premium:: 5000.2...,
+	Profit:: 124993.9...,
+	Domestic:: 39999.1...,
+	Foreign:: 15001.1... .
 But this is a fair amount of additional work for not much gain (for this particular problem). A different approach to generating better results in less time is discussed below.
+
+##### Heat Exchanger Network Design
+
+An oft used example of global optimization is the design of heat exchanger networks. The idea is to inter-connect heat exchangers in such a way as to achieve a desired temperature and flow at the output from a defined set of heat exchangers and input temperatures and flows, at a minimum cost. These define a set of constraints based on all possible interconnections, called a "superstructure". For this example we'll use Example 2.1. from [Computational Results for an Efficient Implementation of the GOP Algorithm and its Variants](Visweswaran and Floudas,1996). The network super structure for this example is:
+[hxcgr_eg_img]
+The objective is to determine the minimum cost network for a system of two hot
+streams (vertical direction) and one cold stream (horizontal direction). The constraints defined by this network are based on the flow and energy balances at each junction. In addition all temperatures and flows (in the direction of the arrows) are positive. Expressed as a list of `clpBNR` constraints:
+.pl
+		Cs = [
+		T11 == 500-To1, T11>=10,
+		T12 == 250-Ti1, T12>=10,
+		T21 == 350-To2, T21>=10,
+		T22 == 200-Ti2, T22>=10,
+		Ti1 >= 150, Ti2 >= 150,   % minimum temperature based on input stream
+		FE1 =< 10, FE2 =< 10,     % maximum flow based on input stream
+		% all flows positive
+		0 =< Fi1, 0 =< Fi2, 0 =< FB12, 0 =< FB21, 0 =< Fo1, 0 =< Fo2, 0 =< FE1, 0 =< FE2,
+		% energy balances
+		FE2*(To2-Ti2) == 600,
+		FE1*(To1-Ti1) == 1000,
+		150*Fi1 + To2*FB12 - Ti1*FE1 == 0,
+		150*Fi2 + To1*FB21 - Ti2*FE2 == 0,
+		To1*Fo1 + To2*Fo2 == 3100,
+		% flow balances
+		Fi1 + Fi2 == 10,
+		Fo1 + Fo2 == 10,
+		Fo2 + FB12 == FE2,
+		Fo1 + FB21 == FE1,
+		Fi1 + FB12 == FE1,
+		Fi2 + FB21 == FE2
+		]
+The {`DeltaT`}'s (`T11`, `T12`, etc.) are the temperature differentials on the input and output sides of each heat exchanger and must be at least 10 degrees. The objective function value is the cost of the configuration and is a function of these 4 {`DeltaT`}'s):
+
+math> f(DeltaT11,DeltaT12,DeltaT21,DeltaT22) = 1300(1000/(0.05*2/3*sqrt(DeltaT11*DeltaT12) + 1/6*(DeltaT11+DeltaT12)))^0.6 + 1300(600/(0.05*2/3*sqrt(DeltaT21*DeltaT22) + 1/6*(DeltaT21+DeltaT22)))^0.6
+
+Now this is a complicated formula and it's desirable to find an simpler alternative function that minimizes to possibly different value at the same set of minimizers. After finding the optima, the minimizer values can then be used to calculate the cost using the original objective function. Such an objective function that meets these requirements is:
+.pl
+	OF = (1/(1r5*sqrt(T11*T12) + (T11+T12))) + (1/(1r5*sqrt(T21*T22) + (T21+T22)))
+All these constraints and function definitions can be wrapped up in a predicate for the example queries that follow:
+.pl
+	hxcgr_eg(temps([T11,T12,T21,T22],Ti1,To1,Ti2,To2),
+	         flows(Fi1,Fi2,FB12,FB21,Fo1,Fo2,FE1,FE2),
+	         OF,Cs,CostF) :-
+		Cs = [
+		T11 == 500-To1, T11>=10,
+		T12 == 250-Ti1, T12>=10,
+		T21 == 350-To2, T21>=10,
+		T22 == 200-Ti2, T22>=10,
+		Ti1 >= 150, Ti2 >= 150,
+		FE1 =< 10, FE2 =< 10,
+		0 =< Fi1, 0 =< Fi2, 0 =< FB12, 0 =< FB21, 0 =< Fo1, 0 =< Fo2, 0 =< FE1, 0 =< FE2,
+		FE2*(To2-Ti2) == 600,
+		FE1*(To1-Ti1) == 1000,
+		150*Fi1 + To2*FB12 - Ti1*FE1 == 0,
+		150*Fi2 + To1*FB21 - Ti2*FE2 == 0,
+		To1*Fo1 + To2*Fo2 == 3100,
+		Fi1 + Fi2 == 10,
+		Fo1 + Fo2 == 10,
+		Fo2 + FB12 == FE2,
+		Fo1 + FB21 == FE1,
+		Fi1 + FB12 == FE1,
+		Fi2 + FB21 == FE2
+		],
+		OF = (1/(1r5*sqrt(T11*T12) + (T11+T12))) + (1/(1r5*sqrt(T21*T22) + (T21+T22))),
+		CostF = 1300*(1000/(0.05*2r3*sqrt(T11*T12) + 1r6*(T11+T12)))**0.6 + 1300*(600/(0.05*2r3*sqrt(T21*T22) + 1r6*(T21+T22)))**0.6.
+Using `global_minimum/2` and solving for the minimizing values of the {`DeltaT`}'s:
+eg
+	?- _Ts = [T11,T12,T21,T22], hxcgr_eg(temps(_Ts,Ti1,To1,Ti2,To2),_Flows,OF,_Cs,CostF), {_Cs}, global_minimum(OF,Z), {Cost==CostF}, solve(_Ts), _Flows=..[flows,Fi1,Fi2,FB12,FB21,Fo1,Fo2,FE1,FE2].
+	OF = 1/(1r5*sqrt(T11*T12)+(T11+T12))+1/(1r5*sqrt(T21*T22)+(T21+T22)),
+	CostF = 1300*(1000/(0.05*2r3*sqrt(T11*T12)+1r6*(T11+T12)))**0.6+1300*(600/(0.05*2r3*sqrt(T21*T22)+1r6*(T21+T22)))**0.6,
+	T11:: 190.0...,
+	To1:: 310.0...,
+	T12:: 40.0...,
+	Ti1:: 210.0...,
+	T21:: 140.0...,
+	To2:: 210.0...,
+	T22:: 50.0...,
+	Ti2:: 150.0...,
+	FE1:: 10.00...,
+	FE2:: 10.0...,
+	Fi1:: 0.0...,
+	Fi2:: 10.0...,
+	FB12:: 10.0...,
+	FB21:: 0.00...,
+	Fo1:: 10.00...,
+	Fo2:: 0.00...,
+	Z:: 0.00887...,
+	Cost::real(16024.377754474684, 16027.290858044276) ;
+	false.
+This agrees with the solution in the referenced article:
+[hxcgr_soln_img]
+with a cost of approximately `16025` (units undefined) and a execution time of around two seconds (configuration dependent). Also note that it is proven that there is only one set of minimizers that result in the minimum cost.
+
+The performance can be further improved if we constrain the {`DeltaT`} values to be integers, which in turn reduces the domain that `global_minimum` has to search. Note that the value of the objective function (or the cost) is not constrained to be an integer (just the arguments of the function):
+eg
+	?- _Ts = [T11,T12,T21,T22], _Ts::integer, hxcgr_eg(temps(_Ts,Ti1,To1,Ti2,To2),_Flows,OF,_Cs,CostF), {_Cs}, global_minimum(OF,Z), {Cost==CostF}, solve(_Ts), _Flows=..[flows,Fi1,Fi2,FB12,FB21,Fo1,Fo2,FE1,FE2].
+	T11 = 190,
+	T12 = 40,
+	T21 = 140,
+	T22 = 50,
+	Ti1 = To2, To2 = 210,
+	To1 = 310,
+	Ti2 = 150,
+	OF = 1/(1r5*sqrt(190*40)+(190+40))+1/(1r5*sqrt(140*50)+(140+50)),
+	CostF = 1300*(1000/(0.05*2r3*sqrt(190*40)+1r6*(190+40)))**0.6+1300*(600/(0.05*2r3*sqrt(140*50)+1r6*(140+50)))**0.6,
+	FE1 = FE2, FE2 = 10,
+	Fi1:: 0.00000000000000...,
+	Fi2:: 10.00000000000000...,
+	FB12:: 10.00000000000000...,
+	FB21:: 0.00000000000000...,
+	Fo1:: 10.00000000000000...,
+	Fo2:: 0.00000000000000...,
+	Z:: 0.0088786081183425...,
+	Cost:: 16024.5840912507... ;
+	false.
+
+This example demonstrates a couple of strategies that can be used to improve performance of the search for global optima. First look for a simpler representation of the objective function that can be "optimized" without changing the minimizer values. For this example, minimizing the alternative objective function ran about one third faster than the original function. Secondly, where applicable, use integer domains for the minimizers; that further reduced the execution time by a factor of two. Combined, the query that exploited these changes ran over three times faster than a query based purely on the original problem specification with `real` values. 
 
 ##### Optimizing Linear Systems
 
@@ -521,7 +621,7 @@ eg
 	D1::integer(0, 10),
 	D2::integer(0, 10),
 	D3::integer(0, 10).
-Use one of the "solve" predicates to non-detministically generate sets of minimzers corresponding to the minimal cost, or to find just a set of minimizers use `lin_minimize` instead of `lin_minimum`:
+Use one of the "solve" predicates to non-deterministically generate sets of minimzers corresponding to the minimal cost, or to find just a set of minimizers use `lin_minimize` instead of `lin_minimum`:
 eg 
 	?- Vars = [A1,A2,A3,B1,B2,B3,C1,C2,C3,D1,D2,D3], transportation_eg(Vars,Constraints,Cost), lin_minimum(Cost,Constraints,MinCost), enumerate(Vars).
 	Vars = [0, 21, 0, 16, 9, 15, 34, 0, 0, 0, 0, 10],
@@ -863,15 +963,6 @@ eg
 	X:: 7.8...,
 	Z:: 61.6850... .
 	
-	?- X::real(0,20), global_maximum(X*(5*pi-X),Z), solve(X).
-	X:: 7.849653...,
-	Z:: 61.68501... ;
-	X:: 7.8...,
-	Z:: 61.6850... ;
-	X:: 7.8583091...,
-	Z:: 61.685009... ;
-	false.
-	
 	?- X::real(0,20), OF=X*(5*pi-X), local_maxima(OF), global_maximum(OF,Z).
 	OF = X*(5*pi-X),
 	X:: 7.85398163397448...,
@@ -938,9 +1029,9 @@ eg
 	local_minima(OF), {OF==Z}, global_minimize(Z,Pipe).
 	OF = sqrt(X**2+Y**2)+sqrt((X-300.0)**2+(Y-400.0)**2)+sqrt((X-700.0)**2+(Y-300.0)**2),
 	Z = Pipe,
-	X::real(240.10409027359816, 465.437905377169),
-	Y::real(169.110671960403, 400.0),
-	Pipe:: 693.256... .
+	X::real(233.04403720707188, 473.79788063712215),
+	Y::real(181.5039721525421, 400.0),
+	Pipe:: 694.114... .
 Here `{OF==Z}` has been applied before calling `global_minimize` which now only has `Z` and its constraints to use. Searching for a minima using only `Z` is problematic because full narrowing is only possible when there is no dependency problem, which is often not the case. In this example, an invalid minimum has been reached. If `solve` is used to further constrain `X` and `Y`, it will fail:
 eg
 	﻿?- X::real(0,700),Y::real(0,400),
@@ -963,3 +1054,6 @@ Global optimization is a hard problem and the tools described in this section ar
 	[Appendix - Bin_Packing_Examples] <- link #toc4Appendix_2_-_Bin_Packing_Examples
 	[Mathematical Programming tutorial] <- link https://www.eclipseclp.org/doc/tutorial/tutorial116.html
 	[transportation_img] <- image images/Eclipse_tutorial044flat.png width=50% height=50% style="margin-left:200px"
+	[Computational Results for an Efficient Implementation of the GOP Algorithm and its Variants] <- link https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=69e4d649abfc067107b1b871f54b6aa8151a506c
+	[hxcgr_eg_img] <- image images/hxcgr_eg.png  width=50% height=50%
+	[hxcgr_soln_img] <- image images/hxcgr_soln.png  width=50% height=50%

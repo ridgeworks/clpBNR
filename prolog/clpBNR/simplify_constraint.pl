@@ -3,7 +3,7 @@
 %
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2025 Rick Workman
+ *	Copyright (c) 2025-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@
 =|clpBNR/simplify_constraint|= exports a single predicate, =|simplify/2|=, which attempts to reduce expressions, including constraints, to a more optimal form. This module was loosely based on [Simplifying Arithmetic Expressions with Prolog](https://github.com/Couleslaw/Expression-simplification) (licensed under "The  MIT License" as is this module) but modified to:
 - support variables (including clpBNR intervals), atoms, floats and strings as "atomic"
 - use SWIP native rationals directly
-- support constraints (==, =<, =>, ...)
+- support constraints (==, =<, >=, ...)
 - remove functionality, e.g., multiplication expansion, which don't reduce expressions
 - remove support for trig and logarithmic simplification (reduce overhead)
 - other optimizations to reduce the number of term "classes"

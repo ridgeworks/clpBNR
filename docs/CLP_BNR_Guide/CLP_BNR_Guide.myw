@@ -2,7 +2,7 @@
 title>	A Guide to CLP(BNR)
 centreblock>
 	**Constraint Logic Programming over Booleans, Integers and Reals**
-	**Version 0.12.3, December 2025**
+	**Version 0.13.0, February 2026**
 
 The word "constraint" is used in a variety of contexts from everyday life to physics, mathematics, and other sciences with much the same intuitive meaning, even when the formalization is different. A bead on a wire, a weight on a string, a beaker open to the atmosphere, a space mission limited by onboard fuel, a desert ecology limited by the lack of water are all examples of constrained systems.
 
@@ -21,7 +21,7 @@ CLP systems began appearing an the 1980's and span a considerable variety in sys
 
 This version of CLP(BNR) was largely based on the original concepts, but has also incorporated ideas from more recent CLP interval systems. In particular, ideas in [CLIP] developed by Tim Hickey and his team at Brandeis University in the late 1990's and [Interval Arithmetic: from Principles to Implementation] on the primitive interval relations, have been used. Other notable systems based on constraints over intervals include [Newton] and [Numerica]. 
 
-This document is not focused on either the theoretical underpinnings of CLP(BNR) or on other CLP systems over other domains; these are adequately covered by the existing academic literature and relevant Web sites. Rather the focus is on the practical details of how Prolog programmers can use this version of CLP(BNR) through numerous, hopefully useful, examples. For any particular problem, CLP(BNR) may not be the optimal approach (depending on the definition of "optimal") but the example should provide insight on how to use mathematical constraints that can be applied to other problem domains.
+This document is not focused on either the theoretical underpinnings of CLP(BNR) or on other CLP systems over other domains; these are adequately covered by the existing academic literature and relevant Web sites. (For example, a concise summary of the underlying theory can be found in [Interval Constraints: Results and Perspectives].) Rather the focus is on the practical details of how Prolog programmers can use this version of CLP(BNR) through numerous, hopefully useful, examples. For any particular problem, CLP(BNR) may not be the optimal approach (depending on the definition of "optimal") but the example should provide insight on how to use mathematical constraints that can be applied to other problem domains.
 
 aside>	Aside: This document was authored using "MyWord", a web publishing application loosely described as a user extensible light weight markup language (think MarkDown). See [MyWord] for more information. 
 
@@ -55,6 +55,7 @@ TOC>	{#id TableOfContents}`        `**Contents**
 	[MyWord]            <- link https://github.com/ridgeworks/MyWord
 	[Introduction to INTERVAL ANALYSIS] <- link https://dl.acm.org/doi/10.5555/1508122
 	[Carleton University graduate level course] <- link https://www.softwarepreservation.org/projects/prolog/bnr/doc/Older-Introduction_to_CLP%28BNR%29-1995.pdf/view
+	[Interval Constraints: Results and Perspectives] <- link https://www.academia.edu/19015806/Interval_Constraints_Results_and_Perspectives
 
 	@import MyWordDocStyle.mmk pkgs/demo.mmk pkgs/toc.mmk pkgs/asciimath.mmk pkgs/tsv.mmk
 	{` .. `}      <- <math class = my_math display=inline> asciimath

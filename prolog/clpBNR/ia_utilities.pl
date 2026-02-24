@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2019-2025 Rick Workman
+ *	Copyright (c) 2019-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -369,6 +369,63 @@ chk_small(L,H,Err) :-                     % from CLIP?
 	).
 
 /** 
+real_split_point(X:interval,+P:integer,-Pt:numeric) is semidet
+
+Succeeds if Pt unifies with a point in X satisfying the precision restrictions defined below; otherwise fails. 
+
+The precision restrictions are :
+- X is not `small` as defined by P (approximately number of digits of precision)
+- to prevent "clusters", Pt is not in the vicinity of a solution (again defined by P) 
+- the number of points to be tested is limited by approximately `2*P`
+
+Conversely, failure occurs if the:
+- the interval is `small`
+- all the points tested are too close to a solution
+
+`real_split_point/3` is used by the solvers packaged with `clpBNR` and is exported to facilitate creation of custom solvers for specialized problem domains.
+*/
+real_split_point(X,P,Pt) :-           % exported
+	getValue(X,V),
+	split_interval_(X,V,P,Pt).
+
+split_interval_(X,(L,H),P,Pt) :-      % used by `solve`
+	Err is 10.0**(-(P+1)),
+	\+ chk_small(L,H,Err),
+	splitinterval_real_(L,H,IPt),                     % initial guess
+	N is max(2,P-2),
+	current_prolog_flag(clpBNR_iteration_limit,Lim),
+	setup_call_cleanup(
+	    set_prolog_flag(clpBNR_iteration_limit,500),  % lower iteration limit for solution test
+	    split_real_(X,L,H,IPt,N,Err,Pt),
+	    set_prolog_flag(clpBNR_iteration_limit,Lim)
+	).
+
+%  split a real interval
+split_real_(X,_,_,Pt,_N,Err,Pt) :-           % Pt not in solution space, split here
+	split_real_test_(X,Pt,Err), !.
+split_real_(X,L,_H,Pt,N,Err,NPt) :-          % Pt in current solution space, try lower range
+	split_real_lo(N,X,L,Pt,NPt,Err), !.
+split_real_(X,_L,H,Pt,N,Err,NPt) :-          % Pt in current solution space, try upper range
+	split_real_hi(N,X,Pt,H,NPt,Err).
+
+split_real_lo(N,X,L,Pt,NPt,Err) :-           % search lower range for a split point 
+	N > 0,
+	\+ chk_small(L,Pt,Err),
+	splitinterval_real_(L,Pt,SPt),
+	(split_real_test_(X,SPt,Err) -> NPt = SPt ; N1 is N-1, split_real_lo(N1,X,L,SPt,NPt,Err)).
+
+split_real_hi(N,X,Pt,H,NPt,Err) :-           % search upper range for a split point 
+	N > 0,
+	\+ chk_small(Pt,H,Err),
+	splitinterval_real_(Pt,H,SPt),
+	(split_real_test_(X,SPt,Err) -> NPt = SPt ; N1 is N-1, split_real_hi(N1,X,SPt,H,NPt,Err)).
+
+split_real_test_(X,Pt,Err) :-
+	LPt is Pt-5.0*Err, HPt is Pt+5.0*Err,   % fuzz Pt for test
+	define_interval(IPt,real,(LPt,HPt),_,[]),
+	\+ X = IPt, !.  % not a solution
+
+/** 
 global_maximum(+Exp,?Z:numeric) is semidet
 
 Succeeds if Z unifies with the global maximum of (evaluated) expression Exp; otherwise fails. Exp must be an actual expression which can be evaluated as part of the search for the global optima, not an interval equal to the evaluated expression. Any solutions will be constrained to be at the global maximum which may result in narrowing any intervals in  Exp. 
@@ -540,6 +597,7 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 	     ;  ZTree2 = ZTree1% %, MinZh2 = 1.0Inf
 	    )
 	),
+	% select next, fails if nothing left
 	select_min(ZTree2,NxtY,ZTreeY),                   % Step 9. and 11., remove Y from tree
 	iterate_MS(Z,Xs,P,NxtY,ZTreeY,BindVars).          % Step 13.
 iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-    % termination criteria (Step 12.) met
@@ -562,19 +620,19 @@ continue_MS(Zl,Zh,P,Xs,XVs,Discard) :-           % w(Y) termination criteria
 
 % Find widest interval and a point to split it into two partitions.
 % The split point is nominally the midpoint to roughly equalize the size of 
-% the partitions. However, splitting at a minimizer can result in more partitions
-% containing the minimizer, so a small randomization about the midpoint is used. 
+% the partitions.
 widest_MS([X|Xs],[XV|XVs],Xf,XfMid) :-
 	widest1_MS(Xs,XVs,XV,X,Xf,XfMid).
-	
-widest1_MS([],[],(L,H),Xf,Xf,XfMid) :- !,
-	midpoint_(L,H,Mid), XfMid is float(Mid),  %% same as 11.7 + float conversion for efficiency
-	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).  % L < XfMid < H
-widest1_MS([X|Xs],[(L,H)|XVs],(L0,H0),_X0,Xf,XfMid) :-
-	1 is cmpr((H-L),(H0-L0)), !,  % (H-L) > (H0-L0)
-	widest1_MS(Xs,XVs,(L,H),X,Xf,XfMid).
-widest1_MS([_X|Xs],[_XV|XVs],W0,X0,Xf,XfMid) :-
-	widest1_MS(Xs,XVs,W0,X0,Xf,XfMid).
+
+widest1_MS([],[],(L,H),Xf,Xf,XfMid) :-
+	splitinterval_real_(L,H,XfMid),           % split point of widest (from `solve`)
+	-2 is cmpr(L,XfMid) + cmpr(XfMid,H).      % L < XfMid < H
+widest1_MS([X|Xs],[XV|XVs],W0,X0,Xf,XfMid) :-
+	XV = (L,H), W0 = (L0,H0),
+	(1 is cmpr((H-L),(H0-L0))
+	 -> widest1_MS(Xs,XVs,XV,X ,Xf,XfMid)  % (H-L) > (H0-L0)
+	 ;  widest1_MS(Xs,XVs,W0,X0,Xf,XfMid)
+	).
 
 partition_box_(P,[X|_Xs],[XV|XVs],Xf,XfMid,[XVP|XVs]) :- X == Xf, !,  % partition on Xf
 	XV = (L,H),
@@ -584,13 +642,13 @@ partition_box_(P,[_X|Xs],[XV|XVs],Xf,XfMid,[XV|XVsP]) :-
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(Z,Xs,XVs,_FV) :-                         % Step 7., calculate F(V) and save
-	nb_setval('$clpBNR:eval_MS',[]),              % [] means failure to evaluate
+	nb_setval('$clpBNR:eval_MS',[]),             % [] means failure to evaluate
 	build_box_MS(Xs,XVs,T/T),
 	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds
-	nb_setval('$clpBNR:eval_MS',NewBox),          % save solution in format for Z tree
+	nb_setval('$clpBNR:eval_MS',NewBox),         % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,_,_,Zl-(Zh,NXVs)) :-
-	nb_getval('$clpBNR:eval_MS',[(Zl,Zh)|NXVs]).  % retrieve solution (fails if [])
+	nb_getval('$clpBNR:eval_MS',[(Zl,Zh)|NXVs]). % retrieve solution (fails if [])
 
 sandbox:safe_global_variable('$clpBNR:eval_MS').
 
@@ -601,48 +659,53 @@ build_box_MS([X|Xs],[XNew|XVs],Agenda) :-
 	updateValue_(XCurrent,XNew,X,1,Agenda,NextAgenda), !, %%% unnecessary cut??
 	build_box_MS(Xs,XVs,NextAgenda).
 
-tree_insert(Tree,[],Tree) :-!.
-tree_insert(MT,Data,Ntree) :- var(MT), !,
+tree_insert(Tree,[],Tree) :- !.            % null insertion
+tree_insert(MT,Data,Ntree) :- var(MT), !,  % leaf insertion
 	Ntree = n(_L,_R,Data).
-tree_insert(n(L,R,K-Data), NK-NData, Ntree) :- -1 is cmpr(NK,K), !,  % NK<K
-	tree_insert(L, NK-NData, NewL),
-	Ntree = n(NewL,R,K-Data).
-tree_insert(n(L,R,K-Data), NK-NData, Ntree) :-  1 is cmpr(NK,K), !,  % NK>K
-	tree_insert(R, NK-NData, NewR),
-	Ntree = n(L,NewR,K-Data).
-tree_insert(n(L,R,K-(U,Data)), K-(NU,NData), Ntree) :- -1 is cmpr(NU,U), !,  % K=NK, NU < U
-	tree_insert(L, K-(NU,NData), NewL),
-	Ntree = n(NewL,R,K-(U,Data)).
-tree_insert(n(L,R,Data), NData, n(L,NewR,Data)) :-                   % K=NK, NU>=U
-	Data = NData
-	 -> NewR = R                      % if duplicate node, discard
-	 ;  tree_insert(R, NData, NewR).  % else add to right branch
-	
-select_min(n(L,R,Min),Min,R) :- var(L), !, 
-	nonvar(Min).  % fail if tree was empty
+tree_insert(n(L,R,Data), NData, n(NewL,NewR,Data)) :-
+	tree_ix_compare(NData, Data, COp),
+	(COp == -1 -> tree_insert(L, NData, NewL), NewR = R     % NK<K, insert left
+	;COp ==  1 -> tree_insert(R, NData, NewR), NewL = L     % NK>K, insert right
+	;Data = _-UData, NData = _-NUData,                      % NK=:=K
+	 tree_ix_compare(NUData,UData,UCOp),
+	 (UCOp == -1 -> tree_insert(L, NData, NewL), NewR = R     %  NU<U, insert left
+	 ;UCOp ==  0, UData = NUData -> NewL = L, NewR = R        %  NU=:=U, same data, discard 
+	 ;tree_insert(R, NData, NewR), NewL = L                   %  NU>=U, insert right
+	 )      
+	).
+
+tree_ix_compare( NK-_ , K-_ ,COp) :- COp is cmpr(NK,K).
+tree_ix_compare((NK,_),(K,_),COp) :- COp is cmpr(NK,K).
+
+select_min(n(L,R,Min),Min,R) :- var(L), !,  % left-most leaf node 
+	nonvar(Min).                            % fail if tree was empty
 select_min(n(L,R,KData),Min,n(NewL,R,KData)) :-
 	select_min(L,Min,NewL).
 
 % Midpoint test, Step 11+:
 % Discard all pairs (Z,z) from the list that satisfy F(C)<z where c = mid Y.
-% Midpoint test invalid if soulution constrained
+% Midpoint test invalid if solution constrained
 %midpoint_MS(L,H,M) :-  % L and H finite, non-zero ==> geometric/arithmetic mean
 %	M is min(sqrt(abs(L)),abs(L)/2)*sign(L)+min(sqrt(abs(H)),abs(H)/2)*sign(H).
 
 /**
 solve(X:numeric_List) is nondet
 
-Succeeds if a solution can be found for all values in X where the resultant domain of any value is narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=); otherwise fails. This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the solution space (unlike =|splitsolve/1|=); this avoids the splitting a single solution range into multiple solutions (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
+Succeeds if a solution can be found for all values in X where the resultant domain of any value is narrower than the limit specified by the default precision (number of digits as defined by the environment flag  =clpBNR_default_precision=) or when an acceptable split point cannot be found; otherwise fails. 
+
+This is done by splitting any intervals in round robin order of their widths until all domains are smaller than the required limit. Splitting can only be done at points not in the vicinity of a solution (unlike =|splitsolve/1|=), thus avoiding splitting a single solution into multiple answers, i.e., clusters (although this can still occur for other reasons). Other solutions can be generated on backtracking. Examples:
 ==
 ?- X::real, {17*X**256+35*X**17-99*X==0}, solve(X).
 X:: 0.0000000000000000... ;
 X:: 1.005027892894011... .
 
 ?- [X,Y]::real, {X+Y==1,X-Y==1}, solve([X,Y]).
-X:: 1.0000000000000...,
-Y::real(-4.96269692007445e-14, 4.96269692007445e-14).
+X:: 1.00000...,
+Y::real(-5.303206672003733e-07, 5.303206672691019e-07).
 ==
 The two main use cases for =|solve/1|= are a) to separate multiple solutions in a within domain (or set of domains), and b) to overcome the well known dependancy issue when using interval arithmetic. (In `clpfd` terminology, =|solve/1|= is a labelling predicate.)
+
+Note that the heuristic used to avoid splitting on a solution is imprecise and undesirable clusters may sometimes occur. In many such cases these "false positives" can trimmed using =|absolve/1,2|=.
 
 @see =|splitsolve/1|=
 */
@@ -666,30 +729,28 @@ solve(X,P) :-
 solve(X,_P) :-
 	number(X), !.                 % already a point value
 solve(X,P) :-                     % assume list
-	Err is 10.0**(-(P+1)),        % convert digits of precision to normalized error value 
-	xpsolveall_(X,Err).
+	xpsolveall_(X,P).
 
-xpsolveall_([],_Err) :- !.
-xpsolveall_(Xs,Err) :-
-	xpsolve_each_(Xs,Us,Err),     % split once and collect successes
-	xpsolveall_(Us,Err).          % continue to split remaining
+xpsolveall_(Xs,P) :-
+	xpsolve_each_(Xs,Us,P),       % split once and collect successes
+	(Us == [] -> true ; xpsolveall_(Xs,P)).  % continue until nothing split
 
-xpsolve_each_([],[],_Err).
-xpsolve_each_([X|Xs],[X|Us],Err) :-
-	interval_object(X,Type,V,_),          % get interval type and value
-	splitinterval_(Type,X,V,Err,Choices), % split interval
+xpsolve_each_([],[],_P).
+xpsolve_each_([X|Xs],[X|Us],P) :-
+	interval_object(X,Type,V,_),        % get interval type and value
+	splitinterval_(Type,X,V,P,Choices), % split interval
 	!,
-	xpsolve_choice(Choices),              % create choice(point)
-	xpsolve_each_(Xs,Us,Err).             % split others in list
-xpsolve_each_([X|Xs],Us,Err) :-           % avoid unfreeze overhead if [] unified in head
-	X==[], !,                             % end of nested listed, discard
-	xpsolve_each_(Xs,Us,Err).             % split remaining
-xpsolve_each_([X|Xs],[U|Us],Err) :-
-	list(X), !,                           % nested list
-	xpsolve_each_(X,U,Err),               % split nested list
-	xpsolve_each_(Xs,Us,Err).             % then others in main list
-xpsolve_each_([_X|Xs],Us,Err) :-
-	xpsolve_each_(Xs,Us,Err).             % split failed or already a number, drop interval from list, and keep going
+	xpsolve_choice(Choices),            % create choice(point)
+	xpsolve_each_(Xs,Us,P).             % split others in list
+xpsolve_each_([X|Xs],Us,P) :-           % avoid unfreeze overhead if [] unified in head
+	X==[], !,                           % end of nested listed, discard
+	xpsolve_each_(Xs,Us,P).             % split remaining
+xpsolve_each_([X|Xs],[U|Us],P) :-
+	list(X), !,                         % nested list
+	xpsolve_each_(X,U,P),               % split nested list
+	xpsolve_each_(Xs,Us,P).             % then others in main list
+xpsolve_each_([_X|Xs],Us,P) :-
+	xpsolve_each_(Xs,Us,P).             % split failed or already a number, drop interval from list, and keep going
 
 xpsolve_choice(split(X,SPt)) :- add_constraint(X =< SPt).  % avoid meta call
 xpsolve_choice(split(X,SPt)) :- add_constraint(SPt =< X).
@@ -698,35 +759,18 @@ xpsolve_choice(split_integer(X,SPt)) :- add_constraint(SPt < X).
 xpsolve_choice(enumerate(X)) :- enumerate(X).
 
 %
-% try to split interval - fails if unsplittable (real too narrow)
+% try to split interval - fails if unsplittable (see real_split_point/3)
 %
 %splitinterval_(boolean,X,Err,Choices) :-
 %	splitinterval_(integer,X,Err,Choices).
 splitinterval_(integer,X,(L,H),_,Cons) :- 
 	( H-L < 15
-	 -> Cons = enumerate(X)                              % small enough to enumerate
-	 ;  splitinterval_integer_(L,H,Pt),                  % splittable at Pt
-	    Cons = split_integer(X,Pt)                       % success
+	 -> Cons = enumerate(X)                       % small enough to enumerate
+	 ;  splitinterval_integer_(L,H,Pt),           % splittable at Pt
+	    Cons = split_integer(X,Pt)                % success
 	).
-splitinterval_(real,X,(L,H),Err,split(X,::(SPt,SPt))) :-  % split on point value
-	splitinterval_real_(L,H,Pt,Err),          % initial guess
-	split_real_(X,L,H,Pt,Err,SPt).
-	
-%  split a real interval
-split_real_(X,_,_,Pt,_,Pt) :-              % Pt not in solution space, split here
-	\+ X = Pt -> !.
-split_real_(X,L,_H,Pt,Err,NPt) :-          % Pt in current solution space, try lower range
-	split_real_lo(X,L,Pt,NPt,Err), !.
-split_real_(X,_L,H,Pt,Err,NPt) :-          % Pt in current solution space, try upper range
-	split_real_hi(X,Pt,H,NPt,Err).
-
-split_real_lo(X,L,Pt,NPt,Err) :-           % search lower range for a split point 
-	splitinterval_real_(L,Pt,SPt,Err),
-	(\+ X = SPt -> NPt = SPt ; split_real_lo(X,L,SPt,NPt,Err)).
-
-split_real_hi(X,Pt,H,NPt,Err) :-           % search upper range for a split point 
-	splitinterval_real_(Pt,H,SPt,Err),
-	(\+ X = SPt -> NPt = SPt ; split_real_hi(X,SPt,H,NPt,Err)).
+splitinterval_(real,X,V,P,split(X,::(Pt,Pt))) :-  % split on point value
+	split_interval_(X,V,P,Pt).  % use public split_interval_ to get Pt
 
 %
 % splitinterval_integer_ and splitinterval_real_
@@ -742,27 +786,25 @@ splitinterval_integer_(L,1.0Inf,Pt) :-  !,  % infinite upper bound, integers unb
 splitinterval_integer_(L,H,Pt) :-     % all positive or negative (including zero)  
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
-splitinterval_real_(L,H,0,E) :-       % if interval contains 0, split on (precisely) 0.
-	L < 0, H > 0, !,                  % cut in case error criteria fails
-	(H-L) > E.                        % fail if width is less than error criteria, overflow is OK
-splitinterval_real_(-1.0Inf,H,Pt,_) :-  % neg. infinity to H=<0
-	!,  % if following overflows, split failed
-	Pt is float(H*10-1),               % subtract 1 in case H is 0. (-1, -11, -101, -1001, ...)
-	Pt > -1.0Inf.                      % Pt must be finite
-splitinterval_real_(L,1.0Inf,Pt,_) :-  % L>=0 to pos. infinity
-	!,  % if following overflows, split failed
-	Pt is float(L*10+1),               % add 1 in case L is 0. (1, 11, 101, 1001, ...)
-	Pt < 1.0Inf.                       % Pt as float must be finite
-splitinterval_real_(L,H,Pt,E) :-       % finite L,H, positive or negative but not split, Pt\=0.
-	\+ chk_small(L,H,E),               % only split if not small 
-	splitMean_(L,H,Pt), !,
-	L < Pt,Pt < H.                     % split point must be between L and H
-
-% (approx.) geometric mean of L and H (same sign)
-splitMean_(L,H,M) :-  L >=0, !,  % positive range
-	(L=:=0 -> M is min(H/2, sqrt( H)) ; M is sqrt(L)*sqrt(H)).
-splitMean_(L,H,M) :-             % negative range
-	(H=:=0 -> M is max(L/2,-sqrt(-L)) ; M is -sqrt(-L)*sqrt(-H)). 
+% 1. Split intervals use 0.0
+% 2  Handle inifinte bounds
+% 3. Same sign, use lesser of geometric mean and arithmetic mean
+splitinterval_real_(L,H,0.0) :-
+	bounded_number(L,H,0.0).  % 0.0 is bounded by L and H
+splitinterval_real_(-1.0Inf,H,Pt) :- !,
+	L is nexttoward(-1.0Inf,0),
+	splitinterval_real_(L,H,Pt).
+splitinterval_real_(L,1.0Inf,Pt) :- !,
+	H is nexttoward(1.0Inf,0),
+	splitinterval_real_(L,H,Pt).
+splitinterval_real_(L,H,Pt) :- Sgn is cmpr(L,0.0),
+	( Sgn == 0 -> Pt is float(min(H/2,sqrt(H)))
+	; Sgn == 1,   Pt is float(min(L/2+H/2,sqrt(L*H)))
+	), !.
+splitinterval_real_(L,H,Pt) :- Sgn is cmpr(0.0,H), !,
+	( Sgn == 0 -> Pt is float(max(L/2,-sqrt(-L)))
+	; Sgn == 1,   Pt is float(max(L/2+H/2,-sqrt(L*H)))
+	), !.
 
 /**
 splitsolve(X:numeric_List) is nondet
@@ -808,7 +850,7 @@ flatten_list([H|T], Tail, List) :- !,
 flatten_list(N,Tail,[N|Tail]).
 
 simplesolveall_(Xs,Err) :-
-	select_wide_(Xs,_,X),
+	predsort(delta_order_,Xs,[X|_]),  % sorted intervals by width
 	interval_object(X, Type, V, _),
 	split_choices_(Type,X,V,Err,Choices),
 	!,
@@ -816,19 +858,16 @@ simplesolveall_(Xs,Err) :-
 	simplesolveall_(Xs,Err).
 simplesolveall_(_Xs,_Err).  % terminated
 
-select_wide_([X],_,X) :- !.        % select last remaining element
-select_wide_([X1,X2|Xs],D1,X) :-   % compare widths and discard one interval
-	(var(D1) -> delta(X1,D1) ; true),
-	delta(X2,D2),
-	(D1 >= D2
-	 -> select_wide_([X1|Xs],D1,X)
-	 ;  select_wide_([X2|Xs],D2,X)
-	).
+delta_order_(COp,X1,X2) :- 
+	delta(X1,D1), delta(X2,D2),
+	% equal delta isn't duplicate,  note descending order 
+	(D2 > D1 -> COp = > ; COp = <).
 
 split_choices_(real,X,(L,H),Err,split(X,::(SPt,SPt))) :- !,
-	splitinterval_real_(L,H,SPt,Err).            % from solve/1, but splits anywhere
+	\+ chk_small(L,H,Err),
+	splitinterval_real_(L,H,SPt).          % from solve/1, but splits anywhere
 split_choices_(integer,X,V,_Err,Cons) :-
-	splitinterval_(integer,X,V,_,Cons).        % from solve/1
+	splitinterval_(integer,X,V,_,Cons).    % from solve/1
 
 /**
 absolve(X:numeric_List) is semidet
@@ -997,7 +1036,10 @@ pd_f(U**N,X,DX) :-                 % DX = (N*U**(N-1))*DU for real(N)
 pd_f(A**U,X,exp(V)*DV) :-          % DX = exp(V)*DV, V = U*log(A)
 	V = U*log(A),
 	pd_f(V,X,DV).
-	
+
+pd_f(A^U,X,DX) :-                  % DX = A**U*DU for real(N)
+	pd_f(A**U,X,DX).
+
 pd_f(log(U),X,DX) :-               % DX = DU/U
 	pd(U,X,DU),
 	pd_div(DU,U,DX).

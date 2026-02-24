@@ -1,6 +1,6 @@
 /*	The MIT License (MIT)
  *
- *	Copyright (c) 2022-2025 Rick Workman
+ *	Copyright (c) 2022-2026 Rick Workman
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,7 @@
 	taylor_merged_contractor/2, % build merged Taylor cf_contractor from list of equations
 	cf_contractor/2,            % execute cf_contractor
 	cf_solve/1, cf_solve/2,     % a solve predicate for centre form contractors
+	taylor_solve/1, taylor_solve/2,  % combines taylor_contractor/2 and cf_solve/1
 
 	integrate/3, integrate/4,   % simple numerical integration
 	boundary_values/2, boundary_values/3, boundary_values/4,  % solve boundary value problems
@@ -53,18 +54,22 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _numeric_   : an _interval_ or a _number_
 *  _|*_list|_  : a list of _|*|_
 */
+
+% module dependencies:
+:- use_module(library(lists),[member/2]).
 :- use_module(library(apply),[maplist/3]).
 :- use_module(library(apply_macros)).  % compiler support for `maplist`, helps a bit
 :- use_module(library(clpBNR)).
-:- use_module(library(simplex)).
+:- use_module(library(simplex)).       % finding optima of linear systems
 
 % sandboxing for SWISH
 :- multifile(sandbox:safe_primitive/1).
 
-% messages for noisy failure
-fail_msg_(FString,Args) :-
-	debug(clpBNR,FString,Args), fail.
-	
+% message support before optimise
+debug_msg_(FString,Args) :- debug(clpBNR,FString,Args).
+
+fail_msg_(FString,Args)  :- debug_msg_(FString,Args), fail.
+
 :- set_prolog_flag(optimise,true).  % for arithmetic, this module only
 
 /**
@@ -111,8 +116,15 @@ Succeeds splitting the widest interval in Xs, a list of intervals; fails if Xs i
 @see =|mid_split/1|=
 */
 mid_split_one(Xs) :-
-	select_split(Xs,X),  % select largest interval with largest width
-	mid_split(X).        % split it
+	predsort(delta_order_,Xs,[X|_]),  % select largest interval with largest width
+	mid_split(X).           % split it
+
+% used with predsort/2 to order intervals in decreasing width
+delta_order_(COp,X1,X2) :-
+	delta(X1,D1), delta(X2,D2),
+	% equal delta isn't duplicate,  note descending order 
+	(D2 > D1 -> COp = > ; COp = <). % never '='
+
 /**
 mid_split(X:numeric) is nondet
 
@@ -137,17 +149,21 @@ mid_split(X) :-
 	        ({X=<M} ; {M=<X})    % possible choicepoint, Note: can split on solution leaving CP
 	    )
 	).
-%
-% select interval with largest width
-%
-select_split([X],X) :- !.       % select last remaining element
-select_split([X1,X2|Xs],X) :-   % compare widths and discard one interval
-	delta(X1,D1),
-	delta(X2,D2),
-	(D1 >= D2
-	 -> select_split([X1|Xs],X)
-	 ;  select_split([X2|Xs],X)
-	).
+
+/**
+taylor_solve(+Constraints) is nondet
+
+combines taylor_contractor/2 and cf_solve/2
+
+@see =|taylor_contractor/2|=, =|cf_solve/2|=,
+*/
+taylor_solve(C) :-
+    current_prolog_flag(clpBNR_default_precision,P),
+    taylor_solve(C,P).
+
+taylor_solve(C,P) :-
+	taylor_contractor(C,T),
+	cf_solve(T,P).  % leaves CP's for multiple solutions
 
 /**
 cf_contractor(Xs:interval_list,As:interval_list) is semidet
@@ -180,7 +196,9 @@ cf_domain(X,D) :-
 	number(X) -> D = X ; domain(X,D).  % in case X narrowed to a point
 	
 set_domain(X,D) :- 
-	number(D) -> X = D ; X::D.
+	  number(D) -> X = D
+	; domain(X,D) -> true    %% if no change don't do any work 
+	; X::D.
 
 /**
 cf_solve(+Contractor) is nondet
@@ -218,34 +236,23 @@ cf_solve(T) :-
     current_prolog_flag(clpBNR_default_precision,P),
     cf_solve(T,P).
 cf_solve(cf_contractor(Xs,As),P) :-
-    current_prolog_flag(clpBNR_iteration_limit,L),
-    Count is L div 10,          % heuristic - primitive iteration limit/10    
-    cf_iterate_(Count,Xs,As,P).
-
-cf_iterate_(Count,Xs,As,P) :-
-	Count > 0,
-	\+ small(Xs,P),             % at least one var not narrow enough
-	!, 
-	cf_contractor(Xs,As),       % execute contractor
-	select_split(Xs,X),         % select widest
-	(small(X,P)                 % still wide enough to split?
-	 -> true                    % no, we're done 
-	  ; cf_split(X,Pt),         % yes, split it
-	    ({X=<Pt} ; {Pt=<X}),
-	    Count1 is Count-1,
-	    cf_iterate_(Count1,Xs,As,P)  % and iterate
+	cf_iterate_(Xs,As,P).
+	
+cf_iterate_(Xs, _,P) :- small(Xs,P), !.  % all vars small, normal exit
+cf_iterate_(Xs,As,P) :-
+	cf_contractor(Xs,As),     % execute contractor, must succeed
+	predsort(delta_order_,Xs,SXs),  % sort intervals by width
+	(cf_split(SXs,P,X,Pt)     % find a non-small interval with a split point and
+	 -> ({X=<Pt} ; {Pt=<X}),  % split, then
+	    cf_iterate_(Xs,As,P)  % iterate
+	 ;  true                  % nothing splittable, just exit
 	).
-cf_iterate_(_,_,_,_).           % done (Count=<0 or all small Xs)
 
-cf_split(X,Pt) :-
-	range(X,[L,H]),
-	cf_split_point(L,H,X,M),    % modest attempt to find non-solution
-	!,
-	(M = 1.5NaN, L<0,0<H -> Pt = 0 ; Pt = M).  % (-inf,inf) case: if NaN and spans 0, use 0
-
-cf_split_point(L,H,X,M) :-	M is L/2 + H/2, \+ X = M.          % midpoint, not a solution
-cf_split_point(L,H,X,M) :-	M is 0.625*L + 0.375*H, \+ X = M.  % 0.375*width, not a solution
-cf_split_point(L,H,_,M) :-	M is 0.375*L + 0.625*H.            % 0.625*width, may be a solution
+cf_split(SXs,P,X,Pt) :-           % semi deterministic
+	member(X,SXs),                % generate intervals from widest to narrowest
+	\+ small(X,P),                % large enough
+	real_split_point(X,P,Pt),
+	!.                            % cut generator
 
 /**
 taylor_contractor(+Constraints,-Contractor) is semidet
@@ -304,6 +311,9 @@ taylor_contractor({E1==E2},cf_contractor(Xs,As)) :-
 	{Cs}.      % apply constraints
 taylor_contractor({Es},CF) :- (list(Es) ; Es = (_,_)), !,  % list or sequence
 	taylor_merged_contractor({Es},CF).
+taylor_contractor({C},cf_contractor([],[])) :- 
+	C=..[Op,_,_], memberchk(Op,[<, =<, >=, >]), !,  % inequalities ... 
+	{C}.                                            % are just constraints
 taylor_contractor(Eq,_) :-
 	fail_msg_('Invalid constraint for Taylor contractor: ~w',[Eq]).
 
