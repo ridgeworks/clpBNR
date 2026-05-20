@@ -115,7 +115,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.13.0").
+version("0.13.1").
 
 % support various optimizations via goal expansion
 :- discontiguous clpBNR:goal_expansion/2.
@@ -414,9 +414,7 @@ integerBnd(B) :- integer(B).
 preciseBnd(1.0Inf).
 preciseBnd(-1.0Inf).
 preciseBnd(1.5NaN) :- !, fail.
-preciseBnd(B) :- preciseNumber(B). 
-
-preciseNumber(B) :-
+preciseBnd(B) :- 
 	rational(B) -> true 
 	; number(B), 0 is cmpr(B,rationalize(B)). % rational(B)=:=rationalize(B), fails if float not precise
 
@@ -1100,6 +1098,8 @@ safe_(_ ** E) :-                                  % ** multi-valued for rational
 	rational(E,_N,D),
 	0 is D mod 2, !,
 	fail.
+safe_(-1.0Inf ** _) :- !,                         % ** avoid funny C pow(X,Y) when X = -inf
+	fail.
 safe_(F) :- 
 	current_arithmetic_function(F),               % evaluable by is/2
 	F =.. [_Op|Args],
@@ -1229,17 +1229,26 @@ stable_(Agenda) :-
 	stableLoop_(Agenda,Ops),
 	!.  % achieved stable state with empty Agenda -> commit.
 
-stableLoop_([]/[], OpsLeft) :- !,           % terminate successfully when agenda comes to an end
+stableLoop_([]/[], OpsLeft) :- !,            % terminate successfully when agenda comes to an end
 	g_read('$clpBNR:iterations',Cur),        % maintain "low" water mark (can be negative)
 	(OpsLeft<Cur -> g_assign('$clpBNR:iterations',OpsLeft) ; true),
 	(OpsLeft<0 -> E is -OpsLeft, debug_clpBNR_('Iteration throttle limit exceeded by ~w ops.',E) ; true).
 stableLoop_([Node|Agenda]/T, OpsLeft) :-
 	Node = node(Op,P,_,Args),  % if node on queue ignore link bit (was: Node = node(Op,P,1,Args))
-	doNode_(Args, Op, P, OpsLeft, DoOver, Agenda/T, NxtAgenda),  % undoable on backtrack
-	nb_setarg(3,Node,0),                    % reset linked bit
-	% if doNode_ requested DoOver and above Ops threshold, put Node back at the end of the queue 
-	(atom(DoOver), OpsLeft > 0 -> linkNode_(NxtAgenda,Node,NewAgenda) ; NewAgenda = NxtAgenda),
-	RemainingOps is OpsLeft-1,              % decrement OpsLeft (can go negative)
+	(var(P)  % test if updated as persistent
+	 -> doNode_(Args, Op, P, OpsLeft, DoOver, Agenda/T, NxtAgenda),  % undoable on backtrack
+	    (atom(DoOver), OpsLeft > 0  % if doNode_ requested DoOver and above Ops threshold
+	     -> linkNode_(NxtAgenda,Node,NewAgenda)  % then put Node back on the agenda 
+	      ; nb_setarg(3,Node,0),                 % else reset linked bit
+	        NewAgenda = NxtAgenda
+	    )
+	 ;  Args =.. [$|ListArgs],               % persistent, delete with all refs
+	    trim_ops_(ListArgs),
+	    g_incb('$clpBNR:node_count',-1),     % decrement node count
+	    nb_setarg(3,Node,0),                 % shouldn't be necessary, but.. 
+	    NewAgenda = Agenda/T
+	),
+	RemainingOps is OpsLeft-1,               % decrement OpsLeft (can go negative)
 	stableLoop_(NewAgenda,RemainingOps).
 
 % support for max_iterations statistic
@@ -1256,6 +1265,26 @@ clpStatistic(max_iterations(O/L)) :-
 	O is L-Ops.  % convert "low" water mark to high water mark
 
 %
+% remove any persistent nodes from list of Args before deleting the nodes 
+%	called whenever a persistent node is encountered in FP iteration
+%
+trim_ops_([]).
+trim_ops_([Arg|Args]) :-
+	(number(Arg)
+	 -> true                         % if a number, nothing to trim
+	  ; get_attr(Arg, clpBNR, Def),  % an interval
+	    arg(3,Def,NList),            % Def = interval(_, _, NList, _),
+	    trim_persistent_(NList,TrimList),
+	    % if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
+	    (var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList))  % update trimmed node list
+	),
+	trim_ops_(Args).
+	
+trim_persistent_(T,T) :- var(T), !.    % end of indefinite node list
+trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
+trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
+
+%
 % doNode_/7 : Evaluate a node and add new nodes to end of queue. `evalNode` primitives can
 %	 fail, resulting in eventual failure of `stable_`, i.e., inconsistent constraint set.
 %
@@ -1263,78 +1292,43 @@ clpStatistic(max_iterations(O/L)) :-
 % so additional consistency checks required on update.
 %
 doNode_($(ZArg,XArg,YArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-  % Arity 3 Op
-	(var(P)                                          % check persistent bit
-	 -> getValue(ZArg,ZVal),
-	    getValue(XArg,XVal),
-	    getValue(YArg,YVal),
-	    evalNode(Op, P, $(ZVal,XVal,YVal), $(NZVal,NXVal,NYVal)),  % can fail
-	    % enforce consistency for common arguments by intersecting and redoing as required.
-	    (var(ZArg)                % if Z == X and/or Y
-	     -> (ZArg==XArg -> consistent_value_(NZVal,NXVal,NZ1,DoOver) ; NZ1 = NZVal),
-	        (ZArg==YArg -> consistent_value_(NZ1,  NYVal,NZ2,DoOver) ; NZ2 = NZ1),
-	        updateValue_(ZVal, NZ2, ZArg, OpsLeft, Agenda, AgendaZ)
-	     ;  AgendaZ = Agenda
-	    ),
-	    (var(XArg), XArg==YArg    % if X==Y
-	     -> consistent_value_(NXVal,NYVal,NVal,DoOver),
-	        updateValue_(XVal, NVal,  XArg, OpsLeft, AgendaZ, NewAgenda)  % only one update needed
-	     ;  updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),
-	        updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda)
-	    )
-	 ; % P = p, trim persistent nodes from all arguments
-	    trim_op_(ZArg), trim_op_(XArg), trim_op_(YArg),  
-	    g_incb('$clpBNR:node_count',-1),  % decrement node count
-	    NewAgenda = Agenda
+	getValue(ZArg,ZVal),
+	getValue(XArg,XVal),
+	getValue(YArg,YVal),
+	evalNode(Op, P, $(ZVal,XVal,YVal), $(NZVal,NXVal,NYVal)),  % can fail
+	% enforce consistency for common arguments by intersecting and redoing as required.
+	(var(ZArg)                % if Z == X and/or Y
+	 -> (ZArg==XArg -> consistent_value_(NZVal,NXVal,NZ1,DoOver) ; NZ1 = NZVal),
+	    (ZArg==YArg -> consistent_value_(NZ1,  NYVal,NZ2,DoOver) ; NZ2 = NZ1),
+	    updateValue_(ZVal, NZ2, ZArg, OpsLeft, Agenda, AgendaZ)
+	 ;  AgendaZ = Agenda
+	),
+	(var(XArg), XArg==YArg    % if X==Y
+	 -> consistent_value_(NXVal,NYVal,NVal,DoOver),
+	    updateValue_(XVal, NVal,  XArg, OpsLeft, AgendaZ, NewAgenda)  % only one update needed
+	 ;  updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, AgendaZX),
+	    updateValue_(YVal, NYVal, YArg, OpsLeft, AgendaZX, NewAgenda)
 	).
 
 doNode_($(ZArg,XArg), Op, P, OpsLeft, DoOver, Agenda, NewAgenda) :-       % Arity 2 Op
-	(var(P)                                          % check persistent bit
-	 -> getValue(ZArg,ZVal),
-	    getValue(XArg,XVal),
-	    evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),      % can fail
-	    % enforce consistency for common arguments by intersecting and redoing as required.
-	    (var(ZArg), ZArg==XArg    % if Z==X
-	     -> consistent_value_(NZVal,NXVal,NVal,DoOver),     % consistent value, DoOver if needed
-	        updateValue_(ZVal, NVal,  ZArg, OpsLeft, Agenda, NewAgenda)  % only one update needed
-	     ;  updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
-	        updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda)
-	    )
-	 ; % P = p, trim persistent nodes from all arguments
-	    trim_op_(ZArg), trim_op_(XArg),
-	    g_incb('$clpBNR:node_count',-1),  % decrement node count
-	    NewAgenda = Agenda
+	getValue(ZArg,ZVal),
+	getValue(XArg,XVal),
+	evalNode(Op, P, $(ZVal,XVal), $(NZVal,NXVal)),      % can fail
+	% enforce consistency for common arguments by intersecting and redoing as required.
+	(var(ZArg), ZArg==XArg    % if Z==X
+	 -> consistent_value_(NZVal,NXVal,NVal,DoOver),     % consistent value, DoOver if needed
+	    updateValue_(ZVal, NVal,  ZArg, OpsLeft, Agenda, NewAgenda)  % only one update needed
+	 ;  updateValue_(ZVal, NZVal, ZArg, OpsLeft, Agenda, AgendaZ),
+	    updateValue_(XVal, NXVal, XArg, OpsLeft, AgendaZ, NewAgenda)
 	).
  
 doNode_($(Arg), Op, P, _OpsLeft, _, Agenda, NewAgenda) :-                 % Arity 1 Op
-	(var(P)                                          % check persistent bit
-	 -> getValue(Arg,Val),
-	    evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
-	    updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda)   % always update value regardless of OpsLeft limiter	
-	 ;  % P = p, trim persistent nodes from argument
-	    trim_op_(Arg),
-	    g_incb('$clpBNR:node_count',-1),  % decrement node count
-	    NewAgenda = Agenda
-	).
+	getValue(Arg,Val),
+	evalNode(Op, P, $(Val), $(NVal)),                   % can fail causing stable_ to fail => backtracking
+	updateValue_(Val, NVal, Arg, 1, Agenda,NewAgenda).  % always update value regardless of OpsLeft limiter
 
 consistent_value_(Val,Val,Val,_) :- !.                       % same value
-consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values, intersect
-
-%
-% remove any persistent nodes from Arg
-%	called whenever a persistent node is encountered in FP iteration
-%
-trim_op_(Arg) :-
-	number(Arg)
-	 -> true                         % if a number, nothing to trim
-	 ;  get_attr(Arg, clpBNR, Def),  % an interval
-	    arg(3,Def,NList),            % Def = interval(_, _, NList, _),
-	    trim_persistent_(NList,TrimList),
-	    % if trimmed list empty, set to a new unshared var to avoid cycles(?) on backtracking
-	    (var(TrimList) -> setarg(3,Def,_) ; setarg(3,Def,TrimList)).  % write trimmed node list
-
-trim_persistent_(T,T) :- var(T), !.    % end of indefinite node list
-trim_persistent_([node(_,P,_,_)|Ns],TNs) :- nonvar(P), !, trim_persistent_(Ns,TNs).
-trim_persistent_([N|Ns],[N|TNs]) :- trim_persistent_(Ns,TNs).
+consistent_value_(Val1,Val2,Val,true) :- ^(Val1,Val2,Val).   % different values, intersect, DoOver = nonvar
 
 %
 % Any changes in interval values should come through here.

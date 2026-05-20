@@ -565,8 +565,8 @@ indomain(X,Method):-
 
 domain_type(X,Type)    :- 
 	domain(X,D),          % fails if not an interval
-	functor(D,Type,2).    % D=Type(_,_).
-	
+	(D==boolean -> Type=integer ; functor(D,Type,2)).  % D=Type(_,_).
+
 indomain1(enum,X,Type) :- !,
 	indomain_enum(Type,X).
 indomain1(min,X,Type) :- !,

@@ -215,8 +215,8 @@ intValue_((L,H),real,'$clpBNR...'(Out)) :-         % two floats with minimal lea
 	MLen>Dec+1, !,	% minimum of one matching digit after decimal point
 	string_codes(Out,Codes).
 intValue_((L,H),Type,Dom) :-                       % default, just convert rationals
-	as_float_(L,FL),
-	as_float_(H,FH),
+	(integer(L) -> FL = L ; as_float_(L,FL)),      % convert non-integers to floats
+	(integer(H) -> FH = H ; as_float_(H,FH)),
 	interval_domain_(Type, (FL,FH), Dom).
 
 as_float_(B,F) :-
@@ -610,7 +610,7 @@ continue_MS(Zl,Zh,P,Xs,XVs,Discard) :-           % w(Y) termination criteria
 	Err is 10.0**(-P),
 	(chk_small(Zl,Zh,Err)                        % Z is narrow enough?
 	 -> (build_box_MS(Xs,XVs,T/T),               % qualifying solution
-	     SErr is 10.0**(-min(6,P+2)), % ?? heuristic
+	     SErr is 10.0**(-(P+2)),  % ?? heuristic
 	     simplesolveall_(Xs,SErr)                % if valid solution. do not continue
 	     -> fail                                 
 	     ;  Discard = true                       % not a valid solution so discard
@@ -745,10 +745,11 @@ xpsolve_each_([X|Xs],[X|Us],P) :-
 xpsolve_each_([X|Xs],Us,P) :-           % avoid unfreeze overhead if [] unified in head
 	X==[], !,                           % end of nested listed, discard
 	xpsolve_each_(Xs,Us,P).             % split remaining
-xpsolve_each_([X|Xs],[U|Us],P) :-
+xpsolve_each_([X|Xs],Us,P) :-
 	list(X), !,                         % nested list
 	xpsolve_each_(X,U,P),               % split nested list
-	xpsolve_each_(Xs,Us,P).             % then others in main list
+	(U == [] -> Us = NxtUs ; Us = [U|NxtUs]),  % discard empty 
+	xpsolve_each_(Xs,NxtUs,P).             % then others in main list
 xpsolve_each_([_X|Xs],Us,P) :-
 	xpsolve_each_(Xs,Us,P).             % split failed or already a number, drop interval from list, and keep going
 
@@ -850,7 +851,7 @@ flatten_list([H|T], Tail, List) :- !,
 flatten_list(N,Tail,[N|Tail]).
 
 simplesolveall_(Xs,Err) :-
-	predsort(delta_order_,Xs,[X|_]),  % sorted intervals by width
+	(Xs = [X] -> true ; predsort(delta_order_,Xs,[X|_])),  % sorted intervals by width
 	interval_object(X, Type, V, _),
 	split_choices_(Type,X,V,Err,Choices),
 	!,

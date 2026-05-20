@@ -369,7 +369,7 @@ eg
 	?- {Xsq == X**2, Xsq+Y**2==2, Y==Xsq}, interval_goals(X,XGs),  interval_goals(Y,YGs).
 	Xsq = Y,
 	XGs = [(X::real(-1.0000000000000004, 1.0000000000000004), {Y==X**2})],
-	YGs = [(Y::real(0.9999999999999997, 1.0000000000000004), {[Y==X**2, 2==_A+Y, _A==Y**2]})],
+	YGs = [(Y::real(0.9999999999999997, 1.0000000000000004), {[Y==X**2, 2==Y+_A, _A==Y**2]})],
 	Y:: 1.000000000000000...,
 	X::real(-1.0000000000000004, 1.0000000000000004),
 	_A:: 1.000000000000000... .
@@ -509,13 +509,14 @@ eg
 	﻿?- {X1 == inf*inf, X2 == -inf*inf}.
 	X1 = 1.0Inf,
 	X2 = -1.0Inf.
-	
-	?- {X1 == X1+1, X2 == X2-1}.
-	X1 = 1.0Inf,
-	X2 = -1.0Inf.
 Finally, some arithmetic operations involving infinities are undefined. These don't automatically fail, but they don't result in any narrowing either:
 eg
 	?- {X1 == inf-inf, X2 == -inf/inf}.
+	X1::real(-1.0Inf, 1.0Inf),
+	X2::real(-1.0Inf, 1.0Inf).
+	
+	% default domains of X1 and X2 are infinite
+	?- {X1 == X1+1, X2 == X2-1}.
 	X1::real(-1.0Inf, 1.0Inf),
 	X2::real(-1.0Inf, 1.0Inf).
 Often infinities will disappear due to intersection with finite intervals. But it's always a good practice to write declarations and constraints that prevent them from occurring in the first place.

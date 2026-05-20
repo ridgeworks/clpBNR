@@ -236,7 +236,8 @@ s(*,[A,B],X) :- rational(A), rational(B),
 s(/,[A,B],X) :- rational(A), rational(B),
 	X is A/B, rational(X), !.
 
-s(**,[A,B],X) :- rational(A), rational(B),
+s(**,[A,B],X) :- rational(A), rational(B,_N,D), 1 is D rem 2,
+	% only evaluate single valued function, i.e., exponent denominator must be odd
 	X is A**B, rational(X), !.
 
 % ========== type a(X) operations =========
@@ -605,15 +606,14 @@ n(/,[XZero,YZero],_) :- equals_num(XZero,0), equals_num(YZero,0), !, fail.  % Na
 n(/,[X,Y],Z) :- infinite_args(X,Y), Z is X/Y, !, Z \== 1.5NaN.
 n(/,[X,Y],X/Y) :- !.
 
-n(**,[_,Zero],1) :- equals_num(Zero,0), !.  % including infinities
-n(**,[One,_],One) :- equals_num(One,1), !.
+n(**,[_,Zero],1) :- equals_num(Zero,0), !.                                  % including infinities
+n(**,[One,Y],One) :- equals_num(One,1), rational(Y,_N,D), 1 is D rem 2, !.  % exponent denominator must be odd
 n(**,[X,One],X) :- equals_num(One,1), !.
 n(**,[X,NOne],Z) :- equals_num(NOne,-1), !, n(/,[1,X],Z).
 n(**,[X,Ry],Z) :- rational(Ry), exp_fargs(X,[**,XX,Rx]), rational(Rx),
 	R is Rx+Ry, rational(R),
 	!,
 	n(**,[XX,R],Z).
-n(**,[X,Y],Z) :- infinite_args(X,Y), Z is X**Y, !, Z \== 1.5NaN.
 n(**,[X,Y],X**Y) :- !.
 
 n(Func, Args, Z) :- Z =.. [Func|Args].

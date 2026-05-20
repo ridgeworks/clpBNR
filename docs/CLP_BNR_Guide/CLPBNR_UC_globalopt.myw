@@ -531,7 +531,7 @@ eg
 	M_IIIdays = 5,
 	Min = 284 ;
 	false.
-The second query in the previous two examples uses `splitsolve` to generate all solutions; in each case there is only one. As discussed previously, it is often the case that the only requirement is to find *any* solution. `library(simplex)` does calculate a set of min/maximizer values corresponding to the optimal objective requested. Predicates `lin_minimize/3` and `lin_maximize/3` will bind any variables to the calculated values so there is no need to use a labelling predicate to do so. This is the most efficient way to calculate a complete solution for linear optimization problems. Using previous examples:
+The second query in the previous two examples uses `solve` to generate all solutions; in each case there is only one. As discussed previously, it is often the case that the only requirement is to find *any* solution. `library(simplex)` does calculate a set of min/maximizer values corresponding to the optimal objective requested. Predicates `lin_minimize/3` and `lin_maximize/3` will bind any variables to the calculated values so there is no need to use a labelling predicate to do so. This is the most efficient way to calculate a complete solution for linear optimization problems. Using previous examples:
 eg
 
 	﻿?- [M_Idays,M_IIdays,M_IIIdays]::integer(0,7),lin_minimize(20*M_Idays+22*M_IIdays+18*M_IIIdays,{4*M_Idays+6*M_IIdays+M_IIIdays>=54,4*M_Idays+4*M_IIdays+6*M_IIIdays>=65},Min).

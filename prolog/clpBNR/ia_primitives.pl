@@ -580,113 +580,129 @@ narrowing_op(exp, _, $((Zl,Zh),(Xl,Xh)), $((NZl,NZh),(NXl,NXh))) :-
 narrowing_op(pow, P, $(Z,X,Y), $(NewZ,NewX,NewY)) :-
 	powr_(P, Z,X,Y, NewZ,NewX,NewY).
 
-powr_(p, Z,X,Y, NewZ,NewX,NewY) :-                  % (persistant) special cases
-	Z = (Zl,Zh), X = (Xl,Xh), Y = (Yl,Yh), 
-	( equals_one(Xl), equals_one(Xh) ->             % 1**Y == Z
-		!, ^(Z,(1,1),NewZ), NewX = X, NewY = Y      %  ==> Z := (1,1)
-	; equals_one(Zl), equals_one(Zh) ->             % X**Y == 1 , X doesn't contain 1 or -1
-		((Xl =< -1,-1 =< Xh ; Xl =< 1,1 =< Xh)
-		 -> fail                                    % fail to use general pt_powrCase
-		 ;  !, NewZ = Z, NewX = X, ^(Y,(0,0),NewY)  %  ==> Y := (0,0)
-		)
-	; equals_zero(Yl), equals_zero(Yh) ->           % X**0 == Z
-		!, ^(Z,(1,1),NewZ), NewX = X, NewY = Y      %  ==> Z := (1,1)
+powr_(P, Z,X,Y, NewZ,NewX,Y) :- Y = (R,R), !,       % point Y
+	(rational(R,N,D)
+	 -> true % R = rational point exponent
+	 ;       %   = not rational (must be float)
+	    Rf is rationalize(R),  % assume normal float
+	    rational(Rf,N,D)	       
+	),
+	(N == 0
+	 -> ^(Z,(1,1),NewZ),                            % Y = 0 ==> Z := (1,1) for any X
+	    NewX = X, P = p
+	 ;  N1 is N mod 2, D1 is D rem 2,               % general case, use `mod` for negative N
+	    X = (Xl,Xh),
+	    (D1 == 0 -> X1l is maxr(0,Xl) ; X1l = Xl),  % if D even, X must be positive
+	    non_empty(X1l,Xh),
+	    NxtX = (X1l,Xh),
+	    pt_powr(N1,D1,NxtX,R,Z,NxtZ), ^(Z,NxtZ,NewZ),
+	    (int_contains(Z,NxtZ)  % test totality condition (see `mul` op comment)
+	     -> NewX = NxtX
+	     ;  Ri is 1/R,
+	        pt_powr(D1,N1,NewZ,Ri,NxtX,X2), ^(NxtX,X2,NewX)
+	    )
 	).
 
-powr_(_, Z,X,(R,R), NewZ,NewX,NewY) :- rational(R,N,D), !,   % R = rational point exponent
-	N1 is N mod 2, D1 is D rem 2,  % use `mod` for negative N
-	pt_powrCase(N1,D1,Z,X,R,NewZ), non_empty(NewZ),
-	Ri is 1/R,
-	pt_powrCase(D1,N1,X,NewZ,Ri,NewX), non_empty(NewX),
-	NewY = (R,R).
+powr_(P, Z,X,Y, NewZ,NewX,NewY) :-                  % interval Y
+	Z = (Zl,Zh),
+	(Zl == Zh, Zl =:= 1                             % Z == (1,1)
+	 -> (ones_notin(X)                              % special case, X**Y == 1 ,
+		 -> ^(Y,(0,0),NewY)                         % X doesn't contain 1 or -1 ==> Y := (0,0)
+		 ;  NewY = Y, P = p                         % otherwise Y could be anything, persistant
+		),
+		NewZ = Z, NewX = X
+	 ;  (Zh > 0 -> X1 = X ; ^(X,(-1.0Inf,0),X1)),   % if Z =< 0 -> X =< 0
+	    intCase(Cx,X1),                             % general case
+	    powr_intY_(Cx, Z,X1,Y, NewZ,NewX,NewY)
+	).
 
-powr_(_, Z,X,Y, NewZ,NewX,NewY) :-  % interval Y
-	intCase(C,X),
-	powr_intY_(C, Z,X,Y, NewZ,NewX,NewY).
+ones_notin((L,H)) :-                     % assumes external (green) cut
+	  1 =:= cmpr(L,1)                    % outside range high or
+	; 1 =:= cmpr(-1,H)                   % outside range low
+	; 2 =:= cmpr(L,-1) + cmpr(1,H).      % inside range(-1,1) or
 
-equals_zero(0).
-equals_zero(0.0).
-equals_zero(-0.0).
-
-equals_one(1).
-equals_one(1.0).
+pt_powr(N1,D1,X,R,Z,NxtZ) :-                        % NxtZ := X**R, R is a non zero number  
+	(R < 0   
+	 -> Rp is -R,                                   % R negative
+	    pt_powrCase(N1,D1,X,Rp,Z,Zi),               % Zi := X** -R
+	    universal_interval(UI),
+	    intCase(CZi,Zi),
+	    odivCase(p,CZi,(1,1),Zi,UI,NxtZ)            % NxtZ := 1/Zi ^ (UI)
+	 ;  pt_powrCase(N1,D1,X,R,Z,NxtZ)               % R positive
+	).
 
 % Assumption : even numerator and denominator can't occur (non-normalized rational).
-pt_powrCase(N1,D1,Z,X,R,NewZ) :-  R < 0, !,      % R negative
-	Rp is -R,
-	universal_interval(UI),
-	intCase(Cz,Z),
-	odivCase(p,Cz,(1,1),Z,UI,Zi),                % Zi := UI ^ 1/Z
-	pt_powrCase(N1,D1,Zi,X,Rp,NZi),
-	intCase(CNzi,NZi),
-	odivCase(p,CNzi,(1,1),NZi,Z,NewZ).           % NewZ := Z ^ 1/NZi
+pt_powrCase(0,1,(Xl,Xh),R,_Z,(NZl,NZh)) :-  % R positive, numerator even, denominator odd
+	% X1 = positive reflection of X
+	( Xh < 0 -> Xl1 is -Xh, Xh1 is -Xl               % negative X, negate interval
+	; Xl > 0 -> Xl1 = Xl,   Xh1 = Xh                 % positive X, as is
+	;           Xl1 = 0,    Xh1 is maxr(-Xl,Xh)      % split
+	),
+	% NZl can't be negative, avoid fuzzing when Xl = inf
+	(Xl1 =  1.0Inf -> NZl = Xl1 ; NZl is roundtoward(Xl1**R,to_negative)),
+	NZh is roundtoward(Xh1**R,to_positive).  % Xh1**R must be positive
+pt_powrCase(1,1,(Xl,Xh),R,_Z,(NZl,NZh)) :-  % R positive, numerator odd, denominator odd
+	%% continuous monotonic, avoid fuzzing when X infinite
+	(Xl =  1.0Inf -> NZl = Xl ; NZl is roundtoward(Xl**R,to_negative)),
+	(Xh = -1.0Inf -> NZh = Xh ; NZh is roundtoward(Xh**R,to_positive)).
 
-pt_powrCase(1,0,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator even
-	% reflect about X axis to include positive and negative roots
-	Xh >=0,   % some part of X must be positive
-	Zl1 is maxr(0, roundtoward(Xl**R,to_negative)),  % neg Xl ==> nan
-	Zh1 is roundtoward(Xh**R,to_positive),
-	Zpl is maxr(Zl,Zl1),  Zph is minr(Zh,Zh1),       % positive case
-	Znl is maxr(Zl,-Zh1), Znh is minr(Zh,-Zl1),      % negative case
-	( 1 is cmpr(Znl,Znh) -> NZl is Zpl, NZh is Zph   % Znl > Znh -> negative case is empty
-	; 1 is cmpr(Zpl,Zph) -> NZl is Znl, NZh is Znh   % Zpl > Zph -> positive case is empty
-	; NZl is minr(Zpl,Znl), NZh is maxr(Zph,Znh)     % else union of positive and negative cases
+pt_powrCase(1,0,(Xl,Xh),R,(Zl,Zh),(NZl,NZh)) :-  % R positive, numerator odd, denominator even
+	% assumes X positive (see `powr_/7`)
+	( Zl >= 0 -> NZl is  roundtoward(Xl**R,to_negative), NZh is  roundtoward(Xh**R,to_positive)  % positive root
+	; Zh =< 0 -> NZl is -roundtoward(Xh**R,to_positive), NZh is -roundtoward(Xl**R,to_negative)  % negative root
+	; NZh is roundtoward(Xh**R,to_positive), NZl is -NZh  % reflect to include positive and negative roots
 	).
-
-pt_powrCase(0,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator even, denominator odd
-	% reflect about Z axis
-	( Xh < 0 -> Xl1 is -Xh, Xh1 is -Xl           % negative X, negate interval
-	;(Xl > 0 -> Xl1 = Xl, Xh1 = Xh               % positive X, As is
-	;           Xl1 = 0, Xh1 is maxr(-Xl,Xh)     % split
-	)),
-	% NZl can't be negative
-	NZl is maxr(Zl, roundtoward(Xl1**R,to_negative)),  % Xl1 known to be positive
-	NZh is minr(Zh, roundtoward(Xh1**R,to_positive)).
-
-pt_powrCase(1,1,(Zl,Zh),(Xl,Xh),R,(NZl,NZh)) :-  % R positive, numerator odd, denominator odd
-	% continuous monotonic
-	NZl is maxr(Zl, roundtoward(Xl**R,to_negative)),
-	NZh is minr(Zh, roundtoward(Xh**R,to_positive)).
 
 % Y is an interval
 powr_intY_(p, Z,X,Y, NewZ,NewX,NewY) :-              % positive X, interval Y 
-	powr_prim_(Z,X,Y,NewZ),                          % NewZ := X**Y
-	universal_interval(UI),
-	intCase(Cy,Y),
-	odivCase(p,Cy,(1,1),Y,UI,Yi),                    % Yi := UI ^ 1/Y 
-	powr_prim_(X,NewZ,Yi,NewX),                      % NewX := NewZ**(1/Y) (no narrow if 0 in Y)
-	ln(NewZ,Ynum), intCase(Cyn,Ynum),
-	ln(NewX,Yden), intCase(Cyd,Yden),
-	odivCase(Cyn,Cyd,Ynum,Yden,Y,NewY).              % NewY := Y ^ log(NewZ)/log(NewX)
+	powr_prim_(X,Y,Z1), ^(Z,Z1,NewZ),                % NewZ := Z ^ X**Y
+	(int_contains(Z,Z1)  % for pos. X, test totality condition (see `mul` op comment)
+	 -> NewX = X, NewY = Y
+	 ;  universal_interval(UI),
+	    intCase(Cy,Y),
+	    odivCase(p,Cy,(1,1),Y,UI,Yi),                % Yi := UI ^ 1/Y 
+	    powr_prim_(NewZ,Yi,X1), ^(X,X1,NewX),        % NewX := X ^ NewZ**(1/Y) (no narrow if 0 in Y)
+	    ln(NewZ,Ynum), intCase(Cyn,Ynum),
+	    ln(NewX,Yden), intCase(Cyd,Yden),
+	    odivCase(Cyn,Cyd,Ynum,Yden,Y,NewY)           % NewY := Y ^ log(NewZ)/log(NewX)
+	).
 
 powr_intY_(n, Z,X,Y, NewZ,NewX,NewY) :-              % negative X, interval Y
-	% In this case Y may contain an rational which is legal for negative X, e.g.,
+	% In this case Y may contain a rational which is legal for negative X, e.g.,
 	% to calculate an odd power or root. However it still may be able to bound Z.
-	% This case flips X to positive, calculates upper bound Zh1, and then intersects
-	% Z with (-Zh1,Zh1). 
-	X = (Xl,Xh), X1l is -Xh, X1h is -Xl,
-	powr_intY_(p, Z,(X1l,X1h),Y, (_,Z1h),(X2l,X2h),NewY),  % use code for positive case
-	X3l is -X2h, X3h is -X2l, ^(X,(X3l,X3h),NewX),    % flip back for NewX
-	Z1l is -Z1h, ^(Z,(Z1l,Z1h),NewZ).                 % maximal range = (-Z1h,Z1h)  
+	% This case flips X to positive, calculates upper bound Z2h, and then intersects
+	% Z with (-Z2h,Z2h). 
+	% The other tricky case is when calculating X from a bounded Z. To use the positive
+	% X case, need to create positive Z from possibly split Z to generate Z2h.
+	X = (Xl,Xh), X1l is -Xh, X1h is -Xl,              % X1 = -X
+	Z = (Zl,Zh), Z1l is minr(abs(Zl),-Zh), Z1h is maxr(abs(Zh),-Zl),  % Z1, positive part of -Z
+	powr_intY_(p, (Z1l,Z1h),(X1l,X1h),Y, (_,Z2h),(X2l,X2h),NewY),  % use code for positive case
+	X3l is -X2h, X3h is -X2l, ^(X,(X3l,X3h),NewX),    % X3 = -X2
+	Z2l is -Z2h, ^(Z,(Z2l,Z2h),NewZ).                 % maximal range = (-Z2h,Z2h)  
 
 powr_intY_(s, Z,X,Y, NewZ,NewX,NewY):-                % split X, interval Y
-	% union of positive and negative regions
-	X = (Xl,Xh), Xfl is -Xl,  % flip negative to positive for calculation
-	powr_intY_(p, Z,(0,Xfl),Y, (_,Znh),NXn,NYn),      % Znl always 0,
-	powr_intY_(p, Z,(0,Xh), Y, (_,Zph),NXp,NYp),      % Zpl always 0
-	% union and intersect with original
-	NZl is -Znh, NZh is maxr(Znh,Zph), ^(Z,(NZl,NZh),NewZ),
+	% calculate positive and negative regions and unify
+	X = (Xl,Xh),
+	(powr_intY_(p, Z,(0,Xh), Y, NZp,NXp,NYp)
+	 -> true                                          % valid positive region
+	 ;  NZp = NZn, NXp = NXn, NYp = NYn               % no N*p valid, use N*n
+	),
+	(powr_intY_(n, Z,(Xl,0), Y, NZn,NXn,NYn)
+	 -> true                                          % valid negative region
+	 ;  nonvar(NZn)                                   % fail if no solutions from p case
+	),
+	% union and intersect with original X,Y,Z
+	union_(NZn,NZp,NZ), ^(Z,NZ,NewZ),
 	union_(NXn,NXp,NX), ^(X,NX,NewX),
 	union_(NYn,NYp,NY), ^(Y,NY,NewY).
-	
-powr_prim_((Zl,Zh), (Xl,Xh), (Yl,Yh), NewZ) :-        % X assumed positive
-	Zll is roundtoward(Xl**Yl,to_negative),
+
+powr_prim_((Xl,Xh), (Yl,Yh), (NZl,NZh)) :-            % X assumed positive
+	Zll is maxr(0,roundtoward(Xl**Yl,to_negative)),   % Zl must be positive
 	Zlh is roundtoward(Xl**Yh,to_positive),
-	Zhl is roundtoward(Xh**Yl,to_negative),
+	Zhl is maxr(0,roundtoward(Xh**Yl,to_negative)),   % Zh must be positive
 	Zhh is roundtoward(Xh**Yh,to_positive),
-	NZl is maxr(Zl,minr(Zll, minr(Zlh, minr(Zhl, Zhh)))), % intersect with min of all
-	NZh is minr(Zh,maxr(Zll, maxr(Zlh, maxr(Zhl, Zhh)))), % intersect with max of all
-	(non_empty(NZl,NZh) -> NewZ = (NZl,NZh) ; NewZ = (Zl,Zh)).  % on empty, no narrowing 
+	NZl is minr(Zll, minr(Zlh, minr(Zhl, Zhh))),      % intersect with min of all
+	NZh is maxr(Zll, maxr(Zlh, maxr(Zhl, Zhh))).      % intersect with max of all
 
 ln((Xl,Xh), (Zl,Zh)) :-
 	Zl is roundtoward(log(Xl),to_negative),
