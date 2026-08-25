@@ -33,8 +33,8 @@ eg
 A fourth degree polynomial equation with two real roots:
 eg
 	?- X::real, {X**4-4*X**3+4*X**2-4*X+3 == 0}, solve(X).
-	X:: 1.00000... ;
-	X:: 3.00000... ;
+	X:: 1.000000... ;
+	X:: 3.000000... ;
 	false.
 On occasion, `solve` may return in value which actually does not contain a solution, depending on the value of the precision parameter. Consider:
 eg
@@ -42,35 +42,35 @@ eg
 	X:: 1.000... ;
 	false.
 	% but
-	?- X::real, {X**2-2*X+1==0}, solve(X,8).
-	X:: 1.0000... ;
-	X:: 1.00001022... ;
+	?- X::real, {X**2-2*X+1==0}, solve(X,9).
+	X:: 0.9999962433... ;
+	X:: 1.00000... ;
 	false.
 This simple polynomial has an asymptotic root at `X=1`, i.e., large changes in `X` result in fairly small changes in the polynomial's value which makes for hard work for constraint propagation. Increasing the precision doesn't help and in fact returns an interval which doesn't contain a root but the termination conditions for `solve` kick in before it can prove it. The `absolve/2` predicate with a low precision value can be used to remove this "spurious" value:
 eg
-	?- X::real, {X**2-2*X+1==0}, solve(X,8), absolve(X,2).
-	X:: 1.0000... ;
+	?- X::real, {X**2-2*X+1==0}, solve(X,9), absolve(X,2).
+	X:: 1.00000... ;
 	false.
 But it is not uncommon to encounter situations where re-expressing a constraint in an mathematically equivalent form can improve performance, either reducing execution time, increasing precision, or both. Re-expressing polynomials in Horner form (see [Horner's Method]) is such a technique. Expressing the previous example in Horner form removes the spurious answer as well as sharpening the result: 
 eg
-	?- X::real, {1+X*(-2+X) == 0}, solve(X,8).
+	?- X::real, {1+X*(-2+X) == 0}, solve(X,9).
 	X:: 1.00000... ;
 	false.
 The following example demonstrates the increase in performance:
 eg
 	?- clpStatistics,X::real,{X**4-12*X**3+47*X**2-60*X==0},solve(X),format("X = ~p\n",[X]),fail;clpStatistic(userTime(Time)).
 	X = _396{real(-5.0e-324,5.0e-324)}
-	X = _396{real(2.9999890861136174,3.0000110475079493)}
-	X = _396{real(3.9999848619285427,4.000014629809654)}
-	X = _396{real(4.999993898942933,5.0000061777287685)}
-	Time = 1.068091000000095.
-	% Horner is ten times faster and produces narrower results
-	?- clpStatistics,X::real,{X*(-60+X*(47+X*(-12+X)))==0},solve(X),format("X = ~p\n",[X]),fail;clpStatistic(userTime(Time)). 
+	X = _396{real(2.999990167543161,3.0000098230097056)}
+	X = _396{real(3.9999862988916766,4.000013099883486)}
+	X = _396{real(4.999994639655106,5.000004793951631)}
+	Time = 0.8146319999999889.
+	% Horner is almost ten times faster and produces narrower results
+	?- clpStatistics,X::real,{X*(-60+X*(47+X*(-12+X)))==0},solve(X),format("X = ~p\n",[X]),fail;clpStatistic(userTime(Time)).
 	X = 0.0
-	X = _378{real(2.999999429349438,3.0000005619700088)}
+	X = _378{real(2.99999986021363,3.000000092833268)}
 	X = _378{real(3.999999999999966,4.000000000062313)}
-	X = _378{real(4.999999476041927,5.000000543609652)}
-	Time = 0.09278700000004392.
+	X = _378{real(4.99999941954142,5.000000111519819)}
+	Time = 0.08614800000000855.
 When it can be used, the Horner form is usually better but its effectiveness depends on the problems at hand. Another strategy is to identify and exploit common factors; an extreme case is expressing `X**2-2*X+1` as `(X-1)**2`:
 eg
 	?- {(X-1)**2==0}.

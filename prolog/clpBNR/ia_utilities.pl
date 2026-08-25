@@ -164,7 +164,8 @@ attribute_goals(X) -->
 	      ;  interval_domain_(Type, Val, Dom),  % full copy 
 	         constraints_(Nodes,X,Cs)           % reverse map to list of original constraints
 	     ), 
-         once(constraint_goal(Cs,X::Dom,Goals))
+	     once(constraint_goal(Cs,X::Dom,Goals)),
+	     del_attr(X,clpBNR)                     % delete attribute on copy,see copy_term/3 (for portability)
 	  ;  Goals = []
 	 )
 	},
@@ -369,61 +370,89 @@ chk_small(L,H,Err) :-                     % from CLIP?
 	).
 
 /** 
-real_split_point(X:interval,+P:integer,-Pt:numeric) is semidet
+real_split_point(X:interval,+P:integer,?Pt) is semidet
 
-Succeeds if Pt unifies with a point in X satisfying the precision restrictions defined below; otherwise fails. 
-
-The precision restrictions are :
-- X is not `small` as defined by P (approximately number of digits of precision)
-- to prevent "clusters", Pt is not in the vicinity of a solution (again defined by P) 
-- the number of points to be tested is limited by approximately `2*P`
+`real_split_point/3` is used to find a small (depending on value of P, see =|small/1|=) sub-interval of X where no solutions exist. This avoids the solution cluster problem (single solution which generates multiple answers due to splitting) in search predicates (e.g., solve). There are two possible values which are unified with Pt. If Pt is unbound, it is unified with the midpoint of the sub-interval (which is not a solution), otherwise it is unified with the sub-interval range `(L,H)` (which contains no solutions).
+ 
+In summary, `real_split_point/3` succeeds if a sub-interval of X can be found subject to the following precision restrictions:
+- X is not an interval, or not `small` as defined by P (approximately number of digits of precision)
+- a sub-interval can be found which does not contain a solution 
+- the number of sub-intervals to be tested is limited by approximately `2*P`
 
 Conversely, failure occurs if the:
 - the interval is `small`
-- all the points tested are too close to a solution
+- all the sub-intervals tested contain a solution (so better to try splitting some other interval).
+
+Examples:
+==
+% point value
+?- X::real, {17*X**256+35*X**17-99*X==0},real_split_point(X,6,Pt).
+Pt = 0.5034666812560253,
+X::real(0.0, 1.0069333625120507).
+
+% sub-interval, specific example not useful but demonstrates syntax
+?- X::real, {17*X**256+35*X**17-99*X==0},real_split_point(X,6,(L,H)).
+L = 0.5034661812560254,
+H = 0.5034671812560253,
+X::real(0.0, 1.0069333625120507).
+
+% X under-constrained, not splittable
+?- X::real, real_split_point(X,6,Pt).
+false.
+
+% X too small, not splittable
+?- {X==pi},real_split_point(X,6,(L,H)).
+false.
+==
 
 `real_split_point/3` is used by the solvers packaged with `clpBNR` and is exported to facilitate creation of custom solvers for specialized problem domains.
 */
 real_split_point(X,P,Pt) :-           % exported
 	getValue(X,V),
-	split_interval_(X,V,P,Pt).
+	split_interval_(X,V,P,Window),
+	(var(Pt) -> midpoint_(Window,Pt) ; Pt = Window).
 
-split_interval_(X,(L,H),P,Pt) :-      % used by `solve`
+% search for small (controlled by P) region with no solutions
+split_interval_(X,(L,H),P,Window) :-   % RegPt used by `solve`
 	Err is 10.0**(-(P+1)),
 	\+ chk_small(L,H,Err),
-	splitinterval_real_(L,H,IPt),                     % initial guess
 	N is max(2,P-2),
-	current_prolog_flag(clpBNR_iteration_limit,Lim),
 	setup_call_cleanup(
-	    set_prolog_flag(clpBNR_iteration_limit,500),  % lower iteration limit for solution test
-	    split_real_(X,L,H,IPt,N,Err,Pt),
-	    set_prolog_flag(clpBNR_iteration_limit,Lim)
+	    push_prolog_flag(clpBNR_iteration_limit,500),  % lower iteration limit for solution test
+	    split_real_(X,L,H,N,Err,Window),
+	    pop_prolog_flag(clpBNR_iteration_limit)
 	).
 
-%  split a real interval
-split_real_(X,_,_,Pt,_N,Err,Pt) :-           % Pt not in solution space, split here
-	split_real_test_(X,Pt,Err), !.
-split_real_(X,L,_H,Pt,N,Err,NPt) :-          % Pt in current solution space, try lower range
-	split_real_lo(N,X,L,Pt,NPt,Err), !.
-split_real_(X,_L,H,Pt,N,Err,NPt) :-          % Pt in current solution space, try upper range
-	split_real_hi(N,X,Pt,H,NPt,Err).
+%  split a real interval at a non-solution
+split_real_(X,L,H,N,Err,Window) :-
+	splitinterval_real_(L,H,Pt),               % first attempt
+	( split_real_test_(X,Pt,Err,Window)        % No Pt in solution space
+	; split_real_lo(N,X,L,Pt,Err,Window)       % or try lower
+	; split_real_hi(N,X,Pt,H,Err,Window)       % then upper
+	), !.                                      % found eligible split region, commit
 
-split_real_lo(N,X,L,Pt,NPt,Err) :-           % search lower range for a split point 
+split_real_lo(N,X,L,Pt,Err,Window) :-          % search lower range for a split point 
 	N > 0,
 	\+ chk_small(L,Pt,Err),
 	splitinterval_real_(L,Pt,SPt),
-	(split_real_test_(X,SPt,Err) -> NPt = SPt ; N1 is N-1, split_real_lo(N1,X,L,SPt,NPt,Err)).
+	(split_real_test_(X,SPt,Err,Window) -> true ; N1 is N-1, split_real_lo(N1,X,L,SPt,Err,Window)).
 
-split_real_hi(N,X,Pt,H,NPt,Err) :-           % search upper range for a split point 
+split_real_hi(N,X,Pt,H,Err,Window) :-          % search upper range for a split point 
 	N > 0,
 	\+ chk_small(Pt,H,Err),
 	splitinterval_real_(Pt,H,SPt),
-	(split_real_test_(X,SPt,Err) -> NPt = SPt ; N1 is N-1, split_real_hi(N1,X,SPt,H,NPt,Err)).
+	(split_real_test_(X,SPt,Err,Window) -> true ; N1 is N-1, split_real_hi(N1,X,SPt,H,Err,Window)).
 
-split_real_test_(X,Pt,Err) :-
-	LPt is Pt-5.0*Err, HPt is Pt+5.0*Err,   % fuzz Pt for test
-	define_interval(IPt,real,(LPt,HPt),_,[]),
-	\+ X = IPt, !.  % not a solution
+% Test for a window without any solutions. Width of window is important: too narrow causes  
+%  clusters (splitting within error region) and too wide risks not being able to find a
+%  window with no solutions within precision limits.
+%  ± 4.5*Err is a window of ~1 less digit of precision
+split_real_test_(X,Pt,Err,Window) :-
+	getValue(X,(Xl,Xh)),
+	LPt is max(Xl,Pt-4.5*Err), HPt is min(Xh,Pt+4.5*Err),
+	Window = (LPt,HPt),
+	define_interval(IPt,real,Window,_,[]),
+	\+ X = IPt.                                % not a solution inside Window containing Pt
 
 /** 
 global_maximum(+Exp,?Z:numeric) is semidet
@@ -436,7 +465,7 @@ The maximum allowable width for the generated maximum is determined by the curre
 X:: 1.994...,
 Z:: 1.97918... .
 == 
-Note that intervals in the expression may not narrow significantly if more than one maximum can found using the the initial domains. In such cases, additional "searching", e.g., using =|solve/1|=, may be necessary.
+Note that intervals in the expression may not narrow significantly if more than one maximum can found using the initial domains. In such cases, additional "searching", e.g., using =|solve/1|=, may be necessary.
 
 @see =|global_maximize/2|=
 */
@@ -603,7 +632,7 @@ iterate_MS(Z,Xs,P,Zl-(Zh,XVs),ZTree,BindVars) :-
 iterate_MS(Z,Xs,_P,Zl-(Zh,XVs),_ZTree,BindVars) :-    % termination criteria (Step 12.) met
 	(BindVars == true 
 	 -> build_box_MS(Xs,XVs,T/T)                      % optional minimizer narrowing
-	 ;  add_constraint(Z == ::(Zl,Zh))                % just minimum value
+	 ;  add_constraint(Z == (Zl,Zh))                  % just minimum value
 	).
 
 continue_MS(Zl,Zh,P,Xs,XVs,Discard) :-           % w(Y) termination criteria
@@ -642,13 +671,13 @@ partition_box_(P,[_X|Xs],[XV|XVs],Xf,XfMid,[XV|XVsP]) :-
 
 % calculate resultant box and return it, original box left unchanged (uses global var) 
 eval_MS(Z,Xs,XVs,_FV) :-                         % Step 7., calculate F(V) and save
-	nb_setval('$clpBNR:eval_MS',[]),             % [] means failure to evaluate
+	g_assign('$clpBNR:eval_MS',[]),              % [] means failure to evaluate
 	build_box_MS(Xs,XVs,T/T),
 	copy_box_([Z|Xs],NewBox),                    % copy Z and Xs solution bounds
-	nb_setval('$clpBNR:eval_MS',NewBox),         % save solution in format for Z tree
+	g_set('$clpBNR:eval_MS',NewBox),             % save solution in format for Z tree
 	fail.                                        % backtack to unwind 
 eval_MS(_,_,_,Zl-(Zh,NXVs)) :-
-	nb_getval('$clpBNR:eval_MS',[(Zl,Zh)|NXVs]). % retrieve solution (fails if [])
+	g_read('$clpBNR:eval_MS',[(Zl,Zh)|NXVs]). % retrieve solution (fails if [])
 
 sandbox:safe_global_variable('$clpBNR:eval_MS').
 
@@ -724,40 +753,45 @@ solve(X) :-
 	solve(X,P).
 
 solve(X,P) :-
-	interval(X), !,               % if single interval, put it into a list
+	interval(X), !,                     % if single interval, put it into a list
 	solve([X],P).
 solve(X,_P) :-
-	number(X), !.                 % already a point value
-solve(X,P) :-                     % assume list
+	number(X), !.                       % already a point value
+solve(X,P) :- 
+	nonvar(X),                          % assume list
 	xpsolveall_(X,P).
 
 xpsolveall_(Xs,P) :-
-	xpsolve_each_(Xs,Us,P),       % split once and collect successes
-	(Us == [] -> true ; xpsolveall_(Xs,P)).  % continue until nothing split
+	xpsolve_each_(Xs,Split,P),          % split once and collect successes
+	(Split == [] -> true ; xpsolveall_(Xs,P)).  % continue until nothing split
 
 xpsolve_each_([],[],_P).
-xpsolve_each_([X|Xs],[X|Us],P) :-
-	interval_object(X,Type,V,_),        % get interval type and value
-	splitinterval_(Type,X,V,P,Choices), % split interval
-	!,
-	xpsolve_choice(Choices),            % create choice(point)
-	xpsolve_each_(Xs,Us,P).             % split others in list
-xpsolve_each_([X|Xs],Us,P) :-           % avoid unfreeze overhead if [] unified in head
-	X==[], !,                           % end of nested listed, discard
-	xpsolve_each_(Xs,Us,P).             % split remaining
-xpsolve_each_([X|Xs],Us,P) :-
-	list(X), !,                         % nested list
-	xpsolve_each_(X,U,P),               % split nested list
-	(U == [] -> Us = NxtUs ; Us = [U|NxtUs]),  % discard empty 
-	xpsolve_each_(Xs,NxtUs,P).             % then others in main list
-xpsolve_each_([_X|Xs],Us,P) :-
-	xpsolve_each_(Xs,Us,P).             % split failed or already a number, drop interval from list, and keep going
+xpsolve_each_([X|Xs],Split,P) :- 
+	list(X), !,                         % nested list case (green cut)
+	xpsolve_each_(X,XSplit,P),          % split it
+	(XSplit == [] -> Split = NSplit ; Split = [XSplit|NSplit]),  % discard empty 
+	xpsolve_each_(Xs,NSplit,P).         % then others in main list
+xpsolve_each_([X|Xs],Split,P) :-
+	(interval_object(X,Type,V,_),       % interval case, get type and value
+	 splitinterval_(Type,X,V,P,Choices) % if splittable ?
+	 -> xpsolve_choice(Choices),        % create choice(point)
+	 	Split = [X|NSplit]              % X in splittable list	    
+	 ;  Split = NSplit                  % X not splittable (or a point value?)
+	),
+	xpsolve_each_(Xs,NSplit,P).
 
-xpsolve_choice(split(X,SPt)) :- add_constraint(X =< SPt).  % avoid meta call
-xpsolve_choice(split(X,SPt)) :- add_constraint(SPt =< X).
-xpsolve_choice(split_integer(X,SPt)) :- add_constraint(X =< SPt).
-xpsolve_choice(split_integer(X,SPt)) :- add_constraint(SPt < X).
-xpsolve_choice(enumerate(X)) :- enumerate(X).
+xpsolve_choice(split(X,SPt)) :- 
+	add_constraint(X =< SPt) ; add_constraint(SPt =< X).
+xpsolve_choice(exclude(X,L,H)) :-
+	getValue(X,(XL,XH)),
+	((1 is cmpr(L,XL), add_constraint(X =< (L,L)))
+	 ;
+	 (1 is cmpr(XH,H), add_constraint(X >= (H,H)))
+	).
+xpsolve_choice(split_integer(X,SPt)) :- 
+	add_constraint(X =< SPt) ; add_constraint(SPt < X).
+xpsolve_choice(enumerate(X)) :- 
+	enumerate(X).
 
 %
 % try to split interval - fails if unsplittable (see real_split_point/3)
@@ -770,8 +804,8 @@ splitinterval_(integer,X,(L,H),_,Cons) :-
 	 ;  splitinterval_integer_(L,H,Pt),           % splittable at Pt
 	    Cons = split_integer(X,Pt)                % success
 	).
-splitinterval_(real,X,V,P,split(X,::(Pt,Pt))) :-  % split on point value
-	split_interval_(X,V,P,Pt).  % use public split_interval_ to get Pt
+splitinterval_(real,X,V,P,exclude(X,L,H)) :-      % split on excluded region
+	split_interval_(X,V,P,(L,H)).  % use split_interval_ to get small region with no solutions
 
 %
 % splitinterval_integer_ and splitinterval_real_
@@ -787,11 +821,11 @@ splitinterval_integer_(L,1.0Inf,Pt) :-  !,  % infinite upper bound, integers unb
 splitinterval_integer_(L,H,Pt) :-     % all positive or negative (including zero)  
 	Pt is (L div 2) + (H div 2).      % avoid overflow
 
-% 1. Split intervals use 0.0
-% 2  Handle inifinte bounds
+% 1. Split intervals on 0.0
+% 2. Handle inifinte bounds
 % 3. Same sign, use lesser of geometric mean and arithmetic mean
 splitinterval_real_(L,H,0.0) :-
-	bounded_number(L,H,0.0).  % 0.0 is bounded by L and H
+	bounded_number(L,H,0.0), !.  % 0.0 is bounded by L and H
 splitinterval_real_(-1.0Inf,H,Pt) :- !,
 	L is nexttoward(-1.0Inf,0),
 	splitinterval_real_(L,H,Pt).
@@ -802,10 +836,10 @@ splitinterval_real_(L,H,Pt) :- Sgn is cmpr(L,0.0),
 	( Sgn == 0 -> Pt is float(min(H/2,sqrt(H)))
 	; Sgn == 1,   Pt is float(min(L/2+H/2,sqrt(L*H)))
 	), !.
-splitinterval_real_(L,H,Pt) :- Sgn is cmpr(0.0,H), !,
+splitinterval_real_(L,H,Pt) :- Sgn is cmpr(0.0,H),
 	( Sgn == 0 -> Pt is float(max(L/2,-sqrt(-L)))
 	; Sgn == 1,   Pt is float(max(L/2+H/2,-sqrt(L*H)))
-	), !.
+	).
 
 /**
 splitsolve(X:numeric_List) is nondet
@@ -864,7 +898,7 @@ delta_order_(COp,X1,X2) :-
 	% equal delta isn't duplicate,  note descending order 
 	(D2 > D1 -> COp = > ; COp = <).
 
-split_choices_(real,X,(L,H),Err,split(X,::(SPt,SPt))) :- !,
+split_choices_(real,X,(L,H),Err,split(X,(SPt,SPt))) :- !,
 	\+ chk_small(L,H,Err),
 	splitinterval_real_(L,H,SPt).          % from solve/1, but splits anywhere
 split_choices_(integer,X,V,_Err,Cons) :-
@@ -873,7 +907,7 @@ split_choices_(integer,X,V,_Err,Cons) :-
 /**
 absolve(X:numeric_List) is semidet
 
-Succeeds if a if X is a numeric (or list of numeric); otherwise fails. =|absolve|= is intended solely to trim up the boundaries of what is essentially a single (non-point)  solution to a problem. The strategy used  is to work in from the edges of the interval ("nibbling away") at subdomains which are inconsistent until you cannot go farther, then reduce step size and resume nibbling. In this case, the the environment flag  =clpBNR_default_precision= is used to specify the number of step size reductions to apply; the initial step size is half the interval width.
+Succeeds if a if X is a numeric (or list of numeric); otherwise fails. =|absolve|= is intended solely to trim up the boundaries of what is essentially a single (non-point)  solution to a problem. The strategy used  is to work in from the edges of the interval ("nibbling away") at subdomains which are inconsistent until you cannot go farther, then reduce step size and resume nibbling. In this case, the environment flag  =clpBNR_default_precision= is used to specify the number of step size reductions to apply; the initial step size is half the interval width.
 
 =|absolve|= can be used to further narrow intervals after =|solve|= to "sharpen" the result; example:
 ==
@@ -935,8 +969,8 @@ absolve_l(X, Type, DL, NL, Limit):- NL<Limit, % work on left side
 	trim_point_(NL,NL1,Type,Limit,DL,DL1),    % generates trim points
 	Split is LB1 + DL1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	\+(add_constraint(X=< ::(Split,Split))),!,
-	add_constraint(X>= ::(Split,Split)),      % so X must be >
+	\+(add_constraint(X=< (Split,Split))),!,
+	add_constraint(X>= (Split,Split)),        % so X must be >
 	absolve_l(X,Type, DL1, NL1, Limit).
 absolve_l(_,_,_,_,_).                         % final result
 
@@ -945,8 +979,8 @@ absolve_r(X, Type, DU, NU, Limit):- NU<Limit, % work on right side
 	trim_point_(NU,NU1,Type,Limit,DU,DU1),    % generates trim points
 	Split is UB1 - DU1,
 	LB1 < Split, Split < UB1,                 % in range, not endpoint
-	\+(add_constraint(X>= ::(Split,Split))),!,
-	add_constraint(X=< ::(Split,Split)),      % so X must be <
+	\+(add_constraint(X>= (Split,Split))),!,
+	add_constraint(X=< (Split,Split)),        % so X must be <
 	absolve_r(X,Type, DU1, NU1,Limit).
 absolve_r(_,_,_,_,_).                         % final result
 

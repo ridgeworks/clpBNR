@@ -36,6 +36,7 @@ The set of operators and functions currently supported are:
 	sin asin cos acos tan atan            %% trig functions
 	integer                               %% is an integral value, e.g., 1 and 1.0 are both integral values
 	sig                                   %% signum of real, (-1,0,+1)
+	, real integer                        %% literal interval with numeric bounds, e.g., (1.3,2.7), integer(1,3) 
 Note that the use of some constraints may also constrain the "type" of the operands. Specifically `<>` constrains the operands to be integers, and the boolean operations similarly constrain the operands to be booleans. Synonyms for `<>` and `==` are `=\=` and `=:=` for those who prefer the standard Prolog operators.
 
 Users can extend the set of constraint functions with [User Defined Narrowing Functions].
@@ -563,19 +564,40 @@ eg
 	Y::real(-1.0e+16, 1.0e+16),
 	X::real(-1.0Inf, 1.0Inf).
 
-.pred	**real_split_point**(*+Interval, ++Integer, -Number*)
-Succeeds if a split point (third argument) unifies with a point in the interval satisfying the precision restrictions defined below; otherwise fails. 
-
-The precision restrictions are :
-*	X is not `small` as defined by the second argument (approximately number of digits of precision)
-*	to prevent "clusters", the split point is not in the "vicinity" of a solution 
-*	the number of points to be tested is limited by approximately twice the second argument
+.pred	**real_split_point**(*+Interval, ++Integer, -Term*)
+`real_split_point/3` is used to find a "small" sub-interval of the first argument where no solutions exist. This avoids the solution cluster problem (single solution which generates multiple answers due to splitting) in search predicates (e.g., `solve`). There are two possible values which are unified with the third argument. If it is unbound, it is unified with the midpoint of the sub-interval (which is not a solution), otherwise it is unified with the sub-interval range `(L,H)` (which contains no solutions).
+ 
+In summary, `real_split_point/3` succeeds if a sub-interval of the first argument can be found subject to the following precision restrictions:
+*	X is not `small` as defined by the third argument `P` (approximately number of digits of precision as defined by environment flag `clpBNR_default_precision`)
+*	a sub-interval can be found which does not contain a solution 
+*	the number of sub-intervals to be tested is limited by approximately `2*P`
 
 Conversely, failure occurs if the:
-*	the interval is `small`
-*	all the points tested are too close to a solution
+- the interval is `small` (or not an interval)
+- all the sub-intervals tested contain a solution (so better to try splitting some other interval).
 
-**real_split_point/3** is used by `clpBNR`'s internal solvers and is exported to facilitate creation of custom solvers for specialized problem domains.
+Examples:
+eg
+	% point value
+	?- X::real, {17*X**256+35*X**17-99*X==0},real_split_point(X,6,Pt).
+	Pt = 0.5034666812560253,
+	X::real(0.0, 1.0069333625120507).
+	
+	% sub-interval, specific example not useful but demonstrates syntax
+	?- X::real, {17*X**256+35*X**17-99*X==0},real_split_point(X,6,(L,H)).
+	L = 0.5034661812560254,
+	H = 0.5034671812560253,
+	X::real(0.0, 1.0069333625120507).
+	
+	% X under-constrained, not splittable
+	?- X::real, real_split_point(X,6,Pt).
+	false.
+	
+	% X too small, not splittable
+	?- {X==pi},real_split_point(X,6,(L,H)).
+	false.
+
+`real_split_point/3` is used by the solvers packaged with `clpBNR` and is exported to facilitate creation of custom solvers for specialized problem domains.
 
 .pred	**small**(*+Intervals*), **small**(*+Intervals, ++Integer*)
 Succeeds if all *Intervals* are "small" based on the optional precision value in the second argument (defaults to precision value define by flag `clpBNR_default_precision`). The precision value roughly corresponds to the number of leading decimal digits of the lower and upper bounds that agree. Numeric values (point intervals), by definition, are small.

@@ -124,6 +124,7 @@ Here is the current set of operators and functions supported in this version:
 	sin asin cos acos tan atan            %% trig functions
 	integer                               %% must be an integer value
 	sig                                   %% signum of real, (-1,0,+1)
+	, real integer                        %% literal interval with numeric bounds, e.g., (1.3,2.7), integer(1,3) 
 
 Further explanation and examples, including a complete reference section, can be found in the [Guide to CLP(BNR)][clpBNR_UG]. Examples include problems in finite domains, and finding roots, global optima, and boundary value solutions to differential equations. Additional background material is available at [BNR Prolog Papers][bnrpp].
 
@@ -154,7 +155,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	% "clpBNR.git" was downloaded 2 times
 	Package:                clpBNR
 	Title:                  CLP over Reals using Interval Arithmetic - includes Rational, Integer and Boolean domains as subsets.
-	Installed version:      0.13.1
+	Installed version:      0.13.2
 	Author:                 Rick Workman <ridgeworks@mac.com>
 	Home page:              https://github.com/ridgeworks/clpBNR
 	Download URL:           https://github.com/ridgeworks/clpBNR.git
@@ -162,7 +163,7 @@ If you do not want to download this entire repo, a package can be installed usin
 	true.
 	
 	﻿?- use_module(library(clpBNR)).
-	% *** clpBNR v0.13.1 ***.
+	% *** clpBNR v0.13.2 ***.
 	%   Arithmetic global flags set to prefer rationals and IEEE continuation values.
    
 Or if the repository has been down downloaded, just consult `clpBNR.pl` (in `prolog/` directory) which will automatically include helper files in directory `clpBNR`.

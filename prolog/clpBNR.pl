@@ -93,6 +93,7 @@ exp	log                               %% exp/ln
 sin	asin	cos	acos	tan	atan      %% trig functions
 integer                               %% must be an integral value, e.g., 1 and 1.0 are both integral
 sig                                   %% signum of real, (-1,0,+1)
+, real integer                        %% literal interval with numeric bounds, e.g., (1.3,2.7), integer(1,3) 
 
 */
 
@@ -115,7 +116,7 @@ Documentation for exported predicates follows. The "custom" types include:
 *  _|*_List|_  : a _|*|_ or a list of _|*|_
 */
 
-version("0.13.1").
+version("0.13.2").
 
 % support various optimizations via goal expansion
 :- discontiguous clpBNR:goal_expansion/2.
@@ -135,20 +136,44 @@ version("0.13.1").
 	          [ rational   % require rational number support, implies bounded=false
 	          ]).
 
-%
+% Abstraction for global vars for future portability; loosely based on GNU-Prolog
+% assign,increment/read global counter (assumed to be ground value so use _linkval)
+g_assign(G,V)  :- nb_linkval(G,V).
+g_set(G,V)     :- nb_setval(G,V).    % for non-ground values
+g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
+g_incb(G,I)    :- nb_getval(G,N), N1 is N+I, b_setval(G,N1).    % undone on backtrack
+g_read(G,V)    :- nb_getval(G,V).
+g_delete(G)    :- nb_delete(G).
+
+% if local version of push/pop_prolog_flag required for backwards compatibilty
+:- if(\+current_predicate(push_prolog_flag/2)).
+
+push_prolog_flag(Flag,Value) :-  % system push_prolog_flag/2 introduced in 10.1.12
+	current_prolog_flag(Flag,Current),
+	g_read('$prolog_flag_stack',Stack),
+	g_assign('$prolog_flag_stack',[(Flag,Current)|Stack]),  % assumes ground values
+	set_prolog_flag(Flag,Value).
+
+pop_prolog_flag(Flag) :-         % system pop_prolog_flag/1 introduced in 10.1.12
+	g_read('$prolog_flag_stack',Stack),
+	pop_flag_(Stack,Flag,Value,NxtStack),     % fails if no matching push (clpBNR bug)
+	g_assign('$prolog_flag_stack',NxtStack),  % assumes ground values
+	set_prolog_flag(Flag,Value).
+
+pop_flag_([(Flag,Value)|Stack],Flag,Value,Stack) :- !.  % dominant case (strict nesting)
+pop_flag_([NoMatch     |Stack],Flag,Value,[NoMatch|NxtStack]) :- 
+	pop_flag_(Stack,Flag,Value,NxtStack).
+
+% initialization for flag stack
+:- g_assign('$prolog_flag_stack',[]).  % for loadtime directives
+
+user:exception(undefined_global_variable,'$prolog_flag_stack',retry) :- !, % for threads
+	g_assign('$prolog_flag_stack',[]).
+
+:- endif. % (\+current_predicate(push_prolog_flag/2))
+
 % Optimize arithmetic, but not debug.
-%
-set_optimize_flags_ :-      % called at start of load
-	set_prolog_flag(optimise,true),              % scoped to file/module
-	current_prolog_flag(optimise_debug,ODflag),  % save; restore in initialization
-	nb_linkval('$optimise_debug_save',ODflag),
-	set_prolog_flag(optimise_debug,false).       % so debug/3, debugging/1 don't get "optimized"
-
-restore_optimize_flags_ :-  % called at module initialization (after load)
-	nb_getval('$optimise_debug_save',ODflag), nb_delete('$optimise_debug_save'),
-	set_prolog_flag(optimise_debug,ODflag).
-
-:- set_optimize_flags_.
+:- set_prolog_flag(optimise,true), push_prolog_flag(optimise_debug,false).
 
 % local debug and trace message support
 debug_clpBNR_(FString,Args) :- debug(clpBNR,FString,Args).
@@ -170,12 +195,6 @@ sandbox:safe_primitive(clpBNR:current_node_(_Node)).
 %
 % statistics
 %
-
-% assign,increment/read global counter (assumed to be ground value so use _linkval)
-g_assign(G,V)  :- nb_linkval(G,V).
-g_inc(G)       :- nb_getval(G,N), N1 is N+1, nb_linkval(G,N1).
-g_incb(G,I)    :- nb_getval(G,N), N1 is N+I, b_setval(G,N1).    % undone on backtrack
-g_read(G,V)    :- nb_getval(G,V).
 
 sandbox:safe_global_variable('$clpBNR:thread_init_done').
 sandbox:safe_global_variable('$clpBNR:userTime').
@@ -581,8 +600,10 @@ X::real(0.5, 3.1415926535897936).
 :- arithmetic_function(midpoint/1).
 
 midpoint(Int, Mid) :-
-	getValue(Int,(L,H)),
-	midpoint_(L,H,Mid).
+	getValue(Int,V),
+	midpoint_(V,Mid).
+
+midpoint_((L,H),Mid) :- midpoint_(L,H,Mid).
 
 midpoint_(L,H,M)       :- L =:= -H, !, M=0.              % symmetric including (-inf,inf)
 midpoint_(-1.0Inf,H,M) :- !, M is nexttoward(-1.0Inf,0)/2 + H/2.
@@ -831,6 +852,12 @@ applyType_(NewType, Int, Agenda, NewAgenda) :-      % narrow Int to Type
 	).
 
 %
+% For portability, support `verify_attributes/3` (not used in SWIP)
+%
+verify_attributes(Var, Value, [attr_unify_hook(Interval, Value)]) :-
+	% does no verification; just defers everything to `attr_unify_hook/2` post unification
+	get_attr(Var,clpBNR,Interval).
+%
 % this goal gets triggered whenever an interval is unified, valid for a numeric value or another interval
 %
 attr_unify_hook(IntDef, Num) :-         % unify an interval with a numeric
@@ -1031,14 +1058,18 @@ build_(Var, Var, VarType, Agenda, NewAgenda) :-         % already an interval or
 	 ;  new_universal_interval(VarType,Var),            % implicit interval creation
 	    NewAgenda = Agenda                              % nothing to schedule
 	).
-build_(::(L,H), Int, VarType, Agenda, Agenda) :-        % hidden :: feature: interval bounds literal (without fuzzing)
+build_(real(L,H), Int, _VarType, Agenda, NewAgenda) :-  !,    % literal real interval
+	build_((L,H), Int, real, Agenda, NewAgenda).
+build_(integer(L,H), Int, _VarType, Agenda, NewAgenda) :- !,  % literal integer interval
+	build_((L,H), Int, integer, Agenda, NewAgenda).
+build_((L,H), Int, VarType, Agenda, Agenda) :-          % literal interval, default real
 	number(L), number(H), !,
-	C is cmpr(L,H),  % compare bounds
+	C is cmpr(L,H),  % compare bounds, unlike decl's points are not fuzzed
 	(C == 0
 	 -> (rational(L) -> Int=L ; Int=H)                  % point value, if either bound rational (precise), use it
 	 ;	C == -1,                                        % necessary condition: L < H
 	    (VarType = real -> true ; true),                % if undefined Type, use 'real' (efficient ignore/1)
-	    define_interval(Int, VarType, (L,H), _Nodelist, [])  % create clpBNR interval
+	    int_decl_(VarType,(L,H),Int)                    % create clpBNR interval
 	).
 build_(NumStr, Int, _VarType, Agenda, Agenda) :-
 	string(NumStr), !,                                  % not necessary but optimal
@@ -1472,7 +1503,7 @@ clpStatistics.
 % module initialization
 %
 init_clpBNR :-
-	restore_optimize_flags_,
+	pop_prolog_flag(optimise_debug),                        % restore after load
 	'$toplevel':version(clpBNR(versionInfo)),               % add message to system version
 	print_message(informational, clpBNR(versionInfo)),
 	print_message(informational, clpBNR(arithmeticFlags)).  % cautionary, set on first use
@@ -1494,4 +1525,4 @@ prolog:message(clpBNR(versionInfo)) -->
 prolog:message(clpBNR(arithmeticFlags)) -->
 	[ '  Arithmetic global flags will be set to prefer rationals and IEEE continuation values.'-[] ].
 
-:- initialization(init_clpBNR, now).  % Most initialization deferred to "first use" - see user:exception/3
+:- initialization(init_clpBNR).  % Most initialization deferred to "first use" - see user:exception/3

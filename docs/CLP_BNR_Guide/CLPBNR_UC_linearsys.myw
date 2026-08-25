@@ -16,8 +16,8 @@ The red and blue lines are the equations and the solid black lines represent fix
 Fortunately `solve/1` can be used overcome this deficiency:
 eg
 	?- [X,Y]::real, {X+Y==1,X-Y==1}, solve(X).
-	X:: 1.00000...,
-	Y::real(-5.556316261534633e-07, 5.556316261534633e-07).
+	X:: 1.0000000...,
+	Y::real(-2.5011158699683733e-08, 2.5011158699683733e-08).
 and, in this case, it works equally well if you solve for `X` or `Y` or both. However this may not always be the case. While the solution found should always be the same, the time taken to find it may vary widely (sometimes an order of magnitude or more). The following "real-world" examples were taken from [SYSTEMS OF LINEAR EQUATIONS AND MATRICES].
 
 ##### Manufacturing: Production Scheduling
@@ -93,63 +93,49 @@ However consider {`I_s`}. From the equations, it is not obvious that it cannot b
 Again, no narrowing occurs in the initial fixed point iteration, but it's not obvious which variables to use with `solve`. As `solve` takes a list of variables (breadth first across all intervals named) there's no reason not to use the entire set of interval values:
 eg
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs).
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|...],
+	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|…],
 	I1 = 10,
-	Is::real(-9.99999999999999e+15, 1.0e+16),
+	Is::real(-9999999999999990.0, 1.0e+16),
 	I2::real(-1.0e+16, 1.0e+16),
 	I3::real(-1.0e+16, 1.0e+16),
 	I4::real(-1.0e+16, 1.0e+16),
 	I5::real(-1.0e+16, 1.0e+16),
 	I6::real(-1.0e+16, 1.0e+16),
-	I7::real(-1.0e+16, 9.99999999999999e+15),
+	I7::real(-1.0e+16, 9999999999999990.0),
 	I8::real(-6.25e+15, 6.25e+15),
-	I9::real(-8.888888888888889e+15, 8.888888888888889e+15).
-	
-	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), solve(Vs).
-	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8, I9],
-	I1 = 10,
-	Is:: 10.82829...,
-	I2:: 0.56909...,
-	I3:: -0.31183...,
-	I4:: 0.53206...,
-	I5:: 0.25726...,
-	I6:: 0.29623...,
-	I7:: 0.82829...,
-	I8:: 0.25920...,
-	I9:: 0.03897... ;
-	false.
-Using `solve` finds the solution in less than a second, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of two:
+	I9::real(-8888888888888889.0, 8888888888888889.0).
+Using `solve` finds the solution in less than a second, but adding the constraint that {`Is`} is positive further reduces the execution time by over a factor of three:
 eg
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), time(solve(Vs)).
-	% 4,452,766 inferences, 0.675 CPU in 0.676 seconds (100% CPU, 6599633 Lips)
+	% 3,876,896 inferences, 0.572 CPU in 0.573 seconds (100% CPU, 6779687 Lips)
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|…],
 	I1 = 10,
-	Is:: 10.82829...,
+	Is:: 10.828298...,
 	I2:: 0.56909...,
-	I3:: -0.31183...,
-	I4:: 0.53206...,
-	I5:: 0.25726...,
-	I6:: 0.29623...,
-	I7:: 0.82829...,
-	I8:: 0.25920...,
-	I9:: 0.03897... ;
-	% 64,396 inferences, 0.010 CPU in 0.011 seconds (100% CPU, 6138214 Lips)
+	I3:: -0.311830...,
+	I4:: 0.532060...,
+	I5:: 0.257260...,
+	I6:: 0.296238...,
+	I7:: 0.828298...,
+	I8:: 0.259208...,
+	I9:: 0.038978... ;
+	% 81,685 inferences, 0.013 CPU in 0.013 seconds (99% CPU, 6358789 Lips)
 	false.
 	
 	?- Vs=[Is,I1,I2,I3,I4,I5,I6,I7,I8,I9], simpleCircuit(Vs), {Is>=0}, time(solve(Vs)).
-	% 1,915,884 inferences, 0.295 CPU in 0.296 seconds (100% CPU, 6487902 Lips)
+	% 1,171,189 inferences, 0.174 CPU in 0.175 seconds (100% CPU, 6714224 Lips)
 	Vs = [Is, 10, I2, I3, I4, I5, I6, I7, I8|…],
 	I1 = 10,
-	Is:: 10.82829...,
-	I2:: 0.56909...,
-	I3:: -0.31183...,
-	I4:: 0.53206...,
-	I5:: 0.25726...,
-	I6:: 0.29623...,
-	I7:: 0.82829...,
-	I8:: 0.25920...,
-	I9:: 0.03897... ;
-	% 63,885 inferences, 0.010 CPU in 0.010 seconds (100% CPU, 6215703 Lips)
+	Is:: 10.828298...,
+	I2:: 0.569089...,
+	I3:: -0.311830...,
+	I4:: 0.532060...,
+	I5:: 0.257259...,
+	I6:: 0.296238...,
+	I7:: 0.828298...,
+	I8:: 0.259208...,
+	I9:: 0.038978... ;
+	% 46,227 inferences, 0.007 CPU in 0.007 seconds (99% CPU, 6298815 Lips)
 	false.
 This example demonstrates the importance of ensuring that all known constraints are explicit to minimize execution time, even if some of the constraints seem redundant. In this case `solve` can spend  much wasted time searching for solutions for negative `Is`.
 

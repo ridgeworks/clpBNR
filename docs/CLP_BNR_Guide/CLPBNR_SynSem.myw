@@ -253,7 +253,7 @@ In this particular case, it's apparent why constraining `Y` would not have such 
 To alleviate this problem, CLP(BNR) provides `solve/1`. This predicate takes an interval and performs a non-deterministic bifurcating search to find solutions. Solving for `Y`:
 eg
 	?- {X**2+Y**2==2, Y-X**2==0}, solve(Y).
-	X::real(-1.000000259096709, 1.000000259096709),
+	X::real(-1.0000000772632958, 1.0000000772632958),
 	Y:: 1.00000... ;
 	false.
 `Y` can't get much narrower (`solve` has a default precision of approximately 6 digits) and `X` has now been narrowed as much as it can while still containing both solutions. Alternatively, solving for `X`:
@@ -307,14 +307,14 @@ For quadratics like this example, one can do additional pre-processing to find t
 eg
 	% default precision value is defined by environment flag `clpBNR_default_precision`
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y)).
-	% 120,762 inferences, 0.034 CPU in 0.037 seconds (92% CPU, 3550153 Lips)
+	% 125,251 inferences, 0.020 CPU in 0.020 seconds (98% CPU, 6313054 Lips)
 	X::real(-1, 1),
-	Y::real(-0.27262693316631437, 2.0).
+	Y::real(-0.27262535547069955, 2).
 	
 	?- X::real(-1,1),{Y==X*(X+1)},time(solve(Y,16)).
-	% 1,305,020 inferences, 0.195 CPU in 0.196 seconds (100% CPU, 6679462 Lips)
+	% 1,351,082 inferences, 0.205 CPU in 0.205 seconds (100% CPU, 6591190 Lips)
 	X::real(-1, 1),
-	Y::real(-0.2500211540681734, 2.0).
+	Y::real(-0.25002115406817277, 2).
 Another example using `solve/1` to find the roots of a 256 degree polynomial (in this example, `X` should be declared as shown to avoid floating point overflows when dealing with large powers):
 eg
 	﻿?- X::real, {0 == 35*X**256 - 14*X**17 + X}, solve(X).
@@ -374,6 +374,27 @@ eg
 	X::real(-1.0000000000000004, 1.0000000000000004),
 	_A:: 1.000000000000000... .
 
+It is sometimes convenient to express a literal interval value in a constraint expression; this can be done using the '`,/2`' notation used in declaring intervals with numeric low and high bounds. So `{X == (-10,10)}` is equivalent to `X::real(-10,10)`. This usage has slightly different semantics than declarations; if the two bounds are the same numeric value, it is interpreted as a point value (no fuzz applied). For example:
+eg
+	?- {I==(2,3)+1}.
+	I::real(3, 4).
+	
+	?- {I==(1.3,1.3)}.
+	I = 1.3.
+	
+	?- {I==(1.3,4r3)}.
+	I:: 1.3... .
+	
+	?- {I==(1.5,3r2)}.
+	I = 3r2.
+The default interval type is real, but explicit type syntax is supported:
+eg
+	?- {I == integer(1.3,8r3)}.
+	I = 2.
+	
+	?- {I == integer(1.3,4r3)}.
+	false.
+
 <#TableOfContents>
 
 #### The Role of "Solvers" in CLP(BNR)
@@ -410,13 +431,13 @@ eg
 	false.
 This mechanism for avoiding clusters is still a heuristic and not generally guaranteed to eliminate clusters. Such clusters can be further reduced using `absolve/1,2` which operates slightly differently. It selects each interval in list order and tries to "nibble" away at the bounds to narrow the interval; the higher the precision value, the harder it tries. Unlike the previously described solvers, it is (semi-)deterministic, i.e., it doesn't divide the problem into sub-problems leaving choice points for alternative solutions on subsequent failure, but just tries to removed whatever it can at the bounds of the interval(s).
 eg
-	?- X::real,{X**2-2*X+1==0},solve(X,8).
-	X:: 1.0000... ;
-	X:: 1.00001022... ;
+	?- X::real,{X**2-2*X+1==0},solve(X,9).
+	X:: 0.9999962433... ;
+	X:: 1.00000... ;
 	false.
 	
-	?- X::real,{X**2-2*X+1==0},solve(X,8),absolve(X).
-	X:: 1.0000... ;
+	?- X::real,{X**2-2*X+1==0},solve(X,9),absolve(X).
+	X:: 1.00000... ;
 	false.
 While its main use is sharpening results and eliminating false positives, `absolve` may also be used to "pre-shrink" a set of intervals prior to using a bifurcation solver, making the solver's job easier.
 
@@ -750,11 +771,11 @@ eg
 	X = Y,
 	Y::real(-1.0e+16, 1.0e+16).
 	
-	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
+	?- X::real(-1e5,1e5), {X==Y+1,Y==X}.
 	X = Y,
-	Y::real(-1.0e+04, 7000.0).
+	Y::real(-1.0e+05, 7.0e+04).
 	
-	?- X::real(-1e3,1e3), {X==Y+1,Y==X}.
+	?- X::real(-1e4,1e4), {X==Y+1,Y==X}.
 	false.
 In the first two cases, the addition of `1` is too small to affect the bounds of the result, i.e., no narrowing occurs. And when it is significant enough, throttling may inhibit narrowing enough to prevent failure (case 3). In the last case, the initial interval is narrow enough that failure occurs.
 
@@ -775,7 +796,7 @@ The alternative to this behaviour is the appearance of non-termination; it will 
 Another interesting example of an inconsistent constraint:
 eg
 	?- X::integer, {X>abs(X)}.
-	X::integer(1000, 72057594037917936).
+	X::integer(10000, 72057594037917936).
 As seen above, throttling can be mitigating by defining tighter constraints (initial range) or something like `solve` can be used after the fact, but, in this case, that would take an excessively long time on the default integer range. With a somewhat limited range, the query produces the expected result:
 eg
 	﻿?- X::integer(-100000,100000), {X>abs(X)},solve(X).
@@ -790,7 +811,7 @@ eg
 	Y::integer(600, 601).
 But there's a limit to the size of the domain as illustrated by the second query. In this case throttling has again terminated the fixed point iteration. As before, `solve` can be used as to break the impasse:
 eg
-	﻿?- [X,Y]::integer(-10001,10001), {Y>abs(X),Y==X}, solve(X).
+	﻿?- [X,Y]::integer(-1201,1201), {Y>abs(X),Y==X}, solve(X).
 	false.
 
 The failure to "fail" in the face of inconsistent constraints isn't wrong according to the interpretation of positive answers documented above. It's just that the conditions weren't right to cause failure. So it's important to interpret any positive answers with this issue in mind.

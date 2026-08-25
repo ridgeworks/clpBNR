@@ -496,7 +496,7 @@ eg
 	?- clpStatistics,magic_series1(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.16745899999999736), gcTime(0.0), globalStack(53976/524256), trailStack(344/264168), localStack(2152/118648), inferences(1221201), narrowingOps(36412), narrowingFails(73), opCounts([]), node_count(190), max_iterations(414/3000)],
+	SS = [userTime(0.1373919999999984), gcTime(0.001), globalStack(50864/524256), trailStack(352/133096), localStack(2208/118648), inferences(1062315), narrowingOps(31606), narrowingFails(73), opCounts([]), node_count(190), max_iterations(364/30000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -520,7 +520,7 @@ eg
 	?- clpStatistics,magic_series2(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.05545100000000147), gcTime(0.001), globalStack(54144/524256), trailStack(760/133096), localStack(2152/118648), inferences(397307), narrowingOps(10841), narrowingFails(41), opCounts([]), node_count(199), max_iterations(690/3000)],
+	SS = [userTime(0.053035000000001276), gcTime(0.001), globalStack(54312/524256), trailStack(688/133096), localStack(2208/118648), inferences(395201), narrowingOps(9928), narrowingFails(41), opCounts([]), node_count(199), max_iterations(625/30000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 10),
@@ -550,7 +550,7 @@ eg
 	?- clpStatistics,magic_series3(10,M),findall(M,enumerate(M),Ms),clpStatistics(SS).
 	M = [_A, _B, _C, _D, _E, _F, _G, _H, _I, _J],
 	Ms = [[6, 2, 1, 0, 0, 0, 1, 0, 0, 0]],
-	SS = [userTime(0.019294000000002143), gcTime(0.0), globalStack(37960/262112), trailStack(760/133096), localStack(2152/118648), inferences(136020), narrowingOps(2638), narrowingFails(41), opCounts([]), node_count(161), max_iterations(292/3000)],
+	SS = [userTime(0.02293300000000187), gcTime(0.0), globalStack(37712/262112), trailStack(688/133096), localStack(2208/118648), inferences(177546), narrowingOps(3690), narrowingFails(41), opCounts([]), node_count(159), max_iterations(276/30000)],
 	_A::integer(0, 10),
 	_B::integer(0, 10),
 	_C::integer(0, 5),

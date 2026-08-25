@@ -285,15 +285,15 @@ eg
 	{Domestic==RegDom+PremDom, Foreign==RegFor+PremFor}.
 	Prod = [RegDom, RegFor, PremDom, PremFor],
 	OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
-	RegDom::real(37679.24411466068, 4.0e+04),
-	RegFor::real(1.0e+04, 12320.755885339317),
-	PremDom::real(0.0, 2320.7558853393202),
-	PremFor::real(2679.2441146606798, 5155.095147342616),
-	Regular::real(5.0e+04, 52320.75588533932),
-	Premium::real(5000.0, 7475.851032681936),
-	Profit::real(124937.53178757269, 125062.46821242732),
-	Domestic::real(37679.24411466068, 42320.75588533932),
-	Foreign::real(12679.24411466068, 17475.851032681934) ;
+	RegDom::real(37679.24411607414, 40000),
+	RegFor::real(10000, 12320.75588392586),
+	PremDom::real(0, 2320.7558839258636),
+	PremFor::real(2679.2441160741364, 5155.095147306539),
+	Regular::real(50000, 52320.75588392586),
+	Premium::real(5000, 7475.851031232402),
+	Profit::real(124937.53178757268, 125062.46821242734),
+	Domestic::real(37679.24411607414, 42320.75588392586),
+	Foreign::real(12679.244116074136, 17475.8510312324) ;
 	false.
 	
 	?- Prod=[RegDom,RegFor,PremDom,PremFor],Prod::real(0,_), OF = 4*RegDom-3*RegFor+6*PremDom-PremFor,
@@ -427,24 +427,24 @@ eg
 	?- _Ts = [T11,T12,T21,T22], hxcgr_eg(temps(_Ts,Ti1,To1,Ti2,To2),_Flows,OF,_Cs,CostF), {_Cs}, global_minimum(OF,Z), {Cost==CostF}, solve(_Ts), _Flows=..[flows,Fi1,Fi2,FB12,FB21,Fo1,Fo2,FE1,FE2].
 	OF = 1/(1r5*sqrt(T11*T12)+(T11+T12))+1/(1r5*sqrt(T21*T22)+(T21+T22)),
 	CostF = 1300*(1000/(0.05*2r3*sqrt(T11*T12)+1r6*(T11+T12)))**0.6+1300*(600/(0.05*2r3*sqrt(T21*T22)+1r6*(T21+T22)))**0.6,
-	T11:: 190.0...,
-	To1:: 310.0...,
+	T11::real(189.9468627413466, 190.00068748699294),
+	To1::real(309.99931251300706, 310.0531372586534),
 	T12:: 40.0...,
 	Ti1:: 210.0...,
 	T21:: 140.0...,
 	To2:: 210.0...,
 	T22:: 50.0...,
 	Ti2:: 150.0...,
-	FE1:: 10.00...,
+	FE1:: 10.0...,
 	FE2:: 10.0...,
 	Fi1:: 0.0...,
 	Fi2:: 10.0...,
 	FB12:: 10.0...,
 	FB21:: 0.00...,
-	Fo1:: 10.00...,
+	Fo1:: 10.0...,
 	Fo2:: 0.00...,
 	Z:: 0.00887...,
-	Cost::real(16024.377754474684, 16027.290858044276) ;
+	Cost::real(16024.34388288542, 16027.562144325111) ;
 	false.
 This agrees with the solution in the referenced article:
 [hxcgr_soln_img]

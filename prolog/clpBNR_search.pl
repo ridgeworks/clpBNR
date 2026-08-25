@@ -35,6 +35,7 @@
  *  Adds `indomain_solve`/`solve`
  *
  *  Dependency: Uses `add_constraint/1` from v0.12.x
+ *              Uses clpBNR:g_* globals abstraction for portability from v0.13.2
  *
  */
 
@@ -80,7 +81,7 @@ get_bounds(X,Min,Max) :-
 %
 shelf_create(Shelf,Value) :-
 	gensym('$clpBNR_shelf_handle',Shelf),                % new shelf handle
-	(nb_linkval(Shelf,Value) ; nb_delete(Shelf), fail).  % delete on backtracking
+	(clpBNR:g_assign(Shelf,Value) ; clpBNR:g_delete(Shelf), fail).  % delete on backtracking
 %   declare safe (non-ground global names)
 sandbox:safe_primitive(clpBNR_search:shelf_create(_Shelf,_Value)). 
 
@@ -214,9 +215,9 @@ labeling(Xs,Arg,Select,Choice):-
 % same as labeling, but stops after Steps backtracking steps
 %
 bbs(L,Arg,Select,Choice,Steps):-
-	b_getval('$clpBNR_search:backtrack', CurrentBacktracks),
+	clpBNR:g_read('$clpBNR_search:backtrack', CurrentBacktracks),
 	BacktrackLimit is CurrentBacktracks+Steps,
-	nb_setval('$clpBNR_search:backtrack_limit',BacktrackLimit),
+	clpBNR:g_assign('$clpBNR_search:backtrack_limit',BacktrackLimit),
 	catch(bbs1(L,Arg,Select,Choice),error(domain_error(backtracks,_),_),fail).
 
 bbs1(Xs,Arg,Select,Choice):-
@@ -273,10 +274,10 @@ credit_choice(X,Arg,Choice,Shelf,Credit_child) :-
 % if credit remains, and there are no more children, the credit is lost
 % if children do not use their credit, it is lost
 distribute_credit(Shelf,Credit,Rest):-
-	b_getval(Shelf,Old),
+	clpBNR:g_read(Shelf,Old),
 	Credit is (Old+1)//2,
 	Rest is Old-Credit,
-	nb_linkval(Shelf,Rest).
+	clpBNR:g_assign(Shelf,Rest).
 %   declare safe (non-ground global names)
 sandbox:safe_primitive(clpBNR_search:distribute_credit(_Shelf,_Credit,_Rest)). 
 
@@ -312,10 +313,10 @@ lds_choice(X,Arg,Choice,Shelf,Disc) :-
 	).
 
 dec_discrepancy(Shelf,Disc):-
-	b_getval(Shelf,Disc),
+	clpBNR:g_read(Shelf,Disc),
 	Disc > 0,	% fail if already 0
 	Disc1 is Disc - 1,
-	nb_linkval(Shelf,Disc1).
+	clpBNR:g_assign(Shelf,Disc1).
 %   declare safe (non-ground global names)
 sandbox:safe_primitive(clpBNR_search:dec_discrepancy(_Shelf,_Disc)). 
 
@@ -394,38 +395,38 @@ sandbox:safe_global_variable('$clpBNR_search:backtrack_limit').
 reset_backtrack_count(Option):-
 	option(nodes(N),Option,2000),
 	integer(N), N>=1,
-	nb_setval('$clpBNR_search:node_limit',N),
-	nb_setval('$clpBNR_search:nodes',0),
-	nb_setval('$clpBNR_search:backtrack',0).
+	clpBNR:g_assign('$clpBNR_search:node_limit',N),
+	clpBNR:g_assign('$clpBNR_search:nodes',0),
+	clpBNR:g_assign('$clpBNR_search:backtrack',0).
 
 get_backtrack_count(L):-
 	option(backtrack(N),L,_),  % unifies var in option with backtack count
-	b_getval('$clpBNR_search:backtrack',N).
+	clpBNR:g_read('$clpBNR_search:backtrack',N).
 
 inc_backtrack_count:-
 	update_nodes_counter,
-	nb_setval('$clpBNR_search:one_level',true).
+	clpBNR:g_assign('$clpBNR_search:one_level',true).
 inc_backtrack_count:-
 	update_backtrack_count(_),
 	fail.
 
 inc_backtrack_count_check :-  % only called by `bbs1`
 	update_nodes_counter,
-	nb_setval('$clpBNR_search:one_level',true).
+	clpBNR:g_assign('$clpBNR_search:one_level',true).
 inc_backtrack_count_check :-
 	update_backtrack_count(N1),
-	b_getval('$clpBNR_search:backtrack_limit',L),  % initialized by `bbs` Method
+	clpBNR:g_read('$clpBNR_search:backtrack_limit',L),  % initialized by `bbs` Method
 	N1 > L,
 	domain_error(backtracks,N1). %exit_block(bbs)
 
 update_backtrack_count(N1) :-
-	b_getval('$clpBNR_search:one_level',true),
-	nb_setval('$clpBNR_search:one_level',false),
-	b_getval('$clpBNR_search:backtrack',N), N1 is N+1, nb_linkval('$clpBNR_search:backtrack',N1).
+	clpBNR:g_read('$clpBNR_search:one_level',true),
+	clpBNR:g_assign('$clpBNR_search:one_level',false),
+	clpBNR:g_inc('$clpBNR_search:backtrack',N).
 
 update_nodes_counter:-
-	nb_getval('$clpBNR_search:nodes',N), N1 is N+1, nb_linkval('$clpBNR_search:nodes',N1),
-	b_getval('$clpBNR_search:node_limit', Max),
+	clpBNR:g_inc('$clpBNR_search:nodes',N),
+	clpBNR:g_read('$clpBNR_search:node_limit',Max),
 	(N1 >= Max
 	 -> domain_error(nodes,(N1,Max)) %exit_block(nodes)
 	 ;  true

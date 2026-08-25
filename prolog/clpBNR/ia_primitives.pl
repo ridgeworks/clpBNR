@@ -639,11 +639,11 @@ pt_powrCase(0,1,(Xl,Xh),R,_Z,(NZl,NZh)) :-  % R positive, numerator even, denomi
 	;           Xl1 = 0,    Xh1 is maxr(-Xl,Xh)      % split
 	),
 	% NZl can't be negative, avoid fuzzing when Xl = inf
-	(Xl1 =  1.0Inf -> NZl = Xl1 ; NZl is roundtoward(Xl1**R,to_negative)),
+	(abs(Xl) =:= 1.0Inf -> NZl = Xl1 ; NZl is roundtoward(Xl1**R,to_negative)),
 	NZh is roundtoward(Xh1**R,to_positive).  % Xh1**R must be positive
 pt_powrCase(1,1,(Xl,Xh),R,_Z,(NZl,NZh)) :-  % R positive, numerator odd, denominator odd
 	%% continuous monotonic, avoid fuzzing when X infinite
-	(Xl =  1.0Inf -> NZl = Xl ; NZl is roundtoward(Xl**R,to_negative)),
+	(abs(Xl) =:= 1.0Inf -> NZl = Xl ; NZl is roundtoward(Xl**R,to_negative)),
 	(Xh = -1.0Inf -> NZh = Xh ; NZh is roundtoward(Xh**R,to_positive)).
 
 pt_powrCase(1,0,(Xl,Xh),R,(Zl,Zh),(NZl,NZh)) :-  % R positive, numerator odd, denominator even

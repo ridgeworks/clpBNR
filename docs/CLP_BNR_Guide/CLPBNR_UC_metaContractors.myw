@@ -31,7 +31,7 @@ The labelling predicates exported from module `clpBNR`, e.g., `solve` and `split
 A few simple examples from previous sections using the `mid_split` and `mid_split_one` contractors with `iterate_until`:
 eg
 	?- X::real, {X**4-4*X**3+4*X**2-4*X+3==0}, iterate_until(50,small(X),mid_split(X)).
-	X:: 1.000000... ;
+	X:: 1.00000... ;
 	X:: 3.00000... ;
 	false.
 	
@@ -80,9 +80,8 @@ eg
 	?- X::real, taylor_solve({X**4-12*X**3+47*X**2-60*X==0}).
 	X:: 0.0000000000000000... ;
 	X:: 3.00000... ;
-	X:: 4.00000000... ;
+	X:: 4.00000... ;
 	X:: 5.0000000... ;
-	false.
 	
 	?- X::real, taylor_solve({X**2-2*X+1==0}).
 	X:: 1.000... ;
@@ -91,21 +90,21 @@ The following table compares `solve` and `taylor_solve` in terms of narrowing op
 .myw
 	.tsv
 		Polynomial						`solve`			`solve_Hnr`		`Taylor`		`Taylor_Hnr`
-		`X**2-4*X+3`					`   776`		`    221`		`   809`		`    265`
-		`X**4-4*X**3+4*X**2-4*X+3`		` 14058`		`   6802`		` 11735`		`   6380`
-		`17*X**256+35*X**17-99*X`		`   215`		` `				`   321`		` `
-		`35*X**256-14*X**17+X`			`  2500`		` `				`  4107`		` `
-		`X**4-12*X**3+47*X**2-60*X`		`155542`		`  15208`		` 20089`		`  18793`
-		`X**2-2*X+1`					`111671`		`  53622`		` 63204`		`  37438`
+		`X**2-4*X+3`					`   776`		`    221`		`   807`		`    263`
+		`X**4-4*X**3+4*X**2-4*X+3`		` 15521`		`   3609`		` 15740`		`   3117`
+		`17*X**256+35*X**17-99*X`		`   215`		` `				`   319`		` `
+		`35*X**256-14*X**17+X`			`  2374`		` `				`  3644`		` `
+		`X**4-12*X**3+47*X**2-60*X`		`116937`		` 111484`		` 33001`		`  72698`
+		`X**2-2*X+1`					`107947`		`  52375`		` 62923`		`  36989`
 	&	// local styles for table
 		@css
 			table.my_array { border-collapse:collapse; }
 			table.my_array tr td { background:whitesmoke; padding: 4px 16px; }
 			table.my_array tr:nth-child(1) td { background:lightgray; }
 
-The results demonstrate that Taylor is generally effective, particularly on compute intensive cases, but not universally so. Using a Taylor contractor entails overhead due to the additional contraints. This usually improves the efficiency of local propagation, but may not be enough to overcome the additional overhad. It all depends on the problem at hand.
+The results demonstrate that Taylor is sometimes effective, particularly on compute intensive cases, but not universally so. Using a Taylor contractor entails overhead due to the additional constraints. This usually improves the efficiency of local propagation, but may not be enough to overcome the additional overhead. It all depends on the problem at hand.
 
-Combining contractors with Horner representation can yield further gains in many (but not all) cases. (Multiple roots at one value are usually problematical since it can be difficult to separate them within precision limits; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
+Combining contractors with Horner representation can yield further gains in many cases; compare the values in the '`Taylor_Hnr`' column with the '`solve` column. (Multiple roots at one value are usually problematical since it can be difficult to separate them within precision limits; as an exercise try `X**4-X**3-3*X**2+5*X-2` which has a root at `X= -2` and a triple root at `X=1`.)
 
 Problems involving multiple variables typically require more than one equation. Since the variables are shared, the generated Taylor contractors (one per equation) can be merged into a single contractor by omitting duplicates. `taylor_contractor/2` also accepts a sequence or list of equations and constructs a single `cf_contractor` for use in an iterator. Examples of using this predicate follow.
 
@@ -136,12 +135,12 @@ Using `solve` will generate the correct result; for `N=5`:
 eg
 	?- broyden(5,Vs,Es), Vs::real(-1,1), {Es}, solve(Vs).
 	Vs = [_A, _B, _C, _D, _E],
-	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+_A*(1+_A)+_B*(1+_B)+_C*(1+_C)+_E*(1+_E), 2*_E+5*_E**3+1==0+_A*(1+_A)+_B*(1+_B)+_C*(1+_C)+_D*(1+_D)],
-	_A:: -0.42830...,
-	_B:: -0.47659...,
-	_C:: -0.51963...,
-	_D:: -0.55886...,
-	_E:: -0.55886... ;
+	Es = [2*_A+5*_A**3+1==0+_B*(1+_B), 2*_B+5*_B**3+1==0+_A*(1+_A)+_C*(1+_C), 2*_C+5*_C**3+1==0+_A*(1+_A)+_B*(1+_B)+_D*(1+_D), 2*_D+5*_D**3+1==0+ …* …+_B*(…+ …)+_C*(1+_C)+_E*(1+_E), 2*_E+5* …** …+1== …+ …+ …* …+_C*(…+ …)+_D*(1+_D)],
+	_A:: -0.428303...,
+	_B:: -0.476596...,
+	_C:: -0.519637...,
+	_D:: -0.558862...,
+	_E:: -0.558862... ;
 	false.
 Using a Taylor contractor:
 eg
@@ -180,7 +179,7 @@ eg
 	_S:: -0.61887208...,
 	_T:: -0.58627694... ;
 	false.
-Execution times were over ten times faster using the `absolve` pre-shrink than without it. Rurthermore this solution this scales approximately linearly with 'N'.
+Execution times were over ten times faster using the `absolve` pre-shrink than without it. Furthermore this solution this scales approximately linearly with 'N'.
  
 ##### Ebers and Moll Transistor Model
 
@@ -227,7 +226,7 @@ Since the ranges of the variables are relatively small (`0` to `10`), and since 
 As an alternative, a "custom" solver can be constructed using the piece parts already described above, primarily `iterate_until/3` with `mid_split` to force  splitting at the interval midpoint regardless of whether it's close to a solution point:
 eg
 	?- Vs=[X1,X2,X3,X4,X5,X6,X7,X8,X9],ebers_moll(Vs,Es),Vs::real(0,10),taylor_contractor({Es},T),time(iterate_until(12,small(Vs),(T,maplist(mid_split,Vs)))).
-	% 31,383,368,268 inferences, 2021.937 CPU in 2023.211 seconds (100% CPU, 15521436 Lips)
+	% 31,285,911,003 inferences, 4548.875 CPU in 4723.602 seconds (96% CPU, 6877725 Lips)
 	Vs = [X1, X2, X3, X4, X5, X6, X7, X8, X9],
 	Es = [(1-X1*X2)*X3*(exp(X5*(… - … - … * …))-1)-211.4823+191.267*X2==0, (1-X1*X2)*X3*(exp(X5*(… - …))-1)-134.3844+111.461*X2==0, (1- … * …)*X3*(exp(… * …)-1)-111.8468+101.779*X2==0, (… - …)*X3*(exp(…)-1)-28.5132+23.3037*X2==0, … * … * (… - …)-211.4823*X1+191.267==0, … * … - … * … + 111.461==0, … - … + 101.779==0, … + … == 0, … == …],
 	T = cf_contractor([X9, X6, X4, X8, X7, X5, X3, X2|…], [_A, _B, _C, _D, _E, _F, _G, _H|…]),
@@ -249,7 +248,7 @@ eg
 	_C::real(-1.0Inf, 1.0Inf),
 	_B::real(-1.0Inf, 1.0Inf),
 	_A::real(-1.0Inf, 1.0Inf) .
-It takes over half an hour (and over 31 billion inferences) to achieve an answer with 4 digits of precision, consistent with the literature. Better precision can be achieved by increasing the `Count` parameter to `iterate_until` but with an impact on execution time.  (It may also be necessary to define a higher precision value for the `small(Vs)` test.) And although this is a particularly challenging example, it serves to demonstrate the limitations of this implementation of CLP(BNR). 
+It takes well over an hour (and over 31 billion inferences) on this CPU to achieve an answer with 4 digits of precision, consistent with the literature. Better precision can be achieved by increasing the `Count` parameter to `iterate_until` but with an impact on execution time.  (It may also be necessary to define a higher precision value for the `small(Vs)` test.) And although this is a particularly challenging example, it serves to demonstrate the limitations of this implementation of CLP(BNR). 
 
 ##### Summary
 

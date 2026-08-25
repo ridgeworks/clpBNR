@@ -237,15 +237,15 @@ cf_solve(T) :-
     cf_solve(T,P).
 cf_solve(cf_contractor(Xs,As),P) :-
 	cf_iterate_(Xs,As,P).
-	
+
 cf_iterate_(Xs, _,P) :- small(Xs,P), !.  % all vars small, normal exit
 cf_iterate_(Xs,As,P) :-
-	cf_contractor(Xs,As),     % execute contractor, must succeed
-	predsort(delta_order_,Xs,SXs),  % sort intervals by width
-	(cf_split(SXs,P,X,Pt)     % find a non-small interval with a split point and
-	 -> ({X=<Pt} ; {Pt=<X}),  % split, then
-	    cf_iterate_(Xs,As,P)  % iterate
-	 ;  true                  % nothing splittable, just exit
+	cf_contractor(Xs,As),                         % execute contractor, must succeed
+	predsort(delta_order_,Xs,SXs),                % sort intervals by width
+	(cf_split(SXs,P,X,(PtL,PtH))                  % find a non-small interval with a split point and
+	 -> ({X =< (PtL,PtL)} ; {(PtH,PtH) =< X}),    % split (using exact values)
+	    cf_iterate_(Xs,As,P)                      % then iterate
+	 ;  true                                      % nothing splittable, just exit
 	).
 
 cf_split(SXs,P,X,Pt) :-           % semi deterministic
